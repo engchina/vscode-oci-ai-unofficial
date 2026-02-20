@@ -1,0 +1,178 @@
+{
+  "name": "vscode-oci-ai-unofficial",
+  "displayName": "vscode-oci-ai-unofficial",
+  "description": "OCI development toolkit for VS Code, covering AI and broader OCI workflows.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Cloud"
+  ],
+  "activationEvents": [
+    "onView:ociAi.computeView",
+    "onView:ociAi.adbView",
+    "onCommand:ociAi.openChat",
+    "onCommand:ociAi.auth.configureProfile",
+    "onCommand:ociAi.auth.configureApiKey"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ociAi",
+          "title": "vscode-oci-ai-unofficial",
+          "icon": "resources/oci-ai.svg"
+        }
+      ]
+    },
+    "views": {
+      "ociAi": [
+        {
+          "id": "ociAi.computeView",
+          "name": "Compute Instances"
+        },
+        {
+          "id": "ociAi.adbView",
+          "name": "Autonomous Databases"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "ociAi.refreshCompute",
+        "title": "Refresh Compute"
+      },
+      {
+        "command": "ociAi.compute.start",
+        "title": "Compute: Start Instance"
+      },
+      {
+        "command": "ociAi.compute.stop",
+        "title": "Compute: Stop Instance"
+      },
+      {
+        "command": "ociAi.refreshAdb",
+        "title": "Refresh ADB"
+      },
+      {
+        "command": "ociAi.adb.start",
+        "title": "ADB: Start"
+      },
+      {
+        "command": "ociAi.adb.stop",
+        "title": "ADB: Stop"
+      },
+      {
+        "command": "ociAi.openChat",
+        "title": "vscode-oci-ai-unofficial: Open Chat"
+      },
+      {
+        "command": "ociAi.auth.configureProfile",
+        "title": "vscode-oci-ai-unofficial: Configure Profile"
+      },
+      {
+        "command": "ociAi.auth.configureApiKey",
+        "title": "vscode-oci-ai-unofficial: Store API Key in Secret Storage"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "ociAi.refreshCompute",
+          "when": "view == ociAi.computeView",
+          "group": "navigation"
+        },
+        {
+          "command": "ociAi.refreshAdb",
+          "when": "view == ociAi.adbView",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "ociAi.compute.start",
+          "when": "view == ociAi.computeView && viewItem == computeInstance",
+          "group": "inline"
+        },
+        {
+          "command": "ociAi.compute.stop",
+          "when": "view == ociAi.computeView && viewItem == computeInstance",
+          "group": "inline"
+        },
+        {
+          "command": "ociAi.adb.start",
+          "when": "view == ociAi.adbView && viewItem == adbInstance",
+          "group": "inline"
+        },
+        {
+          "command": "ociAi.adb.stop",
+          "when": "view == ociAi.adbView && viewItem == adbInstance",
+          "group": "inline"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "ociAi.auth.configureProfile"
+        },
+        {
+          "command": "ociAi.auth.configureApiKey"
+        },
+        {
+          "command": "ociAi.openChat"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "vscode-oci-ai-unofficial",
+      "properties": {
+        "ociAi.profile": {
+          "type": "string",
+          "default": "DEFAULT",
+          "description": "OCI profile name from ~/.oci/config"
+        },
+        "ociAi.region": {
+          "type": "string",
+          "default": "",
+          "description": "Optional OCI region override (e.g. us-phoenix-1)"
+        },
+        "ociAi.compartmentId": {
+          "type": "string",
+          "default": "",
+          "description": "Compartment OCID used for Compute and ADB list/actions"
+        },
+        "ociAi.configFilePath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional custom OCI config file path. Defaults to ~/.oci/config"
+        },
+        "ociAi.genAiModelId": {
+          "type": "string",
+          "default": "",
+          "description": "Model OCID for OCI Generative AI chat"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "check": "tsc --noEmit",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.1",
+    "@types/vscode": "^1.103.0",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.9",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "oci-common": "^2.116.2",
+    "oci-core": "^2.117.1",
+    "oci-database": "^2.116.0",
+    "oci-generativeaiinference": "^2.117.0"
+  }
+}
