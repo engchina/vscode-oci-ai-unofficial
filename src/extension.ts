@@ -3,6 +3,7 @@ import { AuthManager } from "./auth/authManager";
 import { registerCommands } from "./commands/registerCommands";
 import { Controller } from "./controller/index";
 import { OciClientFactory } from "./oci/clientFactory";
+import { AdbSqlService } from "./oci/adbSqlService";
 import { GenAiService } from "./oci/genAiService";
 import { OciService } from "./oci/ociService";
 import { OciWebviewProvider } from "./webview/OciWebviewProvider";
@@ -12,9 +13,10 @@ export function activate(context: vscode.ExtensionContext): void {
   const factory = new OciClientFactory(authManager);
   const ociService = new OciService(factory);
   const genAiService = new GenAiService(factory);
+  const adbSqlService = new AdbSqlService(factory, context.globalStorageUri.fsPath);
 
   // Controller manages state and service interactions
-  const controller = new Controller(authManager, ociService, genAiService, context.workspaceState);
+  const controller = new Controller(authManager, ociService, genAiService, adbSqlService, context.workspaceState);
 
   // Sidebar webview providers (React app)
   const chatWebviewProvider = new OciWebviewProvider(context, controller, "chat");
@@ -23,6 +25,9 @@ export function activate(context: vscode.ExtensionContext): void {
   const adbWebviewProvider = new OciWebviewProvider(context, controller, "adb");
 
   context.subscriptions.push(
+    new vscode.Disposable(() => {
+      void adbSqlService.dispose();
+    }),
     vscode.window.registerWebviewViewProvider(
       OciWebviewProvider.CHAT_VIEW_ID,
       chatWebviewProvider,

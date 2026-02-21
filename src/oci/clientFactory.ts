@@ -44,6 +44,16 @@ export class OciClientFactory {
     return client;
   }
 
+  public async createVirtualNetworkClientAsync(): Promise<compute.VirtualNetworkClient> {
+    const authenticationDetailsProvider = await this.createAuthenticationProviderAsync();
+    const client = new compute.VirtualNetworkClient({ authenticationDetailsProvider });
+    const region = this.authManager.getRegion();
+    if (region) {
+      client.regionId = region;
+    }
+    return client;
+  }
+
   public async createDatabaseClientAsync(): Promise<database.DatabaseClient> {
     const authenticationDetailsProvider = await this.createAuthenticationProviderAsync();
     const client = new database.DatabaseClient({ authenticationDetailsProvider });

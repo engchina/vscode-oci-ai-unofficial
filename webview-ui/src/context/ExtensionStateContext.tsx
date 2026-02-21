@@ -136,7 +136,7 @@ export function ExtensionStateContextProvider({ children }: { children: ReactNod
     setStreamingText("")
 
     cancelStreamRef.current = ChatServiceClient.sendMessage(
-      { text, images },
+      { text, images, modelName: request.modelName },
       {
         onResponse: (response: StreamTokenResponse) => {
           if (typeof response?.token !== "string") {

@@ -2,6 +2,7 @@ import { Cpu, Paperclip, SendHorizonal, Square, X } from "lucide-react"
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ChangeEvent,
@@ -16,7 +17,7 @@ interface ChatTextAreaProps {
   onCancel?: () => void
   disabled?: boolean
   placeholder?: string
-  modelName?: string
+  modelNames?: string
   pendingContext?: CodeContextPayload | null
   onContextConsumed?: () => void
 }
@@ -34,16 +35,26 @@ export default function ChatTextArea({
   onCancel,
   disabled = false,
   placeholder,
-  modelName,
+  modelNames,
   pendingContext,
   onContextConsumed
 }: ChatTextAreaProps) {
   const [value, setValue] = useState("")
   const [images, setImages] = useState<PendingImageAttachment[]>([])
+  const [selectedModelName, setSelectedModelName] = useState("")
   const [validationError, setValidationError] = useState<string>("")
   const [queuedAutoSend, setQueuedAutoSend] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const modelOptions = useMemo(() => splitModelNames(modelNames), [modelNames])
+
+  useEffect(() => {
+    if (modelOptions.length === 0) {
+      setSelectedModelName("")
+      return
+    }
+    setSelectedModelName((prev) => (prev && modelOptions.includes(prev) ? prev : modelOptions[0]))
+  }, [modelOptions])
 
   // When code context is injected from the editor, pre-fill or auto-send.
   useEffect(() => {
@@ -53,7 +64,7 @@ export default function ChatTextArea({
       // Auto-send without user interaction (e.g. Code Review, Generate Docs).
       const fullMessage = `${fence}\n\n${pendingContext.prompt}`
       if (!disabled) {
-        onSend({ text: fullMessage })
+        onSend({ text: fullMessage, modelName: selectedModelName || undefined })
       } else {
         // Avoid losing auto-send tasks while another response is streaming.
         setQueuedAutoSend(fullMessage)
@@ -73,9 +84,9 @@ export default function ChatTextArea({
 
   useEffect(() => {
     if (disabled || !queuedAutoSend) return
-    onSend({ text: queuedAutoSend })
+    onSend({ text: queuedAutoSend, modelName: selectedModelName || undefined })
     setQueuedAutoSend(null)
-  }, [disabled, queuedAutoSend, onSend])
+  }, [disabled, queuedAutoSend, onSend, selectedModelName])
 
   const handleSend = useCallback(() => {
     const trimmed = value.trim()
@@ -91,13 +102,14 @@ export default function ChatTextArea({
     onSend({
       text: trimmed,
       images: payloadImages.length > 0 ? payloadImages : undefined,
+      modelName: selectedModelName || undefined,
     })
     setValue("")
     setImages([])
     setValidationError("")
     // Re-focus after send.
     setTimeout(() => textareaRef.current?.focus(), 0)
-  }, [value, images, disabled, onSend])
+  }, [value, images, disabled, onSend, selectedModelName])
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -289,16 +301,43 @@ export default function ChatTextArea({
         </p>
 
         <div className="mt-2 flex min-h-4 items-center justify-end px-1">
-          {modelName && (
+          {modelOptions.length > 0 && (
             <div className="flex items-center gap-1 text-xxs text-description">
               <Cpu size={12} />
-              <span>{modelName}</span>
+              <select
+                value={selectedModelName}
+                onChange={(e) => setSelectedModelName(e.target.value)}
+                disabled={disabled}
+                className="h-6 rounded border border-input-border bg-input-background px-1.5 text-xxs text-input-foreground outline-none focus:border-border disabled:cursor-not-allowed disabled:opacity-60"
+                title="Select model"
+              >
+                {modelOptions.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))}
+              </select>
             </div>
           )}
         </div>
       </div>
     </div>
   )
+}
+
+function splitModelNames(raw: string | undefined): string[] {
+  if (!raw) return []
+  const deduped: string[] = []
+  const seen = new Set<string>()
+  for (const entry of raw.split(",")) {
+    const trimmed = entry.trim()
+    if (!trimmed) continue
+    const key = trimmed.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    deduped.push(trimmed)
+  }
+  return deduped
 }
 
 async function buildPendingImageAttachment(file: File, idx: number): Promise<PendingImageAttachment> {

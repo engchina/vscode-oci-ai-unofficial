@@ -71,7 +71,7 @@ export default function ChatView({ isHidden = false }: ChatViewProps) {
         onSend={sendMessage}
         onCancel={stopStreaming}
         disabled={isStreaming}
-        modelName={genAiLlmModelId}
+        modelNames={genAiLlmModelId}
         pendingContext={pendingCodeContext}
         onContextConsumed={clearPendingCodeContext}
       />

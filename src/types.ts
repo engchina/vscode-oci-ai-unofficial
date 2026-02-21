@@ -4,6 +4,8 @@ export interface ComputeResource {
   id: string;
   name: string;
   lifecycleState: ResourceState | string;
+  publicIp?: string;
+  privateIp?: string;
 }
 
 export interface AdbResource {

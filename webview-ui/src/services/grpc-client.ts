@@ -1,4 +1,21 @@
-import type { AppState, CodeContextPayload, ListAdbResponse, ListComputeResponse, SaveSettingsRequest, SendMessageRequest, SettingsState, StreamTokenResponse } from "./types"
+import type {
+  AppState,
+  ConnectComputeSshRequest,
+  ConnectComputeSshResponse,
+  CodeContextPayload,
+  ConnectAdbRequest,
+  ConnectAdbResponse,
+  DownloadAdbWalletRequest,
+  DownloadAdbWalletResponse,
+  ExecuteAdbSqlRequest,
+  ExecuteAdbSqlResponse,
+  ListAdbResponse,
+  ListComputeResponse,
+  SaveSettingsRequest,
+  SendMessageRequest,
+  SettingsState,
+  StreamTokenResponse,
+} from "./types"
 import { type Callbacks, ProtoBusClient } from "./grpc-client-base"
 
 export class StateServiceClient extends ProtoBusClient {
@@ -76,6 +93,10 @@ export class ResourceServiceClient extends ProtoBusClient {
     return this.makeUnaryRequest<void>("stopCompute", { instanceId })
   }
 
+  static connectComputeSsh(request: ConnectComputeSshRequest): Promise<ConnectComputeSshResponse> {
+    return this.makeUnaryRequest<ConnectComputeSshResponse>("connectComputeSsh", request)
+  }
+
   static listAdb(): Promise<ListAdbResponse> {
     return this.makeUnaryRequest<ListAdbResponse>("listAdb", {})
   }
@@ -86,5 +107,21 @@ export class ResourceServiceClient extends ProtoBusClient {
 
   static stopAdb(autonomousDatabaseId: string): Promise<void> {
     return this.makeUnaryRequest<void>("stopAdb", { autonomousDatabaseId })
+  }
+
+  static downloadAdbWallet(request: DownloadAdbWalletRequest): Promise<DownloadAdbWalletResponse> {
+    return this.makeUnaryRequest<DownloadAdbWalletResponse>("downloadAdbWallet", request)
+  }
+
+  static connectAdb(request: ConnectAdbRequest): Promise<ConnectAdbResponse> {
+    return this.makeUnaryRequest<ConnectAdbResponse>("connectAdb", request)
+  }
+
+  static disconnectAdb(connectionId: string): Promise<void> {
+    return this.makeUnaryRequest<void>("disconnectAdb", { connectionId })
+  }
+
+  static executeAdbSql(request: ExecuteAdbSqlRequest): Promise<ExecuteAdbSqlResponse> {
+    return this.makeUnaryRequest<ExecuteAdbSqlResponse>("executeAdbSql", request, 120000)
   }
 }

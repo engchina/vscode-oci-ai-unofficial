@@ -34,15 +34,18 @@ export class GenAiService {
   public async chatStream(
     messages: ChatMessage[],
     onToken: (token: string) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    modelNameOverride?: string
   ): Promise<void> {
     if (signal?.aborted) {
       throw createAbortError();
     }
 
     const cfg = vscode.workspace.getConfiguration("ociAi");
-    const modelName =
-      cfg.get<string>("genAiLlmModelId", "").trim() || cfg.get<string>("genAiModelId", "").trim();
+    const configuredModelNames = parseConfiguredModelNames(
+      cfg.get<string>("genAiLlmModelId", "").trim() || cfg.get<string>("genAiModelId", "").trim()
+    );
+    const modelName = modelNameOverride?.trim() || configuredModelNames[0] || "";
 
     if (!modelName) {
       onToken(
@@ -162,6 +165,27 @@ export class GenAiService {
     }
     onToken("OCI returned an empty response.");
   }
+}
+
+function parseConfiguredModelNames(rawValue: string): string[] {
+  if (!rawValue) {
+    return [];
+  }
+  const list: string[] = [];
+  const seen = new Set<string>();
+  for (const segment of rawValue.split(",")) {
+    const name = segment.trim();
+    if (!name) {
+      continue;
+    }
+    const key = name.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    list.push(name);
+  }
+  return list;
 }
 
 type RequestVariant = {

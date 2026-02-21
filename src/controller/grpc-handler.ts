@@ -140,6 +140,7 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
       await c.stopComputeInstance(msg.instanceId);
       return {};
     },
+    connectComputeSsh: async (c, msg) => c.connectComputeSsh(msg),
     listAdb: async (c) => ({ databases: await c.listAutonomousDatabases() }),
     startAdb: async (c, msg) => {
       await c.startAutonomousDatabase(msg.autonomousDatabaseId);
@@ -149,6 +150,13 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
       await c.stopAutonomousDatabase(msg.autonomousDatabaseId);
       return {};
     },
+    downloadAdbWallet: async (c, msg) => c.downloadAdbWallet(msg),
+    connectAdb: async (c, msg) => c.connectAdb(msg),
+    disconnectAdb: async (c, msg) => {
+      await c.disconnectAdb(msg.connectionId);
+      return {};
+    },
+    executeAdbSql: async (c, msg) => c.executeAdbSql(msg),
   },
 };
 

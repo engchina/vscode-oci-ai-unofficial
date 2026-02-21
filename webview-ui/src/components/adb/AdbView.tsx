@@ -1,9 +1,23 @@
 import { clsx } from "clsx"
-import { AlertCircle, Database, Loader2, PlayCircle, RefreshCw, Search, StopCircle } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import {
+  AlertCircle,
+  Database,
+  Download,
+  Loader2,
+  PlayCircle,
+  Plug,
+  RefreshCw,
+  Search,
+  SquareTerminal,
+  StopCircle,
+  Unplug,
+} from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ResourceServiceClient } from "../../services/grpc-client"
-import type { AdbResource } from "../../services/types"
+import type { AdbResource, ConnectAdbResponse, ExecuteAdbSqlResponse } from "../../services/types"
 import Button from "../ui/Button"
+import Input from "../ui/Input"
+import Textarea from "../ui/Textarea"
 
 type ActionState = { id: string; action: "starting" | "stopping" } | null
 
@@ -16,10 +30,29 @@ const POLL_INTERVAL_MS = 5000
 
 export default function AdbView() {
   const [databases, setDatabases] = useState<AdbResource[]>([])
+  const [selectedAdbId, setSelectedAdbId] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionState, setActionState] = useState<ActionState>(null)
   const [query, setQuery] = useState("")
+
+  const [walletPassword, setWalletPassword] = useState("")
+  const [walletPath, setWalletPath] = useState("")
+  const [serviceNames, setServiceNames] = useState<string[]>([])
+  const [serviceName, setServiceName] = useState("")
+  const [username, setUsername] = useState("")
+  const [password, setPassword] = useState("")
+  const [connectionId, setConnectionId] = useState("")
+  const [connectionTarget, setConnectionTarget] = useState<Pick<ConnectAdbResponse, "autonomousDatabaseId" | "serviceName" | "walletPath"> | null>(null)
+  const [sql, setSql] = useState("SELECT SYSDATE AS CURRENT_TIME FROM DUAL")
+  const [sqlResult, setSqlResult] = useState<ExecuteAdbSqlResponse | null>(null)
+  const [adbBusyAction, setAdbBusyAction] = useState<"wallet" | "connect" | "disconnect" | "execute" | null>(null)
+  const previousSelectedAdbIdRef = useRef("")
+
+  const selectedDatabase = useMemo(
+    () => databases.find((db) => db.id === selectedAdbId) ?? null,
+    [databases, selectedAdbId],
+  )
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -32,19 +65,25 @@ export default function AdbView() {
     setError(null)
     try {
       const res = await ResourceServiceClient.listAdb()
-      setDatabases(res.databases ?? [])
+      const items = res.databases ?? []
+      setDatabases(items)
+      if (!selectedAdbId && items.length > 0) {
+        setSelectedAdbId(items[0].id)
+      }
+      if (selectedAdbId && !items.some((db) => db.id === selectedAdbId)) {
+        setSelectedAdbId(items[0]?.id ?? "")
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [selectedAdbId])
 
   useEffect(() => {
     load()
   }, [load])
 
-  // Extension host can push refresh signals (e.g. command palette refresh).
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       const msg = event.data
@@ -61,7 +100,6 @@ export default function AdbView() {
     return () => window.removeEventListener("message", onMessage)
   }, [load])
 
-  // Auto-poll every 5s while any database is in a transitional state
   const isPolling = databases.some(db => TRANSITIONAL_STATES.has(db.lifecycleState))
   useEffect(() => {
     if (!isPolling) return
@@ -99,9 +137,132 @@ export default function AdbView() {
     [load],
   )
 
+  const handleDownloadWallet = useCallback(async () => {
+    if (!selectedDatabase?.id) {
+      setError("Please select a database first.")
+      return
+    }
+    setError(null)
+    setAdbBusyAction("wallet")
+    try {
+      const response = await ResourceServiceClient.downloadAdbWallet({
+        autonomousDatabaseId: selectedDatabase.id,
+        walletPassword,
+      })
+      setWalletPath(response.walletPath)
+      setServiceNames(response.serviceNames ?? [])
+      if ((response.serviceNames ?? []).length > 0) {
+        setServiceName(response.serviceNames[0])
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAdbBusyAction(null)
+    }
+  }, [selectedDatabase, walletPassword])
+
+  const handleConnect = useCallback(async () => {
+    if (!selectedDatabase?.id) {
+      setError("Please select a database first.")
+      return
+    }
+    setError(null)
+    setSqlResult(null)
+    setAdbBusyAction("connect")
+    try {
+      const response = await ResourceServiceClient.connectAdb({
+        autonomousDatabaseId: selectedDatabase.id,
+        walletPath,
+        walletPassword,
+        username,
+        password,
+        serviceName,
+      })
+      setConnectionId(response.connectionId)
+      setConnectionTarget({
+        autonomousDatabaseId: response.autonomousDatabaseId,
+        serviceName: response.serviceName,
+        walletPath: response.walletPath,
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAdbBusyAction(null)
+    }
+  }, [password, selectedDatabase, serviceName, username, walletPassword, walletPath])
+
+  const disconnectConnection = useCallback(async (id: string) => {
+    if (!id) return
+    await ResourceServiceClient.disconnectAdb(id)
+  }, [])
+
+  const handleDisconnect = useCallback(async () => {
+    if (!connectionId) return
+    setError(null)
+    setAdbBusyAction("disconnect")
+    try {
+      await disconnectConnection(connectionId)
+      setConnectionId("")
+      setConnectionTarget(null)
+      setSqlResult(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAdbBusyAction(null)
+    }
+  }, [connectionId, disconnectConnection])
+
+  useEffect(() => {
+    const previous = previousSelectedAdbIdRef.current
+    if (!selectedAdbId) {
+      previousSelectedAdbIdRef.current = selectedAdbId
+      return
+    }
+    if (previous && previous !== selectedAdbId) {
+      const activeConnectionId = connectionId
+      setConnectionId("")
+      setConnectionTarget(null)
+      setSqlResult(null)
+      setServiceNames([])
+      setServiceName("")
+      setWalletPath("")
+      setWalletPassword("")
+      if (activeConnectionId) {
+        void disconnectConnection(activeConnectionId)
+      }
+    }
+    previousSelectedAdbIdRef.current = selectedAdbId
+  }, [connectionId, disconnectConnection, selectedAdbId])
+
+  useEffect(() => {
+    return () => {
+      if (!connectionId) return
+      void disconnectConnection(connectionId)
+    }
+  }, [connectionId, disconnectConnection])
+
+  const handleExecuteSql = useCallback(async () => {
+    if (!connectionId) {
+      setError("Please connect first.")
+      return
+    }
+    setError(null)
+    setAdbBusyAction("execute")
+    try {
+      const response = await ResourceServiceClient.executeAdbSql({
+        connectionId,
+        sql,
+      })
+      setSqlResult(response)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAdbBusyAction(null)
+    }
+  }, [connectionId, sql])
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* Header */}
       <div className="flex items-start justify-between gap-3 border-b border-border-panel px-4 py-3">
         <div className="flex min-w-0 items-start gap-2.5">
           <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border-panel bg-list-background-hover">
@@ -112,7 +273,7 @@ export default function AdbView() {
             {isPolling ? (
               <span className="text-xs text-warning animate-pulse">Auto-refreshing every 5s...</span>
             ) : (
-              <span className="text-xs text-description">Manage OCI Autonomous Databases in your compartment.</span>
+              <span className="text-xs text-description">Download wallet, connect and run SQL.</span>
             )}
           </div>
         </div>
@@ -126,7 +287,6 @@ export default function AdbView() {
         </button>
       </div>
 
-      {/* Search bar */}
       {databases.length > 0 && (
         <div className="border-b border-border-panel px-3 py-2">
           <div className="flex items-center gap-2 rounded-lg border border-input-border bg-input-background px-2.5 py-1.5">
@@ -142,7 +302,6 @@ export default function AdbView() {
         </div>
       )}
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-4">
         {error && (
           <div className="mb-4 flex items-start gap-2 rounded-lg border border-error/30 bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,red_8%)] px-3 py-2.5 text-xs text-error">
@@ -159,25 +318,212 @@ export default function AdbView() {
         ) : databases.length === 0 ? (
           <EmptyState />
         ) : (
-          <div className="flex flex-col gap-2">
-            <h4 className="mb-1 text-xs font-semibold uppercase tracking-wider text-description">
-              {filtered.length === databases.length
-                ? `${databases.length} Database${databases.length !== 1 ? "s" : ""}`
-                : `${filtered.length} of ${databases.length} Databases`}
-            </h4>
-            {filtered.length === 0 ? (
-              <p className="py-8 text-center text-xs text-description">No databases match your filter.</p>
-            ) : (
-              filtered.map((db) => (
-                <DatabaseCard
-                  key={db.id}
-                  database={db}
-                  actionState={actionState}
-                  onStart={handleStart}
-                  onStop={handleStop}
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wider text-description">
+                {filtered.length === databases.length
+                  ? `${databases.length} Database${databases.length !== 1 ? "s" : ""}`
+                  : `${filtered.length} of ${databases.length} Databases`}
+              </h4>
+              {filtered.length === 0 ? (
+                <p className="py-8 text-center text-xs text-description">No databases match your filter.</p>
+              ) : (
+                filtered.map((db) => (
+                  <DatabaseCard
+                    key={db.id}
+                    database={db}
+                    selected={db.id === selectedAdbId}
+                    actionState={actionState}
+                    onStart={handleStart}
+                    onStop={handleStop}
+                    onSelect={setSelectedAdbId}
+                  />
+                ))
+              )}
+            </div>
+
+            <div className="flex flex-col gap-3 rounded-xl border border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_95%,black_5%)] p-3 sm:p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-sm font-semibold">ADB SQL Console</h4>
+                  <p className="text-xs text-description">
+                    Selected: {selectedDatabase?.name ?? "None"}
+                  </p>
+                </div>
+                <span
+                  className={clsx(
+                    "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider",
+                    connectionId
+                      ? "border-success/30 text-success bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,green_18%)]"
+                      : "border-border-panel text-description",
+                  )}
+                >
+                  {connectionId ? "Connected" : "Disconnected"}
+                </span>
+              </div>
+              {connectionTarget && (
+                <div className="rounded-md border border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_97%,black_3%)] px-2.5 py-2 text-[11px] text-description">
+                  <div><span className="font-semibold text-foreground">DB:</span> <code>{connectionTarget.autonomousDatabaseId}</code></div>
+                  <div><span className="font-semibold text-foreground">Service:</span> <code>{connectionTarget.serviceName}</code></div>
+                  <div className="break-all"><span className="font-semibold text-foreground">Wallet:</span> <code>{connectionTarget.walletPath}</code></div>
+                </div>
+              )}
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Input
+                  type="password"
+                  label="Wallet Password"
+                  value={walletPassword}
+                  onChange={e => setWalletPassword(e.target.value)}
+                  placeholder="At least 8 chars"
                 />
-              ))
-            )}
+                <div className="flex items-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="w-full gap-1.5"
+                    onClick={handleDownloadWallet}
+                    disabled={adbBusyAction !== null || !selectedAdbId || walletPassword.trim().length < 8}
+                  >
+                    {adbBusyAction === "wallet" ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                    Download Wallet
+                  </Button>
+                </div>
+              </div>
+
+              <Input
+                label="Wallet Path"
+                value={walletPath}
+                onChange={e => setWalletPath(e.target.value)}
+                placeholder="Wallet directory path"
+              />
+
+              <div className="grid gap-2 sm:grid-cols-3">
+                <Input
+                  label="Username"
+                  value={username}
+                  onChange={e => setUsername(e.target.value)}
+                  placeholder="ADMIN"
+                />
+                <Input
+                  type="password"
+                  label="Password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="Database password"
+                />
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-description">Service Name</label>
+                  <input
+                    value={serviceName}
+                    onChange={e => setServiceName(e.target.value)}
+                    list="adb-service-names"
+                    placeholder="e.g. dbname_high"
+                    className="w-full rounded-md border border-input-border bg-input-background px-3 py-2 text-sm text-input-foreground outline-none focus:border-border placeholder:text-input-placeholder"
+                  />
+                  <datalist id="adb-service-names">
+                    {serviceNames.map((name) => <option key={name} value={name} />)}
+                  </datalist>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={handleConnect}
+                  disabled={
+                    adbBusyAction !== null ||
+                    Boolean(connectionId) ||
+                    !selectedAdbId ||
+                    !walletPath.trim() ||
+                    !walletPassword.trim() ||
+                    !username.trim() ||
+                    !password ||
+                    !serviceName.trim()
+                  }
+                >
+                  {adbBusyAction === "connect" ? <Loader2 size={12} className="animate-spin" /> : <Plug size={12} />}
+                  Connect
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="gap-1.5"
+                  onClick={handleDisconnect}
+                  disabled={adbBusyAction !== null || !connectionId}
+                >
+                  {adbBusyAction === "disconnect" ? <Loader2 size={12} className="animate-spin" /> : <Unplug size={12} />}
+                  Disconnect
+                </Button>
+              </div>
+
+              <Textarea
+                label="SQL"
+                value={sql}
+                onChange={e => setSql(e.target.value)}
+                className="min-h-[100px] font-mono text-xs"
+                placeholder="SELECT * FROM your_table FETCH FIRST 20 ROWS ONLY"
+              />
+              <Button
+                type="button"
+                size="sm"
+                className="w-fit gap-1.5"
+                onClick={handleExecuteSql}
+                disabled={adbBusyAction !== null || !connectionId || !sql.trim()}
+              >
+                {adbBusyAction === "execute" ? <Loader2 size={12} className="animate-spin" /> : <SquareTerminal size={12} />}
+                Execute SQL
+              </Button>
+
+              {sqlResult && (
+                <div className="rounded-md border border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_97%,black_3%)] p-3">
+                  <div className="mb-2 text-xs text-description">{sqlResult.message}</div>
+                  {sqlResult.isSelect ? (
+                    <div className="max-h-[320px] overflow-auto rounded border border-border-panel">
+                      <table className="min-w-full border-collapse text-xs">
+                        <thead className="sticky top-0 bg-list-background-hover">
+                          <tr>
+                            {sqlResult.columns.map((column) => (
+                              <th key={column} className="border-b border-border-panel px-2 py-1.5 text-left font-semibold">
+                                {column}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sqlResult.rows.length === 0 ? (
+                            <tr>
+                              <td
+                                colSpan={Math.max(sqlResult.columns.length, 1)}
+                                className="px-2 py-2 text-description"
+                              >
+                                No rows
+                              </td>
+                            </tr>
+                          ) : (
+                            sqlResult.rows.map((row, index) => (
+                              <tr key={`row-${index}`} className="odd:bg-[color-mix(in_srgb,var(--vscode-editor-background)_98%,white_2%)]">
+                                {sqlResult.columns.map((column) => (
+                                  <td key={`${index}-${column}`} className="border-b border-border-panel/50 px-2 py-1.5 align-top">
+                                    {formatCell(row[column])}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-description">Rows affected: {sqlResult.rowsAffected}</div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -187,21 +533,32 @@ export default function AdbView() {
 
 function DatabaseCard({
   database,
+  selected,
   actionState,
   onStart,
   onStop,
+  onSelect,
 }: {
   database: AdbResource
+  selected: boolean
   actionState: ActionState
   onStart: (id: string) => void
   onStop: (id: string) => void
+  onSelect: (id: string) => void
 }) {
   const isActing = actionState?.id === database.id
   const isAvailable = database.lifecycleState === "AVAILABLE"
   const isStopped = database.lifecycleState === "STOPPED"
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,black_8%)] p-3 sm:p-4">
+    <div
+      className={clsx(
+        "flex flex-col gap-3 rounded-xl border p-3 sm:p-4",
+        selected
+          ? "border-button-background bg-[color-mix(in_srgb,var(--vscode-editor-background)_90%,var(--vscode-button-background)_10%)]"
+          : "border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,black_8%)]",
+      )}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-col gap-0.5">
           <span className="truncate text-sm font-medium">{database.name}</span>
@@ -211,6 +568,13 @@ function DatabaseCard({
       </div>
 
       <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          variant={selected ? "primary" : "secondary"}
+          onClick={() => onSelect(database.id)}
+        >
+          {selected ? "Selected" : "Select"}
+        </Button>
         <Button
           size="sm"
           variant="secondary"
@@ -264,14 +628,17 @@ function LifecycleBadge({ state }: { state: string }) {
 
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-16">
-      <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-border-panel bg-list-background-hover">
-        <Database size={22} className="text-description" />
-      </div>
-      <div className="text-center">
-        <p className="text-sm font-medium">No databases found</p>
-        <p className="mt-1 text-xs text-description">Check your compartment ID in OCI Settings.</p>
-      </div>
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border-panel py-16 text-description">
+      <Database size={24} className="mb-2 opacity-70" />
+      <p className="text-sm">No Autonomous Databases found.</p>
+      <p className="mt-1 text-xs">Check your compartment and permissions.</p>
     </div>
   )
+}
+
+function formatCell(value: string | number | boolean | null | undefined): string {
+  if (value === null || value === undefined) {
+    return "NULL"
+  }
+  return String(value)
 }

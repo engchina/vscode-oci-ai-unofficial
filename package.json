@@ -2,7 +2,7 @@
   "name": "vscode-oci-ai-unofficial",
   "displayName": "vscode-oci-ai-unofficial",
   "description": "OCI development toolkit for VS Code, covering AI and broader OCI workflows.",
-  "version": "0.0.2",
+  "version": "0.0.4",
   "publisher": "local",
   "engines": {
     "vscode": "^1.100.0"
@@ -318,9 +318,11 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "adm-zip": "^0.5.16",
     "oci-common": "^2.125.2",
     "oci-core": "^2.125.2",
     "oci-database": "^2.125.2",
-    "oci-generativeaiinference": "^2.125.2"
+    "oci-generativeaiinference": "^2.125.2",
+    "oracledb": "^6.10.0"
   }
 }

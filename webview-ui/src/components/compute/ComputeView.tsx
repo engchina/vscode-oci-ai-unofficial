@@ -1,21 +1,28 @@
 import { clsx } from "clsx"
-import { AlertCircle, Loader2, MonitorPlay, MonitorStop, RefreshCw, Search, Server } from "lucide-react"
+import { AlertCircle, Loader2, MonitorPlay, MonitorStop, RefreshCw, Search, Server, SquareTerminal } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { ResourceServiceClient } from "../../services/grpc-client"
 import type { ComputeResource } from "../../services/types"
+import { DEFAULT_SSH_USERNAME, SSH_CONFIG_STORAGE_KEY, loadSshConfig, saveSshConfig, type HostPreference, type SshConfig } from "../../sshConfig"
 import Button from "../ui/Button"
 
 type ActionState = { id: string; action: "starting" | "stopping" } | null
 
 const TRANSITIONAL_STATES = new Set(["STARTING", "STOPPING", "PROVISIONING", "TERMINATING"])
 const POLL_INTERVAL_MS = 5000
+const SSH_USER_OVERRIDES_STORAGE_KEY = "ociAi.compute.sshUserOverrides"
+const SSH_USER_OVERRIDES_MIGRATION_V2_KEY = "ociAi.compute.sshUserOverridesMigration.v2"
+const LEGACY_COMPUTE_DEFAULT_USERNAME = "ubuntu"
 
 export default function ComputeView() {
   const [instances, setInstances] = useState<ComputeResource[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionState, setActionState] = useState<ActionState>(null)
+  const [connectingId, setConnectingId] = useState<string | null>(null)
   const [query, setQuery] = useState("")
+  const [sshConfig, setSshConfig] = useState<SshConfig>(loadSshConfig)
+  const [sshUserOverrides, setSshUserOverrides] = useState<Record<string, string>>(loadSshUserOverrides)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -95,6 +102,76 @@ export default function ComputeView() {
     [load],
   )
 
+  const handleConnect = useCallback(
+    async (instance: ComputeResource) => {
+      const host = resolveSshHost(instance, sshConfig.hostPreference)
+      const username = resolveInstanceUsername(instance.id, sshUserOverrides, sshConfig.username)
+      if (!host) {
+        setError(`No ${sshConfig.hostPreference} IP found for instance "${instance.name}".`)
+        return
+      }
+      if (!username) {
+        setError("SSH username is required before connecting.")
+        return
+      }
+
+      setConnectingId(instance.id)
+      try {
+        await ResourceServiceClient.connectComputeSsh({
+          instanceId: instance.id,
+          instanceName: instance.name,
+          host,
+          username,
+          port: sshConfig.port,
+          privateKeyPath: sshConfig.privateKeyPath.trim() || undefined,
+          disableHostKeyChecking: sshConfig.disableHostKeyChecking,
+        })
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+      } finally {
+        setConnectingId(null)
+      }
+    },
+    [sshConfig, sshUserOverrides],
+  )
+
+  useEffect(() => {
+    saveSshConfig(sshConfig)
+  }, [sshConfig])
+
+  useEffect(() => {
+    const syncSshConfig = () => {
+      setSshConfig(loadSshConfig())
+    }
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === SSH_CONFIG_STORAGE_KEY || event.key === null) {
+        syncSshConfig()
+      }
+    }
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        syncSshConfig()
+      }
+    }
+
+    window.addEventListener("focus", syncSshConfig)
+    window.addEventListener("storage", handleStorage)
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    return () => {
+      window.removeEventListener("focus", syncSshConfig)
+      window.removeEventListener("storage", handleStorage)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SSH_USER_OVERRIDES_STORAGE_KEY, JSON.stringify(sshUserOverrides))
+    } catch {
+      // Ignore local persistence failures in restricted webview environments.
+    }
+  }, [sshUserOverrides])
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Header */}
@@ -169,8 +246,15 @@ export default function ComputeView() {
                   key={instance.id}
                   instance={instance}
                   actionState={actionState}
+                  connectingId={connectingId}
+                  sshConfig={sshConfig}
+                  sshUserOverride={sshUserOverrides[instance.id] || ""}
                   onStart={handleStart}
                   onStop={handleStop}
+                  onConnect={handleConnect}
+                  onChangeSshUserOverride={(instanceId, username) =>
+                    setSshUserOverrides((prev) => ({ ...prev, [instanceId]: username }))
+                  }
                 />
               ))
             )}
@@ -184,17 +268,39 @@ export default function ComputeView() {
 function InstanceCard({
   instance,
   actionState,
+  connectingId,
+  sshConfig,
+  sshUserOverride,
   onStart,
   onStop,
+  onConnect,
+  onChangeSshUserOverride,
 }: {
   instance: ComputeResource
   actionState: ActionState
+  connectingId: string | null
+  sshConfig: SshConfig
+  sshUserOverride: string
   onStart: (id: string) => void
   onStop: (id: string) => void
+  onConnect: (instance: ComputeResource) => void
+  onChangeSshUserOverride: (instanceId: string, username: string) => void
 }) {
   const isActing = actionState?.id === instance.id
+  const isConnecting = connectingId === instance.id
   const isRunning = instance.lifecycleState === "RUNNING"
   const isStopped = instance.lifecycleState === "STOPPED"
+  const host = resolveSshHost(instance, sshConfig.hostPreference)
+  const defaultUsername = sshConfig.username.trim() || DEFAULT_SSH_USERNAME
+  const effectiveUsername = resolveInstanceUsername(instance.id, { [instance.id]: sshUserOverride }, defaultUsername)
+  const canConnect = isRunning && !isActing && !isConnecting && Boolean(host) && Boolean(effectiveUsername)
+  const connectReason = !isRunning
+    ? "Instance must be RUNNING"
+    : !host
+      ? "No reachable IP found"
+      : !effectiveUsername
+        ? "Set SSH username first"
+        : ""
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,black_8%)] p-3 sm:p-4">
@@ -202,11 +308,26 @@ function InstanceCard({
         <div className="flex min-w-0 flex-col gap-0.5">
           <span className="truncate text-sm font-medium">{instance.name}</span>
           <span className="truncate text-xs text-description">{instance.id}</span>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+            <span className="text-[11px] text-description">Public IP: {instance.publicIp || "-"}</span>
+            <span className="text-[11px] text-description">Private IP: {instance.privateIp || "-"}</span>
+          </div>
+          <div className="mt-2 flex max-w-[320px] items-center gap-2">
+            <span className="shrink-0 text-[11px] text-description">SSH User</span>
+            <input
+              type="text"
+              value={sshUserOverride}
+              onChange={(e) => onChangeSshUserOverride(instance.id, e.target.value)}
+              placeholder={defaultUsername}
+              className="h-7 min-w-0 flex-1 rounded-md border border-input-border bg-input-background px-2 text-xs outline-none"
+              title="Per-instance SSH username override"
+            />
+          </div>
         </div>
         <LifecycleBadge state={instance.lifecycleState} />
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           size="sm"
           variant="secondary"
@@ -234,6 +355,17 @@ function InstanceCard({
             <MonitorStop size={12} />
           )}
           Stop
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={!canConnect}
+          onClick={() => onConnect(instance)}
+          title={connectReason}
+          className="flex items-center gap-1.5"
+        >
+          {isConnecting ? <Loader2 size={12} className="animate-spin" /> : <SquareTerminal size={12} />}
+          SSH Connect
         </Button>
       </div>
     </div>
@@ -268,4 +400,56 @@ function EmptyState() {
       </div>
     </div>
   )
+}
+
+function loadSshUserOverrides(): Record<string, string> {
+  try {
+    const raw = window.localStorage.getItem(SSH_USER_OVERRIDES_STORAGE_KEY)
+    if (!raw) {
+      return {}
+    }
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    const cleaned: Record<string, string> = {}
+    for (const [instanceId, username] of Object.entries(parsed || {})) {
+      if (typeof username === "string") {
+        cleaned[instanceId] = username
+      }
+    }
+    // One-time migration: drop legacy auto-filled "ubuntu" overrides so instances
+    // fall back to Compute SSH Defaults unless users explicitly override again.
+    const migrated = window.localStorage.getItem(SSH_USER_OVERRIDES_MIGRATION_V2_KEY) === "1"
+    if (!migrated) {
+      let changed = false
+      for (const [instanceId, username] of Object.entries(cleaned)) {
+        if (username.trim().toLowerCase() === LEGACY_COMPUTE_DEFAULT_USERNAME) {
+          delete cleaned[instanceId]
+          changed = true
+        }
+      }
+      if (changed) {
+        window.localStorage.setItem(SSH_USER_OVERRIDES_STORAGE_KEY, JSON.stringify(cleaned))
+      }
+      window.localStorage.setItem(SSH_USER_OVERRIDES_MIGRATION_V2_KEY, "1")
+    }
+    return cleaned
+  } catch {
+    return {}
+  }
+}
+
+function resolveSshHost(instance: ComputeResource, preference: HostPreference): string {
+  const publicIp = instance.publicIp?.trim() || ""
+  const privateIp = instance.privateIp?.trim() || ""
+  if (preference === "private") {
+    return privateIp || publicIp
+  }
+  return publicIp || privateIp
+}
+
+function resolveInstanceUsername(instanceId: string, overrides: Record<string, string>, fallback: string): string {
+  const override = overrides[instanceId]?.trim() || ""
+  if (override) {
+    return override
+  }
+  return fallback.trim()
 }

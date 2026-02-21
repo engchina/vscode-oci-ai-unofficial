@@ -72,6 +72,8 @@ export interface SettingsState extends SaveSettingsRequest {
 export interface SendMessageRequest {
   text: string
   images?: ChatImageData[]
+  /** Optional model override selected in chat UI. */
+  modelName?: string
 }
 
 export interface StreamTokenResponse {
@@ -79,10 +81,69 @@ export interface StreamTokenResponse {
   done: boolean
 }
 
+export interface DownloadAdbWalletRequest {
+  autonomousDatabaseId: string
+  walletPassword: string
+}
+
+export interface DownloadAdbWalletResponse {
+  walletPath: string
+  serviceNames: string[]
+}
+
+export interface ConnectAdbRequest {
+  autonomousDatabaseId: string
+  walletPath: string
+  walletPassword?: string
+  username: string
+  password: string
+  serviceName: string
+}
+
+export interface ConnectAdbResponse {
+  connectionId: string
+  autonomousDatabaseId: string
+  serviceName: string
+  walletPath: string
+}
+
+export interface ConnectComputeSshRequest {
+  instanceId: string
+  instanceName?: string
+  host: string
+  username: string
+  port?: number
+  privateKeyPath?: string
+  disableHostKeyChecking?: boolean
+}
+
+export interface ConnectComputeSshResponse {
+  launched: boolean
+}
+
+export interface AdbSqlRow {
+  [column: string]: string | number | boolean | null
+}
+
+export interface ExecuteAdbSqlRequest {
+  connectionId: string
+  sql: string
+}
+
+export interface ExecuteAdbSqlResponse {
+  isSelect: boolean
+  columns: string[]
+  rows: AdbSqlRow[]
+  rowsAffected: number
+  message: string
+}
+
 export interface ComputeResource {
   id: string
   name: string
   lifecycleState: string
+  publicIp?: string
+  privateIp?: string
 }
 
 export interface AdbResource {

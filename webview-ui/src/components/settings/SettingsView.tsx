@@ -1,8 +1,9 @@
 import { clsx } from "clsx"
 import { BookmarkPlus, Info, LoaderCircle, Save, Settings2, Sliders, Terminal, Trash2, Wrench } from "lucide-react"
-import { useCallback, useEffect, useState, type ChangeEvent } from "react"
+import { useCallback, useEffect, useState, type ChangeEvent, type Dispatch, type SetStateAction } from "react"
 import { StateServiceClient } from "../../services/grpc-client"
 import type { SavedCompartment, SettingsState } from "../../services/types"
+import { DEFAULT_SSH_USERNAME, clampPort, loadSshConfig, saveSshConfig, type HostPreference, type SshConfig } from "../../sshConfig"
 import Button from "../ui/Button"
 import Card from "../ui/Card"
 import Input from "../ui/Input"
@@ -56,6 +57,7 @@ const EMPTY_SETTINGS: SettingsState = {
 
 export default function SettingsView({ onDone, showDone = true }: SettingsViewProps) {
   const [settings, setSettings] = useState<SettingsState>(EMPTY_SETTINGS)
+  const [sshConfig, setSshConfig] = useState<SshConfig>(loadSshConfig)
   const [saving, setSaving] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [activeTab, setActiveTab] = useState<SettingsTab>("api-config")
@@ -101,6 +103,10 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
     },
     [updateField],
   )
+
+  useEffect(() => {
+    saveSshConfig(sshConfig)
+  }, [sshConfig])
 
   if (!loaded) {
     return (
@@ -181,6 +187,8 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
             {activeTab === "terminal" && (
               <TerminalTab
                 settings={settings}
+                sshConfig={sshConfig}
+                setSshConfig={setSshConfig}
                 updateField={updateField}
                 handleSave={handleSave}
                 saving={saving}
@@ -198,9 +206,18 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
 function validateSettings(s: SettingsState): string[] {
   const errors: string[] = []
   if (!s.compartmentId.trim()) errors.push("Compartment ID is required")
-  if (!s.genAiLlmModelId.trim()) errors.push("LLM Model Name is required for AI chat")
+  if (splitModelNames(s.genAiLlmModelId).length === 0) {
+    errors.push("LLM Model Name is required for AI chat")
+  }
   if (s.authMode === "config-file" && !s.profile.trim()) errors.push("Profile Name is required for config file auth")
   return errors
+}
+
+function splitModelNames(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
 }
 
 function ApiConfigTab({
@@ -357,10 +374,13 @@ function ApiConfigTab({
         <Input
           id="genAiLlmModelId"
           label="LLM Model Name"
-          placeholder="meta.llama-3.1-70b-instruct"
+          placeholder="meta.llama-3.1-70b-instruct,cohere.command-r-plus"
           value={settings.genAiLlmModelId}
           onChange={(e) => updateField("genAiLlmModelId", e.target.value)}
         />
+        <p className="-mt-1 text-xs text-description">
+          Use commas to configure multiple models. Chat page dropdown will show them in order and default to the first.
+        </p>
         <Input
           id="genAiEmbeddingModelId"
           label="Embedding Model Name"
@@ -495,11 +515,15 @@ function FeaturesTab({
 
 function TerminalTab({
   settings,
+  sshConfig,
+  setSshConfig,
   updateField,
   handleSave,
   saving,
 }: {
   settings: SettingsState
+  sshConfig: SshConfig
+  setSshConfig: Dispatch<SetStateAction<SshConfig>>
   updateField: UpdateFieldFn
   handleSave: () => void
   saving: boolean
@@ -525,6 +549,63 @@ function TerminalTab({
         <p className="-mt-1 text-xs text-description">
           How long command execution should wait for shell integration before timing out.
         </p>
+      </Card>
+
+      <Card title="Compute SSH Defaults">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] text-description">Username</span>
+            <input
+              type="text"
+              value={sshConfig.username}
+              onChange={(e) => setSshConfig((prev) => ({ ...prev, username: e.target.value }))}
+              placeholder={DEFAULT_SSH_USERNAME}
+              className="h-7 rounded-md border border-input-border bg-input-background px-2 text-xs outline-none"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] text-description">Port</span>
+            <input
+              type="number"
+              min={1}
+              max={65535}
+              value={sshConfig.port}
+              onChange={(e) => setSshConfig((prev) => ({ ...prev, port: clampPort(e.target.value) }))}
+              className="h-7 rounded-md border border-input-border bg-input-background px-2 text-xs outline-none"
+            />
+          </label>
+          <label className="flex flex-col gap-1 sm:col-span-2">
+            <span className="text-[11px] text-description">Private Key Path (optional)</span>
+            <input
+              type="text"
+              value={sshConfig.privateKeyPath}
+              onChange={(e) => setSshConfig((prev) => ({ ...prev, privateKeyPath: e.target.value }))}
+              placeholder="~/.ssh/id_rsa"
+              className="h-7 rounded-md border border-input-border bg-input-background px-2 text-xs outline-none"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] text-description">Target Host</span>
+            <select
+              value={sshConfig.hostPreference}
+              onChange={(e) => setSshConfig((prev) => ({ ...prev, hostPreference: e.target.value as HostPreference }))}
+              className="h-7 rounded-md border border-input-border bg-input-background px-2 text-xs outline-none"
+            >
+              <option value="public">Public IP (fallback Private)</option>
+              <option value="private">Private IP (fallback Public)</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-2 pt-5 text-xs text-description">
+            <input
+              type="checkbox"
+              checked={sshConfig.disableHostKeyChecking}
+              onChange={(e) => setSshConfig((prev) => ({ ...prev, disableHostKeyChecking: e.target.checked }))}
+              className="h-3.5 w-3.5 rounded border-input-border"
+            />
+            Disable host key checking
+          </label>
+        </div>
+        <p className="text-xs text-description">Used by Compute view when launching SSH connection.</p>
       </Card>
 
       <Button onClick={handleSave} disabled={saving} className="self-start px-4">

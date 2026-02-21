@@ -37,6 +37,42 @@ select {
   color: inherit;
 }
 
+select {
+  color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground, var(--vscode-foreground)));
+  background-color: var(--vscode-dropdown-background, var(--vscode-input-background, transparent));
+  border-color: var(--vscode-dropdown-border, var(--vscode-input-border, transparent));
+}
+
+select option {
+  color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground, var(--vscode-foreground)));
+  background-color: var(
+    --vscode-dropdown-listBackground,
+    var(--vscode-dropdown-background, var(--vscode-input-background, var(--vscode-editor-background)))
+  );
+}
+
+select option:checked {
+  color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
+  background-color: var(--vscode-list-activeSelectionBackground, var(--vscode-list-hoverBackground, #094771));
+}
+
+select option:disabled {
+  color: var(--vscode-disabledForeground, var(--vscode-descriptionForeground));
+}
+
+input[list] {
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  background-color: var(--vscode-input-background, transparent);
+}
+
+datalist option {
+  color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground, var(--vscode-foreground)));
+  background-color: var(
+    --vscode-dropdown-listBackground,
+    var(--vscode-dropdown-background, var(--vscode-input-background, var(--vscode-editor-background)))
+  );
+}
+
 :focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: 1px;

@@ -1,8 +1,19 @@
+import * as os from "os";
+import * as path from "path";
 import * as vscode from "vscode";
 import { AuthManager } from "../auth/authManager";
 import { GenAiService, type ChatMessage } from "../oci/genAiService";
+import { AdbSqlService } from "../oci/adbSqlService";
 import { OciService } from "../oci/ociService";
 import type {
+  ConnectComputeSshRequest,
+  ConnectComputeSshResponse,
+  ConnectAdbRequest,
+  ConnectAdbResponse,
+  DownloadAdbWalletRequest,
+  DownloadAdbWalletResponse,
+  ExecuteAdbSqlRequest,
+  ExecuteAdbSqlResponse,
   AppState,
   ChatImageData,
   SavedCompartment,
@@ -50,6 +61,7 @@ export class Controller {
     private readonly authManager: AuthManager,
     private readonly ociService: OciService,
     private readonly genAiService: GenAiService,
+    private readonly adbSqlService: AdbSqlService,
     private readonly workspaceState?: vscode.Memento,
   ) {
     // Restore persisted chat history
@@ -63,19 +75,20 @@ export class Controller {
   public getState(): AppState {
     const cfg = vscode.workspace.getConfiguration("ociAi");
     const compartmentId = cfg.get<string>("compartmentId", "").trim();
-    const genAiLlmModelId =
+    const genAiLlmModelIdRaw =
       cfg.get<string>("genAiLlmModelId", "").trim() || cfg.get<string>("genAiModelId", "").trim();
+    const hasModelName = splitModelNames(genAiLlmModelIdRaw).length > 0;
 
     const warnings: string[] = [];
     if (!compartmentId) warnings.push("Compartment ID not set (OCI Settings → Compartment ID).");
-    if (!genAiLlmModelId) warnings.push("LLM Model Name not set (OCI Settings → LLM Model Name).");
+    if (!hasModelName) warnings.push("LLM Model Name not set (OCI Settings → LLM Model Name).");
 
     return {
       profile: cfg.get<string>("profile", "DEFAULT"),
       region: cfg.get<string>("region", ""),
       compartmentId,
       genAiRegion: cfg.get<string>("genAiRegion", ""),
-      genAiLlmModelId,
+      genAiLlmModelId: genAiLlmModelIdRaw,
       genAiEmbeddingModelId: cfg.get<string>("genAiEmbeddingModelId", ""),
       chatMessages: this.chatHistory.map(m => ({ role: m.role, text: m.text, images: m.images })),
       isStreaming: false,
@@ -215,6 +228,7 @@ export class Controller {
   ): Promise<void> {
     const text = String(payload.text ?? "").trim();
     const images = normalizeImages(payload.images);
+    const modelName = typeof payload.modelName === "string" ? payload.modelName.trim() : undefined;
 
     if (!text && images.length === 0) {
       await responseStream({ token: "", done: true }, true);
@@ -236,10 +250,15 @@ export class Controller {
     let assistantText = "";
     let requestFailed = false;
     try {
-      await this.genAiService.chatStream(this.chatHistory, async (token) => {
-        assistantText += token;
-        await responseStream({ token, done: false }, false);
-      }, active.abortController.signal);
+      await this.genAiService.chatStream(
+        this.chatHistory,
+        async (token) => {
+          assistantText += token;
+          await responseStream({ token, done: false }, false);
+        },
+        active.abortController.signal,
+        modelName
+      );
     } catch (error) {
       if (active.cancelled) {
         this.persistChatHistory();
@@ -329,6 +348,56 @@ export class Controller {
     return this.ociService.stopComputeInstance(instanceId);
   }
 
+  /** Open an SSH connection to a compute instance in an integrated terminal task */
+  public async connectComputeSsh(request: ConnectComputeSshRequest): Promise<ConnectComputeSshResponse> {
+    const host = String(request.host ?? "").trim();
+    const username = String(request.username ?? "").trim();
+    if (!host) {
+      throw new Error("SSH host is required.");
+    }
+    if (!username) {
+      throw new Error("SSH username is required.");
+    }
+
+    const rawPort = request.port;
+    const port = typeof rawPort === "number" ? rawPort : Number(rawPort);
+    const privateKeyPath = expandHomePath(String(request.privateKeyPath ?? "").trim());
+    const disableHostKeyChecking = Boolean(request.disableHostKeyChecking);
+
+    const args: string[] = [];
+    if (Number.isFinite(port) && port > 0 && port <= 65535 && port !== 22) {
+      args.push("-p", String(Math.trunc(port)));
+    }
+    if (privateKeyPath) {
+      args.push("-i", privateKeyPath);
+    }
+    if (disableHostKeyChecking) {
+      args.push("-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null");
+    }
+    args.push(`${username}@${host}`);
+
+    const taskScope =
+      vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0
+        ? vscode.TaskScope.Workspace
+        : vscode.TaskScope.Global;
+
+    const task = new vscode.Task(
+      { type: "ociAiSsh", instanceId: request.instanceId || host },
+      taskScope,
+      `SSH ${request.instanceName?.trim() || host}`,
+      "OCI AI",
+      new vscode.ShellExecution("ssh", args)
+    );
+    task.presentationOptions = {
+      reveal: vscode.TaskRevealKind.Always,
+      focus: true,
+      panel: vscode.TaskPanelKind.Dedicated,
+      clear: false,
+    };
+    await vscode.tasks.executeTask(task);
+    return { launched: true };
+  }
+
   /** List autonomous databases */
   public async listAutonomousDatabases(): Promise<{ id: string; name: string; lifecycleState: string }[]> {
     return this.ociService.listAutonomousDatabases();
@@ -342,6 +411,26 @@ export class Controller {
   /** Stop an autonomous database */
   public async stopAutonomousDatabase(autonomousDatabaseId: string): Promise<void> {
     return this.ociService.stopAutonomousDatabase(autonomousDatabaseId);
+  }
+
+  /** Download wallet for an autonomous database */
+  public async downloadAdbWallet(request: DownloadAdbWalletRequest): Promise<DownloadAdbWalletResponse> {
+    return this.adbSqlService.downloadWallet(request);
+  }
+
+  /** Connect to autonomous database */
+  public async connectAdb(request: ConnectAdbRequest): Promise<ConnectAdbResponse> {
+    return this.adbSqlService.connect(request);
+  }
+
+  /** Disconnect autonomous database session */
+  public async disconnectAdb(connectionId: string): Promise<void> {
+    return this.adbSqlService.disconnect(connectionId);
+  }
+
+  /** Execute SQL against autonomous database */
+  public async executeAdbSql(request: ExecuteAdbSqlRequest): Promise<ExecuteAdbSqlResponse> {
+    return this.adbSqlService.executeSql(request);
   }
 
   /** Switch active compartment and broadcast updated state */
@@ -418,4 +507,27 @@ function isImageDataUrl(value: string | undefined): value is string {
     return false;
   }
   return /^data:image\//i.test(value);
+}
+
+function splitModelNames(rawValue: string): string[] {
+  if (!rawValue) {
+    return [];
+  }
+  return rawValue
+    .split(",")
+    .map((model) => model.trim())
+    .filter((model) => model.length > 0);
+}
+
+function expandHomePath(input: string): string {
+  if (!input) {
+    return "";
+  }
+  if (input === "~") {
+    return os.homedir();
+  }
+  if (input.startsWith("~/") || input.startsWith("~\\")) {
+    return path.join(os.homedir(), input.slice(2));
+  }
+  return input;
 }

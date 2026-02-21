@@ -5,22 +5,29 @@ export class OciService {
   constructor(private readonly factory: OciClientFactory) {}
 
   public async listComputeInstances(): Promise<ComputeResource[]> {
-    const client = await this.factory.createComputeClientAsync();
+    const computeClient = await this.factory.createComputeClientAsync();
+    const virtualNetworkClient = await this.factory.createVirtualNetworkClientAsync();
     const compartmentId = this.factory.getCompartmentId();
     const instances: ComputeResource[] = [];
     let page: string | undefined;
 
     do {
-      const result = await client.listInstances({ compartmentId, page });
+      const result = await computeClient.listInstances({ compartmentId, page });
       instances.push(
         ...(result.items || []).map((instance) => ({
           id: instance.id || "",
           name: instance.displayName || instance.id || "Unnamed Instance",
-          lifecycleState: (instance.lifecycleState as string) || "UNKNOWN"
+          lifecycleState: (instance.lifecycleState as string) || "UNKNOWN",
         }))
       );
       page = result.opcNextPage;
     } while (page);
+
+    await Promise.all(
+      instances.map((instance) =>
+        this.populateInstanceNetworkAddresses(instance, compartmentId, computeClient, virtualNetworkClient)
+      )
+    );
 
     return instances;
   }
@@ -70,5 +77,65 @@ export class OciService {
   public async stopAutonomousDatabase(autonomousDatabaseId: string): Promise<void> {
     const client = await this.factory.createDatabaseClientAsync();
     await client.stopAutonomousDatabase({ autonomousDatabaseId });
+  }
+
+  private async populateInstanceNetworkAddresses(
+    instance: ComputeResource,
+    compartmentId: string,
+    computeClient: Awaited<ReturnType<OciClientFactory["createComputeClientAsync"]>>,
+    virtualNetworkClient: Awaited<ReturnType<OciClientFactory["createVirtualNetworkClientAsync"]>>
+  ): Promise<void> {
+    if (!instance.id) {
+      return;
+    }
+
+    try {
+      const candidates = await this.listAllVnicAttachments(computeClient, compartmentId, instance.id);
+      if (candidates.length === 0) {
+        return;
+      }
+
+      let vnic: Awaited<ReturnType<typeof virtualNetworkClient.getVnic>>["vnic"] | undefined;
+      for (const attachment of candidates) {
+        if (!attachment.vnicId) {
+          continue;
+        }
+        const current = (await virtualNetworkClient.getVnic({ vnicId: attachment.vnicId })).vnic;
+        if (!vnic) {
+          vnic = current;
+        }
+        if (current.isPrimary) {
+          vnic = current;
+          break;
+        }
+      }
+      if (!vnic) {
+        return;
+      }
+
+      instance.publicIp = vnic.publicIp || "";
+      instance.privateIp = vnic.privateIp || "";
+    } catch {
+      // Best-effort enrichment: if address lookup fails, keep listing instances without IPs.
+    }
+  }
+
+  private async listAllVnicAttachments(
+    computeClient: Awaited<ReturnType<OciClientFactory["createComputeClientAsync"]>>,
+    compartmentId: string,
+    instanceId: string
+  ) {
+    const all = [];
+    let page: string | undefined;
+    do {
+      const response = await computeClient.listVnicAttachments({
+        compartmentId,
+        instanceId,
+        page,
+      });
+      all.push(...(response.items || []));
+      page = response.opcNextPage;
+    } while (page);
+    return all;
   }
 }
