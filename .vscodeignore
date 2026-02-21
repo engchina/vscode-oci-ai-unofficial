@@ -4,3 +4,13 @@ node_modules/**
 esbuild.js
 tsconfig.json
 .gitignore
+cline/**
+webview-ui/src/**
+webview-ui/node_modules/**
+webview-ui/.vite-port
+webview-ui/tsconfig.json
+webview-ui/vite.config.ts
+webview-ui/tailwind.config.mjs
+webview-ui/package.json
+webview-ui/package-lock.json
+webview-ui/index.html

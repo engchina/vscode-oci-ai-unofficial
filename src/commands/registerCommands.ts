@@ -1,11 +1,10 @@
 import * as vscode from "vscode";
 import { AuthManager } from "../auth/authManager";
+import { Controller } from "../controller/index";
 import { AdbTreeItem } from "../providers/adbProvider";
 import { ComputeTreeItem } from "../providers/computeProvider";
 import { GenAiService } from "../oci/genAiService";
 import { OciService } from "../oci/ociService";
-import { ChatPanel } from "../webview/chatPanel";
-import { SettingsPanel } from "../webview/settingsPanel";
 
 export function registerCommands(
   context: vscode.ExtensionContext,
@@ -13,11 +12,12 @@ export function registerCommands(
     authManager: AuthManager;
     ociService: OciService;
     genAiService: GenAiService;
+    controller: Controller;
     refreshCompute: () => void;
     refreshAdb: () => void;
   }
 ): void {
-  const { authManager, ociService, genAiService, refreshCompute, refreshAdb } = dependencies;
+  const { authManager, ociService, controller, refreshCompute, refreshAdb } = dependencies;
 
   context.subscriptions.push(
     vscode.commands.registerCommand("ociAi.refreshCompute", refreshCompute),
@@ -30,11 +30,15 @@ export function registerCommands(
     vscode.commands.registerCommand("ociAi.auth.configureApiKey", async () => {
       await authManager.configureApiKeyInteractive();
     }),
-    vscode.commands.registerCommand("ociAi.openSettings", () => {
-      SettingsPanel.createOrShow(context, authManager, () => {
-        refreshCompute();
-        refreshAdb();
-      });
+    // Open settings: reveal sidebar and fire settings button event
+    vscode.commands.registerCommand("ociAi.openSettings", async () => {
+      await vscode.commands.executeCommand("ociAi.chatView.focus");
+      await controller.fireSettingsButtonClicked();
+    }),
+    // Open chat: reveal sidebar and fire chat button event
+    vscode.commands.registerCommand("ociAi.openChat", async () => {
+      await vscode.commands.executeCommand("ociAi.chatView.focus");
+      await controller.fireChatButtonClicked();
     }),
     vscode.commands.registerCommand("ociAi.compute.start", async (item?: ComputeTreeItem) => {
       if (!item?.resource.id) {
@@ -88,10 +92,5 @@ export function registerCommands(
       );
       refreshAdb();
     }),
-    vscode.commands.registerCommand("ociAi.openChat", () => {
-      ChatPanel.createOrShow(context, (messages, onToken) =>
-        genAiService.chatStream(messages, onToken)
-      );
-    })
   );
 }

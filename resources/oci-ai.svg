@@ -1,6 +1,37 @@
-<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" fill="none">
-  <rect width="128" height="128" rx="24" fill="#1B1F3B"/>
-  <circle cx="64" cy="64" r="34" stroke="#38BDF8" stroke-width="10"/>
-  <path d="M64 32V96" stroke="#F97316" stroke-width="10" stroke-linecap="round"/>
-  <path d="M32 64H96" stroke="#F97316" stroke-width="10" stroke-linecap="round"/>
+<svg
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  xmlns="http://www.w3.org/2000/svg"
+  fill="none"
+>
+  <path
+    d="M7.5 18H16.5C18.9853 18 21 15.9853 21 13.5C21 11.1798 19.2426 9.27002 16.986 9.02887C16.7424 6.19657 14.3687 4 11.5 4C9.09698 4 7.04183 5.5423 6.27934 7.74728C4.41562 8.22388 3 9.91593 3 11.925C3 15.279 5.64602 18 9 18"
+    stroke="currentColor"
+    stroke-width="1.75"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M10.25 11L8.5 12.75L10.25 14.5"
+    stroke="currentColor"
+    stroke-width="1.75"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M13.75 11L15.5 12.75L13.75 14.5"
+    stroke="currentColor"
+    stroke-width="1.75"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M12 17V15.8"
+    stroke="currentColor"
+    stroke-width="1.75"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <circle cx="12" cy="18.8" r="1.2" fill="currentColor" />
 </svg>

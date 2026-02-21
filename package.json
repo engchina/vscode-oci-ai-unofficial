@@ -11,6 +11,7 @@
     "Cloud"
   ],
   "activationEvents": [
+    "onView:ociAi.chatView",
     "onView:ociAi.computeView",
     "onView:ociAi.adbView",
     "onCommand:ociAi.openChat",
@@ -31,6 +32,11 @@
     },
     "views": {
       "ociAi": [
+        {
+          "type": "webview",
+          "id": "ociAi.chatView",
+          "name": "OCI AI Chat"
+        },
         {
           "id": "ociAi.computeView",
           "name": "Compute Instances"
@@ -166,6 +172,11 @@
           "default": "",
           "description": "Legacy LLM model identifier (model name). Prefer ociAi.genAiLlmModelId."
         },
+        "ociAi.genAiRegion": {
+          "type": "string",
+          "default": "",
+          "description": "Optional OCI Generative AI region override (falls back to ociAi.region when empty)"
+        },
         "ociAi.genAiLlmModelId": {
           "type": "string",
           "default": "",
@@ -181,7 +192,10 @@
   },
   "scripts": {
     "postinstall": "npm run build",
-    "build": "node esbuild.js",
+    "build:webview": "cd webview-ui && npm install && npm run build",
+    "build:extension": "node esbuild.js",
+    "build": "npm run build:webview && npm run build:extension",
+    "dev:webview": "cd webview-ui && npm run dev",
     "watch": "node esbuild.js --watch",
     "dev:host": "code --extensionDevelopmentPath=.",
     "dev:vsix": "npm install --include=dev && npm run build && npm run package",

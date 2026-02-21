@@ -35,7 +35,7 @@ export class GenAiService {
       authenticationDetailsProvider: this.factory.createAuthenticationProvider()
     });
 
-    const region = cfg.get<string>("region", "").trim();
+    const region = cfg.get<string>("genAiRegion", "").trim() || cfg.get<string>("region", "").trim();
     if (region) {
       client.regionId = region;
     }
