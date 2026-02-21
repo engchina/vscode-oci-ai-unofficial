@@ -5,6 +5,7 @@ import { ComputeTreeItem } from "../providers/computeProvider";
 import { GenAiService } from "../oci/genAiService";
 import { OciService } from "../oci/ociService";
 import { ChatPanel } from "../webview/chatPanel";
+import { SettingsPanel } from "../webview/settingsPanel";
 
 export function registerCommands(
   context: vscode.ExtensionContext,
@@ -28,6 +29,12 @@ export function registerCommands(
     }),
     vscode.commands.registerCommand("ociAi.auth.configureApiKey", async () => {
       await authManager.configureApiKeyInteractive();
+    }),
+    vscode.commands.registerCommand("ociAi.openSettings", () => {
+      SettingsPanel.createOrShow(context, authManager, () => {
+        refreshCompute();
+        refreshAdb();
+      });
     }),
     vscode.commands.registerCommand("ociAi.compute.start", async (item?: ComputeTreeItem) => {
       if (!item?.resource.id) {
@@ -82,7 +89,9 @@ export function registerCommands(
       refreshAdb();
     }),
     vscode.commands.registerCommand("ociAi.openChat", () => {
-      ChatPanel.createOrShow(context, async (prompt) => genAiService.chat(prompt));
+      ChatPanel.createOrShow(context, (messages, onToken) =>
+        genAiService.chatStream(messages, onToken)
+      );
     })
   );
 }

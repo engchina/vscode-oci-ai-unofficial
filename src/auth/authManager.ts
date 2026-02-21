@@ -8,6 +8,14 @@ const SECRET_KEYS = {
   privateKeyPassphrase: "ociAi.privateKeyPassphrase"
 } as const;
 
+export type ApiKeySecrets = {
+  tenancyOcid: string;
+  userOcid: string;
+  fingerprint: string;
+  privateKey: string;
+  privateKeyPassphrase: string;
+};
+
 export class AuthManager {
   constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -146,5 +154,35 @@ export class AuthManager {
     await this.context.secrets.store(SECRET_KEYS.privateKeyPassphrase, passphrase.trim());
 
     vscode.window.showInformationMessage("SecretStorage updated for OCI API key fields.");
+  }
+
+  public async getApiKeySecrets(): Promise<ApiKeySecrets> {
+    return {
+      tenancyOcid: (await this.context.secrets.get(SECRET_KEYS.tenancyOcid)) ?? "",
+      userOcid: (await this.context.secrets.get(SECRET_KEYS.userOcid)) ?? "",
+      fingerprint: (await this.context.secrets.get(SECRET_KEYS.fingerprint)) ?? "",
+      privateKey: (await this.context.secrets.get(SECRET_KEYS.privateKey)) ?? "",
+      privateKeyPassphrase: (await this.context.secrets.get(SECRET_KEYS.privateKeyPassphrase)) ?? ""
+    };
+  }
+
+  public async updateCompartmentId(compartmentId: string): Promise<void> {
+    await vscode.workspace
+      .getConfiguration("ociAi")
+      .update("compartmentId", compartmentId.trim(), vscode.ConfigurationTarget.Global);
+  }
+
+  public async updateRegion(region: string): Promise<void> {
+    await vscode.workspace
+      .getConfiguration("ociAi")
+      .update("region", region.trim(), vscode.ConfigurationTarget.Global);
+  }
+
+  public async updateApiKeySecrets(input: ApiKeySecrets): Promise<void> {
+    await this.context.secrets.store(SECRET_KEYS.tenancyOcid, input.tenancyOcid.trim());
+    await this.context.secrets.store(SECRET_KEYS.userOcid, input.userOcid.trim());
+    await this.context.secrets.store(SECRET_KEYS.fingerprint, input.fingerprint.trim());
+    await this.context.secrets.store(SECRET_KEYS.privateKey, input.privateKey.trim());
+    await this.context.secrets.store(SECRET_KEYS.privateKeyPassphrase, input.privateKeyPassphrase.trim());
   }
 }

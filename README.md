@@ -31,7 +31,8 @@ Open settings and configure:
 - `ociAi.compartmentId` (required for list/actions)
 - `ociAi.region` (optional)
 - `ociAi.configFilePath` (optional, defaults to `~/.oci/config`)
-- `ociAi.genAiModelId` (required if using OCI Generative AI chat)
+- `ociAi.genAiLlmModelId` (LLM model name, required if using OCI Generative AI chat)
+- `ociAi.genAiEmbeddingModelId` (embedding model name, optional for embedding scenarios)
 
 You can also run command:
 

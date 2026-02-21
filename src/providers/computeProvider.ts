@@ -38,6 +38,13 @@ export class ComputeProvider implements vscode.TreeDataProvider<ComputeTreeItem>
       const message = error instanceof Error ? error.message : String(error);
       const item = new ComputeTreeItem({ id: "", name: `Error: ${message}`, lifecycleState: "" });
       item.contextValue = "message";
+      if (message.includes("Missing setting: ociAi.compartmentId")) {
+        item.description = "Click to open OCI settings";
+        item.command = {
+          command: "ociAi.openSettings",
+          title: "Open OCI Settings"
+        };
+      }
       return [item];
     }
   }

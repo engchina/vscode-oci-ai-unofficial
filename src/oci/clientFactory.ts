@@ -22,7 +22,7 @@ export class OciClientFactory {
     const client = new compute.ComputeClient({ authenticationDetailsProvider });
     const region = this.authManager.getRegion();
     if (region) {
-      client.region = region;
+      client.regionId = region;
     }
     return client;
   }
@@ -32,7 +32,7 @@ export class OciClientFactory {
     const client = new database.DatabaseClient({ authenticationDetailsProvider });
     const region = this.authManager.getRegion();
     if (region) {
-      client.region = region;
+      client.regionId = region;
     }
     return client;
   }

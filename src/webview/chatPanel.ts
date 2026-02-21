@@ -1,12 +1,17 @@
 import * as vscode from "vscode";
+import { ChatMessage } from "../oci/genAiService";
 
-type PromptHandler = (prompt: string) => Promise<string>;
+type StreamHandler = (
+  messages: ChatMessage[],
+  onToken: (token: string) => void
+) => Promise<void>;
 
 export class ChatPanel {
   private static currentPanel: ChatPanel | undefined;
   private readonly panel: vscode.WebviewPanel;
+  private history: ChatMessage[] = [];
 
-  public static createOrShow(context: vscode.ExtensionContext, handlePrompt: PromptHandler): void {
+  public static createOrShow(context: vscode.ExtensionContext, handleStream: StreamHandler): void {
     const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
 
     if (ChatPanel.currentPanel) {
@@ -19,13 +24,13 @@ export class ChatPanel {
       retainContextWhenHidden: true
     });
 
-    ChatPanel.currentPanel = new ChatPanel(panel, context, handlePrompt);
+    ChatPanel.currentPanel = new ChatPanel(panel, context, handleStream);
   }
 
   private constructor(
     panel: vscode.WebviewPanel,
     context: vscode.ExtensionContext,
-    handlePrompt: PromptHandler
+    handleStream: StreamHandler
   ) {
     this.panel = panel;
     this.panel.webview.html = this.getHtml();
@@ -49,12 +54,26 @@ export class ChatPanel {
           return;
         }
 
+        this.history.push({ role: "user", text: text.trim() });
+        this.panel.webview.postMessage({ type: "stream_start" });
+
+        let assistantText = "";
         try {
-          const answer = await handlePrompt(text.trim());
-          this.panel.webview.postMessage({ type: "assistant", text: answer });
+          await handleStream(this.history, (token) => {
+            assistantText += token;
+            this.panel.webview.postMessage({ type: "stream_token", text: token });
+          });
         } catch (error) {
           const detail = error instanceof Error ? error.message : String(error);
-          this.panel.webview.postMessage({ type: "assistant", text: `Request failed: ${detail}` });
+          const errMsg = `Request failed: ${detail}`;
+          this.panel.webview.postMessage({ type: "stream_token", text: errMsg });
+          assistantText += errMsg;
+        }
+
+        this.panel.webview.postMessage({ type: "stream_end" });
+        const normalizedAssistant = assistantText.trim();
+        if (normalizedAssistant) {
+          this.history.push({ role: "model", text: normalizedAssistant });
         }
       },
       null,
@@ -105,6 +124,12 @@ export class ChatPanel {
       background: rgba(56, 189, 248, 0.15);
       border-color: rgba(56, 189, 248, 0.35);
     }
+    .assistant.streaming::after {
+      content: '\\258B';
+      animation: blink 0.7s step-end infinite;
+      margin-left: 2px;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
     form {
       display: flex;
       gap: 8px;
@@ -128,19 +153,33 @@ export class ChatPanel {
       color: white;
       cursor: pointer;
     }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
   <div id="messages"></div>
   <form id="form">
     <input id="prompt" placeholder="Ask vscode-oci-ai-unofficial..." />
-    <button type="submit">Send</button>
+    <button type="submit" id="send">Send</button>
   </form>
   <script>
     const vscode = acquireVsCodeApi();
     const messages = document.getElementById('messages');
     const form = document.getElementById('form');
     const promptEl = document.getElementById('prompt');
+    const sendBtn = document.getElementById('send');
+
+    let streamingDiv = null;
+    const sanitizeToken = (token) => {
+      if (typeof token !== 'string') return '';
+      return token
+        .replace(/\\?u258b/ig, '')
+        .replace(/▋/g, '')
+        .replace(/\u258b/ig, '');
+    };
 
     const addMessage = (text, cls) => {
       const div = document.createElement('div');
@@ -148,23 +187,44 @@ export class ChatPanel {
       div.textContent = text;
       messages.appendChild(div);
       messages.scrollTop = messages.scrollHeight;
+      return div;
     };
 
-    addMessage('Chat is ready. Configure ociAi.genAiModelId for OCI-backed responses.', 'assistant');
+    addMessage('Chat is ready. Configure ociAi.genAiLlmModelId with your LLM model name for OCI-backed responses.', 'assistant');
 
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       const text = promptEl.value.trim();
-      if (!text) return;
+      if (!text || streamingDiv) return;
       addMessage(text, 'user');
       promptEl.value = '';
+      sendBtn.disabled = true;
       vscode.postMessage({ type: 'prompt', text });
     });
 
     window.addEventListener('message', (event) => {
-      const message = event.data;
-      if (message?.type === 'assistant') {
-        addMessage(message.text, 'assistant');
+      const msg = event.data;
+      if (msg?.type === 'stream_start') {
+        streamingDiv = addMessage('', 'assistant streaming');
+      } else if (msg?.type === 'stream_token' && streamingDiv) {
+        const token = sanitizeToken(msg.text);
+        if (token) {
+          streamingDiv.textContent += token;
+          messages.scrollTop = messages.scrollHeight;
+        }
+      } else if (msg?.type === 'stream_end') {
+        if (streamingDiv) {
+          if (!streamingDiv.textContent || !streamingDiv.textContent.trim()) {
+            streamingDiv.remove();
+          }
+          streamingDiv.classList.remove('streaming');
+          streamingDiv = null;
+        }
+        sendBtn.disabled = false;
+        promptEl.focus();
+      } else if (msg?.type === 'assistant') {
+        addMessage(msg.text, 'assistant');
+        sendBtn.disabled = false;
       }
     });
   </script>

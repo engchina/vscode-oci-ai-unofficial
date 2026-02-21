@@ -15,7 +15,8 @@
     "onView:ociAi.adbView",
     "onCommand:ociAi.openChat",
     "onCommand:ociAi.auth.configureProfile",
-    "onCommand:ociAi.auth.configureApiKey"
+    "onCommand:ociAi.auth.configureApiKey",
+    "onCommand:ociAi.openSettings"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -76,6 +77,10 @@
       {
         "command": "ociAi.auth.configureApiKey",
         "title": "vscode-oci-ai-unofficial: Store API Key in Secret Storage"
+      },
+      {
+        "command": "ociAi.openSettings",
+        "title": "vscode-oci-ai-unofficial: Open OCI Settings"
       }
     ],
     "menus": {
@@ -89,6 +94,11 @@
           "command": "ociAi.refreshAdb",
           "when": "view == ociAi.adbView",
           "group": "navigation"
+        },
+        {
+          "command": "ociAi.openSettings",
+          "when": "view == ociAi.computeView || view == ociAi.adbView",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -122,6 +132,9 @@
         },
         {
           "command": "ociAi.openChat"
+        },
+        {
+          "command": "ociAi.openSettings"
         }
       ]
     },
@@ -151,28 +164,42 @@
         "ociAi.genAiModelId": {
           "type": "string",
           "default": "",
-          "description": "Model OCID for OCI Generative AI chat"
+          "description": "Legacy LLM model identifier (model name). Prefer ociAi.genAiLlmModelId."
+        },
+        "ociAi.genAiLlmModelId": {
+          "type": "string",
+          "default": "",
+          "description": "LLM model name for OCI Generative AI chat"
+        },
+        "ociAi.genAiEmbeddingModelId": {
+          "type": "string",
+          "default": "",
+          "description": "Embedding model name for OCI Generative AI embedding requests"
         }
       }
     }
   },
   "scripts": {
+    "postinstall": "npm run build",
     "build": "node esbuild.js",
     "watch": "node esbuild.js --watch",
+    "dev:host": "code --extensionDevelopmentPath=.",
+    "dev:vsix": "npm install --include=dev && npm run build && npm run package",
+    "dev:install": "npm run dev:vsix && qoder --install-extension $(ls -t ./*.vsix | head -n1) --force",
     "check": "tsc --noEmit",
-    "package": "vsce package"
+    "package": "vsce package --no-dependencies --allow-missing-repository"
   },
   "devDependencies": {
-    "@types/node": "^24.3.1",
-    "@types/vscode": "^1.103.0",
-    "@vscode/vsce": "^3.6.0",
-    "esbuild": "^0.25.9",
-    "typescript": "^5.9.2"
+    "@types/node": "^24.10.13",
+    "@types/vscode": "^1.100.0",
+    "@vscode/vsce": "^3.7.1",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.9.3"
   },
   "dependencies": {
-    "oci-common": "^2.116.2",
-    "oci-core": "^2.117.1",
-    "oci-database": "^2.116.0",
-    "oci-generativeaiinference": "^2.117.0"
+    "oci-common": "^2.125.2",
+    "oci-core": "^2.125.2",
+    "oci-database": "^2.125.2",
+    "oci-generativeaiinference": "^2.125.2"
   }
 }
