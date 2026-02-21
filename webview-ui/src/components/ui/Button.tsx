@@ -11,14 +11,14 @@ export default function Button({ variant = "primary", size = "md", className, ch
   return (
     <button
       className={clsx(
-        "inline-flex items-center justify-center rounded-md font-medium transition-colors",
+        "inline-flex items-center justify-center rounded-md border border-transparent font-medium transition-colors",
         "disabled:cursor-not-allowed disabled:opacity-50",
         variant === "primary" && "bg-button-background text-button-foreground hover:bg-button-background-hover",
         variant === "secondary" &&
-          "bg-button-secondary-background text-button-secondary-foreground hover:bg-button-secondary-background-hover",
-        variant === "ghost" && "bg-transparent text-foreground hover:bg-list-background-hover",
-        size === "sm" && "px-2 py-1 text-xs",
-        size === "md" && "px-3 py-1.5 text-sm",
+          "border-input-border bg-button-secondary-background text-button-secondary-foreground hover:bg-button-secondary-background-hover",
+        variant === "ghost" && "text-foreground hover:bg-list-background-hover",
+        size === "sm" && "h-7 px-3 text-xs",
+        size === "md" && "h-8 px-3.5 text-sm",
         className,
       )}
       {...props}

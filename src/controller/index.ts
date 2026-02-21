@@ -160,4 +160,34 @@ export class Controller {
       this.chatButtonSubscribers.delete(requestId);
     return removed;
   }
+
+  /** List compute instances */
+  public async listComputeInstances(): Promise<{ id: string; name: string; lifecycleState: string }[]> {
+    return this.ociService.listComputeInstances();
+  }
+
+  /** Start a compute instance */
+  public async startComputeInstance(instanceId: string): Promise<void> {
+    return this.ociService.startComputeInstance(instanceId);
+  }
+
+  /** Stop a compute instance */
+  public async stopComputeInstance(instanceId: string): Promise<void> {
+    return this.ociService.stopComputeInstance(instanceId);
+  }
+
+  /** List autonomous databases */
+  public async listAutonomousDatabases(): Promise<{ id: string; name: string; lifecycleState: string }[]> {
+    return this.ociService.listAutonomousDatabases();
+  }
+
+  /** Start an autonomous database */
+  public async startAutonomousDatabase(autonomousDatabaseId: string): Promise<void> {
+    return this.ociService.startAutonomousDatabase(autonomousDatabaseId);
+  }
+
+  /** Stop an autonomous database */
+  public async stopAutonomousDatabase(autonomousDatabaseId: string): Promise<void> {
+    return this.ociService.stopAutonomousDatabase(autonomousDatabaseId);
+  }
 }

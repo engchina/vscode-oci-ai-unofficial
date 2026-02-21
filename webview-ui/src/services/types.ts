@@ -43,3 +43,23 @@ export interface StreamTokenResponse {
   token: string
   done: boolean
 }
+
+export interface ComputeResource {
+  id: string
+  name: string
+  lifecycleState: string
+}
+
+export interface AdbResource {
+  id: string
+  name: string
+  lifecycleState: string
+}
+
+export interface ListComputeResponse {
+  instances: ComputeResource[]
+}
+
+export interface ListAdbResponse {
+  databases: AdbResource[]
+}

@@ -10,15 +10,7 @@
   "categories": [
     "Cloud"
   ],
-  "activationEvents": [
-    "onView:ociAi.chatView",
-    "onView:ociAi.computeView",
-    "onView:ociAi.adbView",
-    "onCommand:ociAi.openChat",
-    "onCommand:ociAi.auth.configureProfile",
-    "onCommand:ociAi.auth.configureApiKey",
-    "onCommand:ociAi.openSettings"
-  ],
+  "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {
@@ -33,12 +25,20 @@
     "views": {
       "ociAi": [
         {
+          "id": "ociAi.settingsView",
+          "type": "webview",
+          "name": "OCI Settings",
+          "visibility": "collapsed"
+        },
+        {
           "id": "ociAi.adbView",
+          "type": "webview",
           "name": "Autonomous AI Databases",
           "visibility": "collapsed"
         },
         {
           "id": "ociAi.computeView",
+          "type": "webview",
           "name": "Compute Instances",
           "visibility": "collapsed"
         },
@@ -89,7 +89,8 @@
       },
       {
         "command": "ociAi.openSettings",
-        "title": "vscode-oci-ai-unofficial: Open OCI Settings"
+        "title": "vscode-oci-ai-unofficial: Open OCI Settings",
+        "shortTitle": "OCI Settings"
       }
     ],
     "menus": {
@@ -103,11 +104,6 @@
           "command": "ociAi.refreshAdb",
           "when": "view == ociAi.adbView",
           "group": "navigation"
-        },
-        {
-          "command": "ociAi.openSettings",
-          "when": "view == ociAi.computeView || view == ociAi.adbView",
-          "group": "navigation@2"
         }
       ],
       "view/item/context": [

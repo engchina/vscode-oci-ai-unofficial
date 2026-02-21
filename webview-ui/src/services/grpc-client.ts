@@ -1,4 +1,4 @@
-import type { AppState, SaveSettingsRequest, SendMessageRequest, SettingsState, StreamTokenResponse } from "./types"
+import type { AppState, ListAdbResponse, ListComputeResponse, SaveSettingsRequest, SendMessageRequest, SettingsState, StreamTokenResponse } from "./types"
 import { type Callbacks, ProtoBusClient } from "./grpc-client-base"
 
 export class StateServiceClient extends ProtoBusClient {
@@ -42,5 +42,33 @@ export class UiServiceClient extends ProtoBusClient {
 
   static subscribeToChatButtonClicked(callbacks: Callbacks<unknown>): () => void {
     return this.makeStreamingRequest<unknown>("subscribeToChatButtonClicked", {}, callbacks)
+  }
+}
+
+export class ResourceServiceClient extends ProtoBusClient {
+  static override serviceName = "ResourceService"
+
+  static listCompute(): Promise<ListComputeResponse> {
+    return this.makeUnaryRequest<ListComputeResponse>("listCompute", {})
+  }
+
+  static startCompute(instanceId: string): Promise<void> {
+    return this.makeUnaryRequest<void>("startCompute", { instanceId })
+  }
+
+  static stopCompute(instanceId: string): Promise<void> {
+    return this.makeUnaryRequest<void>("stopCompute", { instanceId })
+  }
+
+  static listAdb(): Promise<ListAdbResponse> {
+    return this.makeUnaryRequest<ListAdbResponse>("listAdb", {})
+  }
+
+  static startAdb(autonomousDatabaseId: string): Promise<void> {
+    return this.makeUnaryRequest<void>("startAdb", { autonomousDatabaseId })
+  }
+
+  static stopAdb(autonomousDatabaseId: string): Promise<void> {
+    return this.makeUnaryRequest<void>("stopAdb", { autonomousDatabaseId })
   }
 }

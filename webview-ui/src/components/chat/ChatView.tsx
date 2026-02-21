@@ -31,9 +31,8 @@ export default function ChatView({ isHidden = false }: ChatViewProps) {
   const totalItems = chatMessages.length + (isStreaming ? 1 : 0)
 
   return (
-    <div className={clsx("flex h-full flex-col", isHidden && "hidden")}>
-      {/* Messages / Welcome */}
-      <div className="flex-1 overflow-hidden">
+    <div className={clsx("flex h-full min-h-0 flex-col", isHidden && "hidden")}>
+      <div className="flex min-h-0 flex-1 flex-col">
         {totalItems === 0 ? (
           <WelcomeSection />
         ) : (
@@ -41,7 +40,7 @@ export default function ChatView({ isHidden = false }: ChatViewProps) {
             ref={virtuosoRef}
             totalCount={totalItems}
             followOutput="smooth"
-            className="h-full"
+            className="h-full px-1 py-2"
             itemContent={(index) => {
               if (index < chatMessages.length) {
                 return <ChatRow message={chatMessages[index]} />
@@ -52,7 +51,6 @@ export default function ChatView({ isHidden = false }: ChatViewProps) {
         )}
       </div>
 
-      {/* Input */}
       <ChatTextArea onSend={sendMessage} disabled={isStreaming} modelName={genAiLlmModelId} />
     </div>
   )
@@ -60,21 +58,19 @@ export default function ChatView({ isHidden = false }: ChatViewProps) {
 
 function WelcomeSection() {
   return (
-    <div className="flex h-full flex-col items-center justify-center px-6">
-      {/* Robot Icon */}
-      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[rgba(128,128,128,0.15)]">
+    <div className="flex h-full flex-col items-center justify-center px-5 py-8">
+      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-border-panel bg-list-background-hover">
         <Bot size={36} className="text-description" />
       </div>
 
-      {/* Title */}
-      <h2 className="mb-8 text-lg font-medium">What can I do for you?</h2>
+      <h2 className="mb-2 text-lg font-semibold">What can I do for you?</h2>
+      <p className="mb-8 text-center text-sm text-description">Ask about OCI resources, AI models, or coding tasks.</p>
 
-      {/* Recent section placeholder */}
-      <div className="w-full max-w-md">
-        <div className="mb-2 flex items-center justify-between">
+      <div className="w-full max-w-xl rounded-xl border border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_90%,black_10%)] p-4">
+        <div className="mb-3 flex items-center justify-between">
           <span className="text-xs font-medium tracking-wider text-description uppercase">Recent</span>
         </div>
-        <div className="py-4 text-center text-xs text-description">
+        <div className="rounded-lg border border-border-panel px-3 py-6 text-center text-xs text-description">
           No recent conversations yet. Start a new chat!
         </div>
       </div>

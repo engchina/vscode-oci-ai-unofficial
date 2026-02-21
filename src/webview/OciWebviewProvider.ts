@@ -5,8 +5,13 @@ import { Controller } from "../controller/index";
 import { handleGrpcRequest, handleGrpcRequestCancel } from "../controller/grpc-handler";
 import type { ExtensionMessage, WebviewMessage } from "../shared/messages";
 
+type HostView = "chat" | "settings" | "compute" | "adb";
+
 export class OciWebviewProvider implements vscode.WebviewViewProvider {
-  public static readonly VIEW_ID = "ociAi.chatView";
+  public static readonly CHAT_VIEW_ID = "ociAi.chatView";
+  public static readonly SETTINGS_VIEW_ID = "ociAi.settingsView";
+  public static readonly COMPUTE_VIEW_ID = "ociAi.computeView";
+  public static readonly ADB_VIEW_ID = "ociAi.adbView";
 
   private webview?: vscode.WebviewView;
   private disposables: vscode.Disposable[] = [];
@@ -14,7 +19,13 @@ export class OciWebviewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly controller: Controller,
+    private readonly hostView: HostView,
   ) {}
+
+  /** Send a refresh signal to the webview */
+  public refresh(): void {
+    this.postMessageToWebview({ type: "grpc_response", grpc_response: { request_id: "__refresh__", message: { refresh: true } } });
+  }
 
   public async resolveWebviewView(webviewView: vscode.WebviewView): Promise<void> {
     this.webview = webviewView;
@@ -26,8 +37,8 @@ export class OciWebviewProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.html =
       this.context.extensionMode === vscode.ExtensionMode.Development
-        ? await this.getHMRHtmlContent(webviewView.webview)
-        : this.getHtmlContent(webviewView.webview);
+        ? await this.getHMRHtmlContent(webviewView.webview, this.hostView)
+        : this.getHtmlContent(webviewView.webview, this.hostView);
 
     this.setWebviewMessageListener(webviewView.webview);
 
@@ -91,7 +102,7 @@ export class OciWebviewProvider implements vscode.WebviewViewProvider {
   }
 
   /** Production: serve built React app */
-  private getHtmlContent(webview: vscode.Webview): string {
+  private getHtmlContent(webview: vscode.Webview, hostView: HostView): string {
     const buildDir = path.join(this.context.extensionPath, "webview-ui", "build", "assets");
 
     let jsFile = "index.js";
@@ -123,13 +134,14 @@ export class OciWebviewProvider implements vscode.WebviewViewProvider {
 </head>
 <body>
   <div id="root"></div>
+  <script nonce="${nonce}">window.__OCI_AI_HOST_VIEW__=${JSON.stringify(hostView)};</script>
   <script nonce="${nonce}" src="${jsUri}"></script>
 </body>
 </html>`;
   }
 
   /** Development: use Vite HMR dev server */
-  private async getHMRHtmlContent(webview: vscode.Webview): Promise<string> {
+  private async getHMRHtmlContent(webview: vscode.Webview, hostView: HostView): Promise<string> {
     const portFilePath = path.join(this.context.extensionPath, "webview-ui", ".vite-port");
 
     let port = "25464";
@@ -151,6 +163,7 @@ export class OciWebviewProvider implements vscode.WebviewViewProvider {
 </head>
 <body>
   <div id="root"></div>
+  <script>window.__OCI_AI_HOST_VIEW__=${JSON.stringify(hostView)};</script>
   <script type="module">
     import RefreshRuntime from "${localServerUrl}/@react-refresh";
     RefreshRuntime.injectIntoGlobalHook(window);

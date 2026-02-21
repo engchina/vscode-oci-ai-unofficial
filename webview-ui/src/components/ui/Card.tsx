@@ -8,12 +8,9 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
 
 export default function Card({ title, className, children, ...props }: CardProps) {
   return (
-    <div
-      className={clsx("rounded-lg border border-border-panel p-3", className)}
-      {...props}
-    >
-      {title && <h3 className="mb-2 text-sm font-semibold">{title}</h3>}
-      <div className="flex flex-col gap-2.5">{children}</div>
+    <div className={clsx("rounded-xl border border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,black_8%)] p-4", className)} {...props}>
+      {title && <h3 className="mb-3 text-sm font-semibold">{title}</h3>}
+      <div className="flex flex-col gap-3">{children}</div>
     </div>
   )
 }

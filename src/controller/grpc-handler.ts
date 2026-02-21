@@ -119,6 +119,26 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
       return {};
     },
   },
+  ResourceService: {
+    listCompute: async (c) => ({ instances: await c.listComputeInstances() }),
+    startCompute: async (c, msg) => {
+      await c.startComputeInstance(msg.instanceId);
+      return {};
+    },
+    stopCompute: async (c, msg) => {
+      await c.stopComputeInstance(msg.instanceId);
+      return {};
+    },
+    listAdb: async (c) => ({ databases: await c.listAutonomousDatabases() }),
+    startAdb: async (c, msg) => {
+      await c.startAutonomousDatabase(msg.autonomousDatabaseId);
+      return {};
+    },
+    stopAdb: async (c, msg) => {
+      await c.stopAutonomousDatabase(msg.autonomousDatabaseId);
+      return {};
+    },
+  },
 };
 
 const streamingHandlers: Record<string, Record<string, StreamHandler>> = {

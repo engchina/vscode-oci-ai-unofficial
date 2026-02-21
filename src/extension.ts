@@ -5,8 +5,6 @@ import { Controller } from "./controller/index";
 import { OciClientFactory } from "./oci/clientFactory";
 import { GenAiService } from "./oci/genAiService";
 import { OciService } from "./oci/ociService";
-import { AdbProvider } from "./providers/adbProvider";
-import { ComputeProvider } from "./providers/computeProvider";
 import { OciWebviewProvider } from "./webview/OciWebviewProvider";
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -18,22 +16,33 @@ export function activate(context: vscode.ExtensionContext): void {
   // Controller manages state and service interactions
   const controller = new Controller(authManager, ociService, genAiService);
 
-  // Sidebar webview provider (React app)
-  const webviewProvider = new OciWebviewProvider(context, controller);
+  // Sidebar webview providers (React app)
+  const chatWebviewProvider = new OciWebviewProvider(context, controller, "chat");
+  const settingsWebviewProvider = new OciWebviewProvider(context, controller, "settings");
+  const computeWebviewProvider = new OciWebviewProvider(context, controller, "compute");
+  const adbWebviewProvider = new OciWebviewProvider(context, controller, "adb");
+
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
-      OciWebviewProvider.VIEW_ID,
-      webviewProvider,
+      OciWebviewProvider.CHAT_VIEW_ID,
+      chatWebviewProvider,
       { webviewOptions: { retainContextWhenHidden: true } },
     ),
-  );
-
-  // Tree data providers
-  const computeProvider = new ComputeProvider(ociService);
-  const adbProvider = new AdbProvider(ociService);
-  context.subscriptions.push(
-    vscode.window.registerTreeDataProvider("ociAi.computeView", computeProvider),
-    vscode.window.registerTreeDataProvider("ociAi.adbView", adbProvider),
+    vscode.window.registerWebviewViewProvider(
+      OciWebviewProvider.SETTINGS_VIEW_ID,
+      settingsWebviewProvider,
+      { webviewOptions: { retainContextWhenHidden: true } },
+    ),
+    vscode.window.registerWebviewViewProvider(
+      OciWebviewProvider.COMPUTE_VIEW_ID,
+      computeWebviewProvider,
+      { webviewOptions: { retainContextWhenHidden: true } },
+    ),
+    vscode.window.registerWebviewViewProvider(
+      OciWebviewProvider.ADB_VIEW_ID,
+      adbWebviewProvider,
+      { webviewOptions: { retainContextWhenHidden: true } },
+    ),
   );
 
   // Register commands
@@ -41,10 +50,12 @@ export function activate(context: vscode.ExtensionContext): void {
     authManager,
     ociService,
     genAiService,
-    controller,
-    refreshCompute: () => computeProvider.refresh(),
-    refreshAdb: () => adbProvider.refresh(),
+    refreshCompute: () => computeWebviewProvider.refresh(),
+    refreshAdb: () => adbWebviewProvider.refresh(),
   });
+
+  // Ensure Generative AI Chat is open by default on every activation/reload
+  vscode.commands.executeCommand("ociAi.chatView.focus");
 }
 
 export function deactivate(): void {}
