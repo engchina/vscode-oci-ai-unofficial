@@ -33,17 +33,20 @@
     "views": {
       "ociAi": [
         {
-          "type": "webview",
-          "id": "ociAi.chatView",
-          "name": "OCI AI Chat"
+          "id": "ociAi.adbView",
+          "name": "Autonomous AI Databases",
+          "visibility": "collapsed"
         },
         {
           "id": "ociAi.computeView",
-          "name": "Compute Instances"
+          "name": "Compute Instances",
+          "visibility": "collapsed"
         },
         {
-          "id": "ociAi.adbView",
-          "name": "Autonomous Databases"
+          "type": "webview",
+          "id": "ociAi.chatView",
+          "name": "Generative AI Chat",
+          "visibility": "visible"
         }
       ]
     },

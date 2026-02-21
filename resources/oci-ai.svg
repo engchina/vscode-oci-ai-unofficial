@@ -1,37 +1,4 @@
-<svg
-  width="24"
-  height="24"
-  viewBox="0 0 24 24"
-  xmlns="http://www.w3.org/2000/svg"
-  fill="none"
->
-  <path
-    d="M7.5 18H16.5C18.9853 18 21 15.9853 21 13.5C21 11.1798 19.2426 9.27002 16.986 9.02887C16.7424 6.19657 14.3687 4 11.5 4C9.09698 4 7.04183 5.5423 6.27934 7.74728C4.41562 8.22388 3 9.91593 3 11.925C3 15.279 5.64602 18 9 18"
-    stroke="currentColor"
-    stroke-width="1.75"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  />
-  <path
-    d="M10.25 11L8.5 12.75L10.25 14.5"
-    stroke="currentColor"
-    stroke-width="1.75"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  />
-  <path
-    d="M13.75 11L15.5 12.75L13.75 14.5"
-    stroke="currentColor"
-    stroke-width="1.75"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  />
-  <path
-    d="M12 17V15.8"
-    stroke="currentColor"
-    stroke-width="1.75"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  />
-  <circle cx="12" cy="18.8" r="1.2" fill="currentColor" />
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <path d="M6.5 15.2h10.8c2.4 0 4.2-1.8 4.2-4.1 0-2-1.4-3.6-3.3-4-0.5-2.6-2.9-4.6-5.8-4.6-2.5 0-4.6 1.4-5.6 3.6-2.2 0.3-3.9 2.2-3.9 4.6 0 2.7 2.2 4.5 4.6 4.5Z" stroke="#F80000" stroke-width="2" stroke-linejoin="round"></path>
+  <path d="M9 9.3l2 1.7-2 1.7M12.5 12.2h3" stroke="#F80000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
 </svg>
