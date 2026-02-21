@@ -6,6 +6,10 @@ export interface ChatMessage {
   text: string;
 }
 
+const successfulVariantByModel = new Map<string, string>();
+const MAX_TRANSCRIPT_TURNS = 12;
+const MAX_TRANSCRIPT_CHARS = 6000;
+
 export class GenAiService {
   constructor(private readonly factory: OciClientFactory) {}
 
@@ -39,7 +43,11 @@ export class GenAiService {
     const cleanedHistory = messages
       .map(m => ({ role: m.role, text: m.text.trim() }))
       .filter(m => m.text.length > 0);
-    const variants = buildRequestVariants(modelName, cleanedHistory);
+    const modelKey = buildModelKey(modelName, region);
+    const variants = prioritizeVariants(
+      buildRequestVariants(modelName, cleanedHistory),
+      successfulVariantByModel.get(modelKey)
+    );
 
     let lastError: unknown;
     let triedVariants: string[] = [];
@@ -64,6 +72,7 @@ export class GenAiService {
         if (result && typeof (result as any).getReader === "function") {
           const tokenCount = await readStream(result as ReadableStream<Uint8Array>, onToken);
           if (tokenCount > 0) {
+            rememberSuccessfulVariant(modelKey, variant.name);
             return;
           }
 
@@ -80,12 +89,14 @@ export class GenAiService {
           const nonStreamResult = await client.chat(nonStreamRequest);
           const fallbackText = extractNonStreamText(nonStreamResult);
           if (fallbackText) {
+            rememberSuccessfulVariant(modelKey, variant.name);
             onToken(fallbackText);
             return;
           }
         } else {
           const text = extractNonStreamText(result);
           if (text) {
+            rememberSuccessfulVariant(modelKey, variant.name);
             onToken(text);
             return;
           }
@@ -108,111 +119,179 @@ export class GenAiService {
 
 type RequestVariant = {
   name: string;
-  chatRequest: {
-    apiFormat: "GENERIC";
-    isStream: boolean;
-    messages: any[];
-    maxTokens: number;
-    temperature: number;
-  };
+  chatRequest: GenericChatRequestPayload;
 };
 
-function buildRequestVariants(modelName: string, messages: ChatMessage[]): RequestVariant[] {
-  const isGoogle = /google|gemini/i.test(modelName);
-  const official = buildGenericVariant("official:USER-CHATBOT:text-type", messages, "upper", "text-type");
-  const google1 = buildGenericVariant("google:user-model:text-type", messages, "user-model", "text-type");
-  const google2 = buildGenericVariant("google:upper:text-type", messages, "upper", "text-type");
-  const google3 = buildGenericVariant("google:user-model:text-no-type", messages, "user-model", "text-no-type");
-  const generic1 = buildGenericVariant("generic:upper:text-no-type", messages, "upper", "text-no-type");
-  const generic2 = buildGenericVariant("generic:user-model:text-type", messages, "user-model", "text-type");
+type ModelFamily = "google" | "xai" | "meta" | "generic";
 
-  if (isGoogle) {
-    // Google/Gemini models through OCI can reject multi-turn role history; send a single USER
-    // message that embeds previous turns as context to keep multi-turn behavior stable.
-    const transcript = formatTranscriptPrompt(messages);
-    const googleSingleUserUpper = buildSingleUserVariant(
-      "google:single-user-transcript:upper:text-type",
-      transcript,
-      "upper",
-      "text-type"
-    );
-    const googleSingleUserLower = buildSingleUserVariant(
-      "google:single-user-transcript:user-model:text-type",
-      transcript,
-      "user-model",
-      "text-type"
-    );
-    return [googleSingleUserUpper, googleSingleUserLower, official, google1, google2, google3, generic1, generic2];
-  }
+type GenericChatMessage = {
+  role: "USER" | "ASSISTANT";
+  content: Array<{ type: "TEXT"; text: string }>;
+};
 
-  return [official, generic1, generic2, google1, google3];
+type GenericChatRequestPayload = {
+  apiFormat: "GENERIC";
+  isStream: boolean;
+  messages: GenericChatMessage[];
+  maxTokens: number;
+  temperature: number;
+  topK?: number;
+  topP?: number;
+  frequencyPenalty?: number;
+  presencePenalty?: number;
+};
+
+function buildModelKey(modelName: string, region: string): string {
+  return `${region || "auto"}::${modelName.toLowerCase()}`;
 }
 
-function buildGenericVariant(
+function prioritizeVariants(variants: RequestVariant[], preferredName?: string): RequestVariant[] {
+  if (!preferredName) {
+    return variants;
+  }
+  const idx = variants.findIndex(v => v.name === preferredName);
+  if (idx <= 0) {
+    return variants;
+  }
+  const preferred = variants[idx];
+  return [preferred, ...variants.slice(0, idx), ...variants.slice(idx + 1)];
+}
+
+function rememberSuccessfulVariant(modelKey: string, variantName: string): void {
+  successfulVariantByModel.set(modelKey, variantName);
+}
+
+function buildRequestVariants(modelName: string, messages: ChatMessage[]): RequestVariant[] {
+  const family = detectModelFamily(modelName);
+  const primary = buildRoleHistoryVariant(`${family}:role-history`, family, messages);
+  const transcript = buildSingleUserTranscriptVariant(`${family}:single-user-transcript`, family, messages);
+  return [primary, transcript];
+}
+
+function detectModelFamily(modelName: string): ModelFamily {
+  const normalized = modelName.toLowerCase();
+  if (normalized.includes("google") || normalized.includes("gemini")) {
+    return "google";
+  }
+  if (normalized.includes("xai") || normalized.includes("xar") || normalized.includes("grok")) {
+    return "xai";
+  }
+  if (normalized.includes("meta") || normalized.includes("llama")) {
+    return "meta";
+  }
+  return "generic";
+}
+
+function buildRoleHistoryVariant(
   name: string,
+  family: ModelFamily,
   messages: ChatMessage[],
-  roleStyle: "user-model" | "upper",
-  contentStyle: "text-type" | "text-no-type"
 ): RequestVariant {
   return {
     name,
-    chatRequest: {
-      apiFormat: "GENERIC",
-      isStream: true,
-      messages: messages.map(m => ({
-        role: mapRoleForVariant(m.role, roleStyle),
-        content: toVariantContent(m.text, contentStyle)
-      })),
-      maxTokens: 1024,
-      temperature: 0.2
-    }
+    chatRequest: buildGenericChatPayload(
+      family,
+      messages.map(toGenericChatMessage)
+    )
   };
 }
 
-function buildSingleUserVariant(
+function buildSingleUserTranscriptVariant(
   name: string,
-  prompt: string,
-  roleStyle: "user-model" | "upper",
-  contentStyle: "text-type" | "text-no-type"
+  family: ModelFamily,
+  messages: ChatMessage[]
 ): RequestVariant {
-  const role = roleStyle === "upper" ? "USER" : "user";
+  const prompt = formatTranscriptPrompt(messages);
   return {
     name,
-    chatRequest: {
-      apiFormat: "GENERIC",
-      isStream: true,
-      messages: [
-        {
-          role,
-          content: toVariantContent(prompt, contentStyle)
-        }
-      ],
-      maxTokens: 1024,
-      temperature: 0.2
-    }
+    chatRequest: buildGenericChatPayload(family, [
+      {
+        role: "USER",
+        content: toTextContent(prompt)
+      }
+    ])
   };
 }
 
 function formatTranscriptPrompt(messages: ChatMessage[]): string {
-  const lines = messages.map(m => {
+  const sliced = messages.slice(-MAX_TRANSCRIPT_TURNS);
+  const lines = sliced.map(m => {
     const speaker = m.role === "model" ? "Assistant" : "User";
     return `${speaker}: ${m.text}`;
   });
+
+  // Keep the newest turns under a bounded size to avoid token/cost blow-up.
+  const bounded: string[] = [];
+  let usedChars = 0;
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i];
+    const cost = line.length + 1;
+    if (bounded.length > 0 && usedChars + cost > MAX_TRANSCRIPT_CHARS) {
+      break;
+    }
+    bounded.push(line);
+    usedChars += cost;
+  }
+  bounded.reverse();
+
   return [
     "Continue the conversation using the history below and answer the last user message.",
     "",
-    ...lines
+    ...bounded
   ].join("\n");
 }
 
-function toVariantContent(
-  text: string,
-  contentStyle: "text-type" | "text-no-type"
-): Array<{ type?: "TEXT"; text: string }> {
-  if (contentStyle === "text-type") {
-    return [{ type: "TEXT", text }];
+function toGenericChatMessage(message: ChatMessage): GenericChatMessage {
+  // OCI Generic chat message roles align with USER/ASSISTANT (not CHATBOT).
+  return {
+    role: message.role === "model" ? "ASSISTANT" : "USER",
+    content: toTextContent(message.text)
+  };
+}
+
+function toTextContent(text: string): Array<{ type: "TEXT"; text: string }> {
+  return [{ type: "TEXT", text }];
+}
+
+function buildGenericChatPayload(
+  family: ModelFamily,
+  messages: GenericChatMessage[]
+): GenericChatRequestPayload {
+  return {
+    apiFormat: "GENERIC",
+    isStream: true,
+    messages,
+    maxTokens: 1024,
+    ...buildFamilyGenerationParams(family)
+  };
+}
+
+function buildFamilyGenerationParams(
+  family: ModelFamily
+): Omit<GenericChatRequestPayload, "apiFormat" | "isStream" | "messages" | "maxTokens"> {
+  switch (family) {
+    case "xai":
+      return {
+        temperature: 1,
+        topK: 0,
+        topP: 1
+      };
+    case "meta":
+      return {
+        temperature: 1,
+        topP: 0.75,
+        frequencyPenalty: 0,
+        presencePenalty: 0
+      };
+    case "google":
+      return {
+        temperature: 1
+      };
+    default:
+      return {
+        temperature: 0.2
+      };
   }
-  return [{ text }];
 }
 
 async function readStream(
@@ -329,20 +408,14 @@ function sanitizeToken(token: string): string {
     .replace(/\u258b/gi, "");
 }
 
-function mapRoleForVariant(
-  role: ChatMessage["role"],
-  style: "user-model" | "upper"
-): "user" | "model" | "USER" | "CHATBOT" {
-  if (style === "user-model") {
-    return role === "model" ? "model" : "user";
-  }
-  return role === "model" ? "CHATBOT" : "USER";
-}
-
 function shouldTryNextVariant(error: unknown): boolean {
   const raw = error instanceof Error ? error.message : String(error ?? "");
   const msg = raw.toLowerCase();
   return (
+    msg.includes("failed to deserialize") ||
+    msg.includes("deserialize the json body") ||
+    msg.includes("missing field `role`") ||
+    msg.includes("missing field 'role'") ||
     msg.includes("map is not a function") ||
     msg.includes("invalid_argument") ||
     msg.includes("correct format of request") ||

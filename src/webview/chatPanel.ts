@@ -58,21 +58,22 @@ export class ChatPanel {
         this.panel.webview.postMessage({ type: "stream_start" });
 
         let assistantText = "";
+        let requestFailed = false;
         try {
           await handleStream(this.history, (token) => {
             assistantText += token;
             this.panel.webview.postMessage({ type: "stream_token", text: token });
           });
         } catch (error) {
+          requestFailed = true;
           const detail = error instanceof Error ? error.message : String(error);
           const errMsg = `Request failed: ${detail}`;
           this.panel.webview.postMessage({ type: "stream_token", text: errMsg });
-          assistantText += errMsg;
         }
 
         this.panel.webview.postMessage({ type: "stream_end" });
         const normalizedAssistant = assistantText.trim();
-        if (normalizedAssistant) {
+        if (!requestFailed && normalizedAssistant) {
           this.history.push({ role: "model", text: normalizedAssistant });
         }
       },
