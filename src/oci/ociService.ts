@@ -5,7 +5,7 @@ export class OciService {
   constructor(private readonly factory: OciClientFactory) {}
 
   public async listComputeInstances(): Promise<ComputeResource[]> {
-    const client = this.factory.createComputeClient();
+    const client = await this.factory.createComputeClientAsync();
     const compartmentId = this.factory.getCompartmentId();
     const instances: ComputeResource[] = [];
     let page: string | undefined;
@@ -26,7 +26,7 @@ export class OciService {
   }
 
   public async startComputeInstance(instanceId: string): Promise<void> {
-    const client = this.factory.createComputeClient();
+    const client = await this.factory.createComputeClientAsync();
     await client.instanceAction({
       instanceId,
       action: "START"
@@ -34,7 +34,7 @@ export class OciService {
   }
 
   public async stopComputeInstance(instanceId: string): Promise<void> {
-    const client = this.factory.createComputeClient();
+    const client = await this.factory.createComputeClientAsync();
     await client.instanceAction({
       instanceId,
       action: "SOFTSTOP"
@@ -42,7 +42,7 @@ export class OciService {
   }
 
   public async listAutonomousDatabases(): Promise<AdbResource[]> {
-    const client = this.factory.createDatabaseClient();
+    const client = await this.factory.createDatabaseClientAsync();
     const compartmentId = this.factory.getCompartmentId();
     const databases: AdbResource[] = [];
     let page: string | undefined;
@@ -63,12 +63,12 @@ export class OciService {
   }
 
   public async startAutonomousDatabase(autonomousDatabaseId: string): Promise<void> {
-    const client = this.factory.createDatabaseClient();
+    const client = await this.factory.createDatabaseClientAsync();
     await client.startAutonomousDatabase({ autonomousDatabaseId });
   }
 
   public async stopAutonomousDatabase(autonomousDatabaseId: string): Promise<void> {
-    const client = this.factory.createDatabaseClient();
+    const client = await this.factory.createDatabaseClientAsync();
     await client.stopAutonomousDatabase({ autonomousDatabaseId });
   }
 }

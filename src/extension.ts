@@ -14,7 +14,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const genAiService = new GenAiService(factory);
 
   // Controller manages state and service interactions
-  const controller = new Controller(authManager, ociService, genAiService);
+  const controller = new Controller(authManager, ociService, genAiService, context.workspaceState);
 
   // Sidebar webview providers (React app)
   const chatWebviewProvider = new OciWebviewProvider(context, controller, "chat");
@@ -50,6 +50,7 @@ export function activate(context: vscode.ExtensionContext): void {
     authManager,
     ociService,
     genAiService,
+    controller,
     refreshCompute: () => computeWebviewProvider.refresh(),
     refreshAdb: () => adbWebviewProvider.refresh(),
   });

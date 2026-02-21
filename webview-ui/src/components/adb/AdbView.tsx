@@ -1,17 +1,31 @@
 import { clsx } from "clsx"
-import { AlertCircle, Database, Loader2, PlayCircle, RefreshCw, StopCircle } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { AlertCircle, Database, Loader2, PlayCircle, RefreshCw, Search, StopCircle } from "lucide-react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { ResourceServiceClient } from "../../services/grpc-client"
 import type { AdbResource } from "../../services/types"
 import Button from "../ui/Button"
 
 type ActionState = { id: string; action: "starting" | "stopping" } | null
 
+const TRANSITIONAL_STATES = new Set([
+  "STARTING", "STOPPING", "PROVISIONING", "TERMINATING",
+  "RESTARTING", "UPDATING", "UPGRADING", "BACKUP_IN_PROGRESS",
+  "RESTORE_IN_PROGRESS", "SCALE_IN_PROGRESS", "MAINTENANCE_IN_PROGRESS",
+])
+const POLL_INTERVAL_MS = 5000
+
 export default function AdbView() {
   const [databases, setDatabases] = useState<AdbResource[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionState, setActionState] = useState<ActionState>(null)
+  const [query, setQuery] = useState("")
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return databases
+    return databases.filter(db => db.name.toLowerCase().includes(q) || db.id.toLowerCase().includes(q))
+  }, [databases, query])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -29,6 +43,31 @@ export default function AdbView() {
   useEffect(() => {
     load()
   }, [load])
+
+  // Extension host can push refresh signals (e.g. command palette refresh).
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      const msg = event.data
+      if (
+        msg?.type === "grpc_response" &&
+        msg?.grpc_response?.request_id === "__refresh__" &&
+        msg?.grpc_response?.message?.refresh
+      ) {
+        void load()
+      }
+    }
+
+    window.addEventListener("message", onMessage)
+    return () => window.removeEventListener("message", onMessage)
+  }, [load])
+
+  // Auto-poll every 5s while any database is in a transitional state
+  const isPolling = databases.some(db => TRANSITIONAL_STATES.has(db.lifecycleState))
+  useEffect(() => {
+    if (!isPolling) return
+    const timer = setInterval(load, POLL_INTERVAL_MS)
+    return () => clearInterval(timer)
+  }, [isPolling, load])
 
   const handleStart = useCallback(
     async (id: string) => {
@@ -70,18 +109,38 @@ export default function AdbView() {
           </div>
           <div className="flex min-w-0 flex-col">
             <span className="text-sm font-semibold">Autonomous AI Databases</span>
-            <span className="text-xs text-description">Manage OCI Autonomous Databases in your compartment.</span>
+            {isPolling ? (
+              <span className="text-xs text-warning animate-pulse">Auto-refreshing every 5s...</span>
+            ) : (
+              <span className="text-xs text-description">Manage OCI Autonomous Databases in your compartment.</span>
+            )}
           </div>
         </div>
         <button
           onClick={load}
           disabled={loading}
-          title="Refresh"
+          title={isPolling ? "Auto-refreshing every 5s" : "Refresh"}
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-description transition-colors hover:bg-list-background-hover hover:text-foreground disabled:opacity-50"
         >
           <RefreshCw size={14} className={clsx(loading && "animate-spin")} />
         </button>
       </div>
+
+      {/* Search bar */}
+      {databases.length > 0 && (
+        <div className="border-b border-border-panel px-3 py-2">
+          <div className="flex items-center gap-2 rounded-lg border border-input-border bg-input-background px-2.5 py-1.5">
+            <Search size={12} className="shrink-0 text-description" />
+            <input
+              type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Filter databases..."
+              className="flex-1 bg-transparent text-xs text-input-foreground outline-none placeholder:text-input-placeholder"
+            />
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-4">
@@ -102,17 +161,23 @@ export default function AdbView() {
         ) : (
           <div className="flex flex-col gap-2">
             <h4 className="mb-1 text-xs font-semibold uppercase tracking-wider text-description">
-              {databases.length} Database{databases.length !== 1 ? "s" : ""}
+              {filtered.length === databases.length
+                ? `${databases.length} Database${databases.length !== 1 ? "s" : ""}`
+                : `${filtered.length} of ${databases.length} Databases`}
             </h4>
-            {databases.map((db) => (
-              <DatabaseCard
-                key={db.id}
-                database={db}
-                actionState={actionState}
-                onStart={handleStart}
-                onStop={handleStop}
-              />
-            ))}
+            {filtered.length === 0 ? (
+              <p className="py-8 text-center text-xs text-description">No databases match your filter.</p>
+            ) : (
+              filtered.map((db) => (
+                <DatabaseCard
+                  key={db.id}
+                  database={db}
+                  actionState={actionState}
+                  onStart={handleStart}
+                  onStop={handleStop}
+                />
+              ))
+            )}
           </div>
         )}
       </div>

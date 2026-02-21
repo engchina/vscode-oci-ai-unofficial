@@ -1,5 +1,5 @@
 import { clsx } from "clsx"
-import { Bot } from "lucide-react"
+import { AlertTriangle, Bot } from "lucide-react"
 import { useEffect, useRef } from "react"
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso"
 import { useExtensionState } from "../../context/ExtensionStateContext"
@@ -12,7 +12,17 @@ interface ChatViewProps {
 }
 
 export default function ChatView({ isHidden = false }: ChatViewProps) {
-  const { chatMessages, isStreaming, streamingText, sendMessage, genAiLlmModelId } = useExtensionState()
+  const {
+    chatMessages,
+    isStreaming,
+    streamingText,
+    sendMessage,
+    stopStreaming,
+    genAiLlmModelId,
+    pendingCodeContext,
+    clearPendingCodeContext,
+    configWarning
+  } = useExtensionState()
 
   const virtuosoRef = useRef<VirtuosoHandle>(null)
 
@@ -32,6 +42,12 @@ export default function ChatView({ isHidden = false }: ChatViewProps) {
 
   return (
     <div className={clsx("flex h-full min-h-0 flex-col", isHidden && "hidden")}>
+      {configWarning && (
+        <div className="flex items-start gap-2 border-b border-warning/20 bg-[color-mix(in_srgb,var(--vscode-editor-background)_88%,yellow_12%)] px-3 py-2 text-xs text-warning">
+          <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+          <span>{configWarning}</span>
+        </div>
+      )}
       <div className="flex min-h-0 flex-1 flex-col">
         {totalItems === 0 ? (
           <WelcomeSection />
@@ -51,7 +67,14 @@ export default function ChatView({ isHidden = false }: ChatViewProps) {
         )}
       </div>
 
-      <ChatTextArea onSend={sendMessage} disabled={isStreaming} modelName={genAiLlmModelId} />
+      <ChatTextArea
+        onSend={sendMessage}
+        onCancel={stopStreaming}
+        disabled={isStreaming}
+        modelName={genAiLlmModelId}
+        pendingContext={pendingCodeContext}
+        onContextConsumed={clearPendingCodeContext}
+      />
     </div>
   )
 }

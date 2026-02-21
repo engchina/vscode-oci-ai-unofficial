@@ -1,11 +1,22 @@
 # vscode-oci-ai-unofficial (VS Code Extension)
 
-A first working version of a VS Code extension for OCI operations:
+A VS Code extension for OCI operations and AI-assisted development workflows.
 
-- Compute list + start/stop
-- Autonomous Database (ADB) list + start/stop
-- vscode-oci-ai-unofficial Chat webview (basic panel + OCI call path)
-- Auth setup commands for profile/settings + SecretStorage
+## Features
+
+- **Generative AI Chat** — Stream chat against any OCI Generative AI model (Llama, Gemini, xAI, etc.)
+- **AI Code Review** — Right-click any selection → auto-submit a code review request to the chat
+- **AI Doc Generation** — Right-click any selection → auto-submit a documentation generation request
+- **Send to Chat** — Right-click any selection (or file) to paste it as context into the chat textarea
+- **System Prompt** — Configure a persistent system instruction prepended to every chat session
+- **Compute Instances** — List, start, stop OCI compute instances with live status polling
+- **Autonomous Databases** — List, start, stop ADB instances with live status polling
+- **Auto-refresh** — Resources in transitional states (STARTING, STOPPING, etc.) refresh every 5 s automatically
+- **Search / Filter** — Filter compute or ADB lists by name or OCID in real time
+- **Multi-Compartment Switching** — Save named compartments and switch between them via QuickPick or Settings UI
+- **API Key Auth** — Store OCI credentials in VS Code SecretStorage; falls back to `~/.oci/config` automatically
+- **Configuration Validation** — Missing compartment ID or model name shows a warning banner in the chat view
+- **Chat History Persistence** — Conversation history survives VS Code restarts (last 100 messages per workspace)
 
 ## Quick Start
 
@@ -25,34 +36,48 @@ npm run build
 
 ## Required Settings
 
-Open settings and configure:
+Open the **OCI Settings** panel or use `vscode-oci-ai-unofficial: Configure Profile` to set up.
 
-- `ociAi.profile` (default: `DEFAULT`)
-- `ociAi.compartmentId` (required for list/actions)
-- `ociAi.region` (optional)
-- `ociAi.configFilePath` (optional, defaults to `~/.oci/config`)
-- `ociAi.genAiRegion` (optional, dedicated region for OCI Generative AI; falls back to `ociAi.region`)
-- `ociAi.genAiLlmModelId` (LLM model name, required if using OCI Generative AI chat)
-- `ociAi.genAiEmbeddingModelId` (embedding model name, optional for embedding scenarios)
+| Setting | Required | Description |
+|---------|----------|-------------|
+| `ociAi.profile` | For config-file auth | OCI profile name from `~/.oci/config` (default: `DEFAULT`) |
+| `ociAi.compartmentId` | Yes | Compartment OCID for Compute and ADB list/actions |
+| `ociAi.genAiLlmModelId` | Yes | LLM model name for AI chat (e.g. `meta.llama-3.1-70b-instruct`) |
+| `ociAi.region` | Optional | OCI region override (e.g. `us-phoenix-1`) |
+| `ociAi.genAiRegion` | Optional | Dedicated region for OCI Generative AI; falls back to `ociAi.region` |
+| `ociAi.genAiEmbeddingModelId` | Optional | Embedding model name |
+| `ociAi.configFilePath` | Optional | Custom OCI config path; defaults to `~/.oci/config` |
+| `ociAi.systemPrompt` | Optional | System instructions prepended to every chat session |
+| `ociAi.savedCompartments` | Optional | Named compartment list for quick switching (managed via Settings UI) |
 
-You can also run command:
+## Authentication
 
-- `vscode-oci-ai-unofficial: Configure Profile`
+Two modes are supported and auto-detected at runtime:
+
+**Config File Auth** (default)
+- Reads `~/.oci/config` using the configured profile.
+
+**API Key Auth** (SecretStorage)
+- Run `vscode-oci-ai-unofficial: Store API Key in Secret Storage` or fill in the API Key card in OCI Settings.
+- When all four fields (Tenancy OCID, User OCID, Fingerprint, Private Key) are stored, API Key auth takes priority automatically.
 
 ## Commands
 
-- `vscode-oci-ai-unofficial: Configure Profile`
-- `vscode-oci-ai-unofficial: Store API Key in Secret Storage`
-- `Refresh Compute`
-- `Compute: Start Instance`
-- `Compute: Stop Instance`
-- `Refresh ADB`
-- `ADB: Start`
-- `ADB: Stop`
-- `vscode-oci-ai-unofficial: Open Chat`
+| Command | Description |
+|---------|-------------|
+| `vscode-oci-ai-unofficial: Open Chat` | Focus the Generative AI Chat panel |
+| `vscode-oci-ai-unofficial: Open OCI Settings` | Focus the OCI Settings panel |
+| `vscode-oci-ai-unofficial: Configure Profile` | Interactive wizard to set profile/region/compartment |
+| `vscode-oci-ai-unofficial: Store API Key in Secret Storage` | Store API key credentials securely |
+| `vscode-oci-ai-unofficial: Switch Compartment` | QuickPick to switch active compartment from saved list |
+| `OCI AI: Send to Chat` | Send selected code (or whole file) to chat as context |
+| `OCI AI: Code Review` | Auto-send selected code for AI code review |
+| `OCI AI: Generate Documentation` | Auto-send selected code for AI doc generation |
+
+The last three commands also appear in the **editor right-click context menu**.
 
 ## Notes
 
-- The current auth runtime path uses OCI config file based auth.
-- SecretStorage command is included for future explicit API key auth mode.
-- Chat panel works now; OCI-backed responses depend on valid model/region/permissions.
+- OCI Generative AI does not support a native `system` role. The system prompt is injected as a USER→ASSISTANT exchange pair prepended to each request.
+- Chat history is persisted per workspace via VS Code `workspaceState` (last 100 messages).
+- The extension tries multiple request format variants automatically to handle API differences across model families.

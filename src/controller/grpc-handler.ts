@@ -28,7 +28,6 @@ export async function handleGrpcRequestCancel(
     await postMessageToWebview({
       type: "grpc_response",
       grpc_response: {
-        message: { cancelled: true },
         request_id: requestId,
         is_streaming: false,
       },
@@ -112,6 +111,18 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
       await c.saveSettings(msg);
       return {};
     },
+    switchCompartment: async (c, msg) => {
+      await c.switchCompartment(msg.id);
+      return {};
+    },
+    saveCompartment: async (c, msg) => {
+      await c.saveCompartment(msg.name, msg.id);
+      return {};
+    },
+    deleteCompartment: async (c, msg) => {
+      await c.deleteCompartment(msg.id);
+      return {};
+    },
   },
   ChatService: {
     clearHistory: async (c) => {
@@ -149,10 +160,11 @@ const streamingHandlers: Record<string, Record<string, StreamHandler>> = {
     },
   },
   ChatService: {
-    sendMessage: async (c, msg, stream) => {
+    sendMessage: async (c, msg, stream, requestId) => {
       await c.sendChatMessage(
-        msg.text,
-        stream as StreamingResponseHandler<StreamTokenResponse>
+        msg,
+        stream as StreamingResponseHandler<StreamTokenResponse>,
+        requestId
       );
     },
   },
@@ -162,6 +174,9 @@ const streamingHandlers: Record<string, Record<string, StreamHandler>> = {
     },
     subscribeToChatButtonClicked: async (c, _msg, stream, requestId) => {
       c.subscribeToChatButton(requestId, stream);
+    },
+    subscribeToCodeContextReady: async (c, _msg, stream, requestId) => {
+      c.subscribeToCodeContext(requestId, stream);
     },
   },
 };

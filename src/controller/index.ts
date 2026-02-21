@@ -2,36 +2,84 @@ import * as vscode from "vscode";
 import { AuthManager } from "../auth/authManager";
 import { GenAiService, type ChatMessage } from "../oci/genAiService";
 import { OciService } from "../oci/ociService";
-import type { AppState, SaveSettingsRequest, SettingsState, StreamTokenResponse } from "../shared/services";
+import type {
+  AppState,
+  ChatImageData,
+  SavedCompartment,
+  SaveSettingsRequest,
+  SendMessageRequest,
+  SettingsState,
+  StreamTokenResponse
+} from "../shared/services";
 import type { ExtensionMessage } from "../shared/messages";
 
 export type PostMessageToWebview = (message: ExtensionMessage) => Thenable<boolean | undefined>;
 export type StreamingResponseHandler<T> = (response: T, isLast?: boolean) => Promise<void>;
+
+export interface CodeContextPayload {
+  code: string;
+  filename: string;
+  language: string;
+  /** When set, the webview auto-sends this prompt along with the code block */
+  prompt?: string;
+}
+
+const CHAT_HISTORY_KEY = "ociAi.chatHistory";
+const MAX_PERSISTED_MESSAGES = 100;
+const DEFAULT_SHELL_TIMEOUT_SEC = 4;
+const DEFAULT_CHAT_MAX_TOKENS = 64000;
+const MAX_CHAT_MAX_TOKENS = 128000;
+const DEFAULT_CHAT_TEMPERATURE = 0;
+const DEFAULT_CHAT_TOP_P = 1;
+const MAX_IMAGES_PER_MESSAGE = 10;
+
+type ActiveChatRequest = {
+  abortController: AbortController;
+  cancelled: boolean;
+};
 
 export class Controller {
   private chatHistory: ChatMessage[] = [];
   private stateSubscribers: Map<string, StreamingResponseHandler<AppState>> = new Map();
   private settingsButtonSubscribers: Map<string, StreamingResponseHandler<unknown>> = new Map();
   private chatButtonSubscribers: Map<string, StreamingResponseHandler<unknown>> = new Map();
+  private codeContextSubscribers: Map<string, StreamingResponseHandler<CodeContextPayload>> = new Map();
+  private activeChatRequests: Map<string, ActiveChatRequest> = new Map();
 
   constructor(
     private readonly authManager: AuthManager,
     private readonly ociService: OciService,
     private readonly genAiService: GenAiService,
-  ) {}
+    private readonly workspaceState?: vscode.Memento,
+  ) {
+    // Restore persisted chat history
+    if (workspaceState) {
+      const persisted = workspaceState.get<ChatMessage[]>(CHAT_HISTORY_KEY, []);
+      this.chatHistory = Array.isArray(persisted) ? persisted : [];
+    }
+  }
 
   /** Get current app state */
   public getState(): AppState {
     const cfg = vscode.workspace.getConfiguration("ociAi");
+    const compartmentId = cfg.get<string>("compartmentId", "").trim();
+    const genAiLlmModelId =
+      cfg.get<string>("genAiLlmModelId", "").trim() || cfg.get<string>("genAiModelId", "").trim();
+
+    const warnings: string[] = [];
+    if (!compartmentId) warnings.push("Compartment ID not set (OCI Settings → Compartment ID).");
+    if (!genAiLlmModelId) warnings.push("LLM Model Name not set (OCI Settings → LLM Model Name).");
+
     return {
       profile: cfg.get<string>("profile", "DEFAULT"),
       region: cfg.get<string>("region", ""),
-      compartmentId: cfg.get<string>("compartmentId", ""),
+      compartmentId,
       genAiRegion: cfg.get<string>("genAiRegion", ""),
-      genAiLlmModelId: cfg.get<string>("genAiLlmModelId", "") || cfg.get<string>("genAiModelId", ""),
+      genAiLlmModelId,
       genAiEmbeddingModelId: cfg.get<string>("genAiEmbeddingModelId", ""),
-      chatMessages: this.chatHistory.map(m => ({ role: m.role, text: m.text })),
+      chatMessages: this.chatHistory.map(m => ({ role: m.role, text: m.text, images: m.images })),
       isStreaming: false,
+      configWarning: warnings.join(" "),
     };
   }
 
@@ -39,6 +87,11 @@ export class Controller {
   public async getSettings(): Promise<SettingsState> {
     const cfg = vscode.workspace.getConfiguration("ociAi");
     const secrets = await this.authManager.getApiKeySecrets();
+    const authMode: "api-key" | "config-file" =
+      secrets.tenancyOcid && secrets.userOcid && secrets.fingerprint && secrets.privateKey
+        ? "api-key"
+        : "config-file";
+    const savedCompartments = cfg.get<SavedCompartment[]>("savedCompartments", []);
     return {
       profile: cfg.get<string>("profile", "DEFAULT"),
       region: cfg.get<string>("region", ""),
@@ -46,7 +99,19 @@ export class Controller {
       genAiRegion: cfg.get<string>("genAiRegion", ""),
       genAiLlmModelId: cfg.get<string>("genAiLlmModelId", "") || cfg.get<string>("genAiModelId", ""),
       genAiEmbeddingModelId: cfg.get<string>("genAiEmbeddingModelId", ""),
+      systemPrompt: cfg.get<string>("systemPrompt", ""),
+      nativeToolCall: cfg.get<boolean>("nativeToolCall", true),
+      parallelToolCalling: cfg.get<boolean>("parallelToolCalling", true),
+      strictPlanMode: cfg.get<boolean>("strictPlanMode", true),
+      autoCompact: cfg.get<boolean>("autoCompact", true),
+      checkpoints: cfg.get<boolean>("checkpoints", true),
+      shellIntegrationTimeoutSec: cfg.get<number>("shellIntegrationTimeoutSec", DEFAULT_SHELL_TIMEOUT_SEC),
+      chatMaxTokens: cfg.get<number>("chatMaxTokens", DEFAULT_CHAT_MAX_TOKENS),
+      chatTemperature: cfg.get<number>("chatTemperature", DEFAULT_CHAT_TEMPERATURE),
+      chatTopP: cfg.get<number>("chatTopP", DEFAULT_CHAT_TOP_P),
       ...secrets,
+      authMode,
+      savedCompartments: Array.isArray(savedCompartments) ? savedCompartments : [],
     };
   }
 
@@ -60,6 +125,32 @@ export class Controller {
     await cfg.update("genAiLlmModelId", String(payload.genAiLlmModelId ?? "").trim(), vscode.ConfigurationTarget.Global);
     await cfg.update("genAiEmbeddingModelId", String(payload.genAiEmbeddingModelId ?? "").trim(), vscode.ConfigurationTarget.Global);
     await cfg.update("genAiModelId", String(payload.genAiLlmModelId ?? "").trim(), vscode.ConfigurationTarget.Global);
+    await cfg.update("systemPrompt", String(payload.systemPrompt ?? ""), vscode.ConfigurationTarget.Global);
+    await cfg.update("nativeToolCall", Boolean(payload.nativeToolCall), vscode.ConfigurationTarget.Global);
+    await cfg.update("parallelToolCalling", Boolean(payload.parallelToolCalling), vscode.ConfigurationTarget.Global);
+    await cfg.update("strictPlanMode", Boolean(payload.strictPlanMode), vscode.ConfigurationTarget.Global);
+    await cfg.update("autoCompact", Boolean(payload.autoCompact), vscode.ConfigurationTarget.Global);
+    await cfg.update("checkpoints", Boolean(payload.checkpoints), vscode.ConfigurationTarget.Global);
+    await cfg.update(
+      "shellIntegrationTimeoutSec",
+      coerceInt(payload.shellIntegrationTimeoutSec, DEFAULT_SHELL_TIMEOUT_SEC, 1, 120),
+      vscode.ConfigurationTarget.Global
+    );
+    await cfg.update(
+      "chatMaxTokens",
+      coerceInt(payload.chatMaxTokens, DEFAULT_CHAT_MAX_TOKENS, 1, MAX_CHAT_MAX_TOKENS),
+      vscode.ConfigurationTarget.Global
+    );
+    await cfg.update(
+      "chatTemperature",
+      coerceFloat(payload.chatTemperature, DEFAULT_CHAT_TEMPERATURE, 0, 2),
+      vscode.ConfigurationTarget.Global
+    );
+    await cfg.update(
+      "chatTopP",
+      coerceFloat(payload.chatTopP, DEFAULT_CHAT_TOP_P, 0, 1),
+      vscode.ConfigurationTarget.Global
+    );
     await this.authManager.updateApiKeySecrets({
       tenancyOcid: String(payload.tenancyOcid ?? ""),
       userOcid: String(payload.userOcid ?? ""),
@@ -118,10 +209,29 @@ export class Controller {
 
   /** Send chat message with streaming response */
   public async sendChatMessage(
-    text: string,
-    responseStream: StreamingResponseHandler<StreamTokenResponse>
+    payload: SendMessageRequest,
+    responseStream: StreamingResponseHandler<StreamTokenResponse>,
+    requestId: string
   ): Promise<void> {
-    this.chatHistory.push({ role: "user", text: text.trim() });
+    const text = String(payload.text ?? "").trim();
+    const images = normalizeImages(payload.images);
+
+    if (!text && images.length === 0) {
+      await responseStream({ token: "", done: true }, true);
+      return;
+    }
+
+    this.chatHistory.push({
+      role: "user",
+      text,
+      images: images.length > 0 ? images : undefined,
+    });
+
+    const active: ActiveChatRequest = {
+      abortController: new AbortController(),
+      cancelled: false,
+    };
+    this.activeChatRequests.set(requestId, active);
 
     let assistantText = "";
     let requestFailed = false;
@@ -129,12 +239,23 @@ export class Controller {
       await this.genAiService.chatStream(this.chatHistory, async (token) => {
         assistantText += token;
         await responseStream({ token, done: false }, false);
-      });
+      }, active.abortController.signal);
     } catch (error) {
+      if (active.cancelled) {
+        this.persistChatHistory();
+        return;
+      }
       requestFailed = true;
       const detail = error instanceof Error ? error.message : String(error);
       const errMsg = `Request failed: ${detail}`;
       await responseStream({ token: errMsg, done: false }, false);
+    } finally {
+      this.activeChatRequests.delete(requestId);
+    }
+
+    if (active.cancelled) {
+      this.persistChatHistory();
+      return;
     }
 
     // Signal stream end
@@ -144,20 +265,52 @@ export class Controller {
     if (!requestFailed && normalized) {
       this.chatHistory.push({ role: "model", text: normalized });
     }
+    this.persistChatHistory();
   }
 
   /** Clear chat history */
   public clearChatHistory(): void {
     this.chatHistory = [];
+    this.persistChatHistory();
+  }
+
+  private persistChatHistory(): void {
+    if (!this.workspaceState) return;
+    // Keep persisted state lightweight by excluding large image payloads.
+    const toSave = this.chatHistory.slice(-MAX_PERSISTED_MESSAGES).map((m) => ({
+      role: m.role,
+      text: m.text
+    }));
+    this.workspaceState.update(CHAT_HISTORY_KEY, toSave);
+  }
+
+  /** Subscribe to code context injection events */
+  public subscribeToCodeContext(requestId: string, stream: StreamingResponseHandler<CodeContextPayload>): void {
+    this.codeContextSubscribers.set(requestId, stream);
+  }
+
+  /** Fire a code context event (called when user sends code from editor) */
+  public async fireCodeContext(payload: CodeContextPayload): Promise<void> {
+    for (const [, stream] of this.codeContextSubscribers) {
+      await stream(payload, false);
+    }
   }
 
   /** Cancel a streaming request */
   public cancelRequest(requestId: string): boolean {
+    const activeChat = this.activeChatRequests.get(requestId);
+    if (activeChat) {
+      activeChat.cancelled = true;
+      activeChat.abortController.abort();
+    }
+
     // Remove from all subscriber maps
     const removed =
+      Boolean(activeChat) ||
       this.stateSubscribers.delete(requestId) ||
       this.settingsButtonSubscribers.delete(requestId) ||
-      this.chatButtonSubscribers.delete(requestId);
+      this.chatButtonSubscribers.delete(requestId) ||
+      this.codeContextSubscribers.delete(requestId);
     return removed;
   }
 
@@ -190,4 +343,79 @@ export class Controller {
   public async stopAutonomousDatabase(autonomousDatabaseId: string): Promise<void> {
     return this.ociService.stopAutonomousDatabase(autonomousDatabaseId);
   }
+
+  /** Switch active compartment and broadcast updated state */
+  public async switchCompartment(id: string): Promise<void> {
+    await this.authManager.updateCompartmentId(id);
+    await this.broadcastState();
+  }
+
+  /** Save a named compartment to the saved list */
+  public async saveCompartment(name: string, id: string): Promise<void> {
+    const cfg = vscode.workspace.getConfiguration("ociAi");
+    const existing = cfg.get<SavedCompartment[]>("savedCompartments", []);
+    const list = Array.isArray(existing) ? existing : [];
+    const updated = list.filter(c => c.id !== id).concat({ name: name.trim(), id: id.trim() });
+    await cfg.update("savedCompartments", updated, vscode.ConfigurationTarget.Global);
+  }
+
+  /** Delete a saved compartment by id */
+  public async deleteCompartment(id: string): Promise<void> {
+    const cfg = vscode.workspace.getConfiguration("ociAi");
+    const existing = cfg.get<SavedCompartment[]>("savedCompartments", []);
+    const list = Array.isArray(existing) ? existing : [];
+    await cfg.update("savedCompartments", list.filter(c => c.id !== id), vscode.ConfigurationTarget.Global);
+  }
+}
+
+function normalizeImages(images: ChatImageData[] | undefined): ChatImageData[] {
+  if (!Array.isArray(images)) {
+    return [];
+  }
+  const cleaned: ChatImageData[] = [];
+  for (const img of images) {
+    if (!img || typeof img.dataUrl !== "string" || typeof img.mimeType !== "string") {
+      continue;
+    }
+    const dataUrl = img.dataUrl.trim();
+    const previewDataUrl =
+      typeof img.previewDataUrl === "string" ? img.previewDataUrl.trim() : undefined;
+    const mimeType = img.mimeType.trim();
+    if (!isImageDataUrl(dataUrl)) {
+      continue;
+    }
+    cleaned.push({
+      dataUrl,
+      previewDataUrl: isImageDataUrl(previewDataUrl) ? previewDataUrl : undefined,
+      mimeType,
+      name: typeof img.name === "string" ? img.name.trim() : undefined,
+    });
+    if (cleaned.length >= MAX_IMAGES_PER_MESSAGE) {
+      break;
+    }
+  }
+  return cleaned;
+}
+
+function coerceInt(value: unknown, fallback: number, min: number, max: number): number {
+  const num = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(num)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, Math.trunc(num)));
+}
+
+function coerceFloat(value: unknown, fallback: number, min: number, max: number): number {
+  const num = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(num)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, num));
+}
+
+function isImageDataUrl(value: string | undefined): value is string {
+  if (typeof value !== "string") {
+    return false;
+  }
+  return /^data:image\//i.test(value);
 }

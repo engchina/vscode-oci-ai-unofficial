@@ -1,6 +1,7 @@
 import { clsx } from "clsx"
 import { Bot, User } from "lucide-react"
-import type { ChatMessageData } from "../../services/types"
+import { useState } from "react"
+import type { ChatImageData, ChatMessageData } from "../../services/types"
 import MessageContent from "./MessageContent"
 
 interface ChatRowProps {
@@ -30,8 +31,81 @@ export default function ChatRow({ message }: ChatRowProps) {
             : "border-[color-mix(in_srgb,var(--vscode-badge-background)_35%,transparent)] bg-[color-mix(in_srgb,var(--vscode-badge-background)_12%,transparent)]",
         )}
       >
-        {isUser ? <p className="whitespace-pre-wrap text-sm leading-6">{message.text}</p> : <MessageContent content={message.text} />}
+        {isUser ? (
+          <div className="flex flex-col gap-2">
+            {message.text && <p className="whitespace-pre-wrap text-sm leading-6">{message.text}</p>}
+            {message.images && message.images.length > 0 && (
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {message.images.map((img, idx) => (
+                  <a
+                    key={`${img.name ?? "img"}-${idx}`}
+                    href={img.dataUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="group w-28 shrink-0 overflow-hidden rounded-lg border border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,black_8%)]"
+                    title={attachmentName(img.name, idx)}
+                  >
+                    <AttachmentImage image={img} alt={attachmentName(img.name, idx)} />
+                    <div className="truncate border-t border-border-panel px-2 py-1 text-[11px] text-description transition-colors group-hover:text-foreground">
+                      {attachmentName(img.name, idx)}
+                    </div>
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <MessageContent content={message.text} />
+        )}
       </div>
     </div>
+  )
+}
+
+function attachmentName(name: string | undefined, idx: number): string {
+  const cleaned = name?.trim()
+  if (cleaned) return cleaned
+  return `image-${idx + 1}.png`
+}
+
+function AttachmentImage({ image, alt }: { image: ChatImageData; alt: string }) {
+  const [error, setError] = useState<string | null>(null)
+  const dataUrl = image.previewDataUrl ?? image.dataUrl
+
+  // Check if dataUrl is valid
+  if (!dataUrl || typeof dataUrl !== 'string') {
+    return (
+      <div className="flex h-20 w-full items-center justify-center px-2 text-center text-[10px] text-description">
+        No image data
+      </div>
+    )
+  }
+
+  if (!dataUrl.startsWith('data:image/')) {
+    return (
+      <div className="flex h-20 w-full items-center justify-center px-2 text-center text-[10px] text-description">
+        Invalid format: {dataUrl.substring(0, 30)}...
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-20 w-full items-center justify-center px-2 text-center text-[10px] text-description">
+        {error}
+      </div>
+    )
+  }
+
+  return (
+    <img
+      src={dataUrl}
+      alt={alt}
+      className="h-20 w-full object-cover"
+      onError={(e) => {
+        const target = e.target as HTMLImageElement
+        setError(`Load failed (${dataUrl.length} chars)`)
+      }}
+    />
   )
 }

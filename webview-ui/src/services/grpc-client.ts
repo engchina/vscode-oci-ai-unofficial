@@ -1,4 +1,4 @@
-import type { AppState, ListAdbResponse, ListComputeResponse, SaveSettingsRequest, SendMessageRequest, SettingsState, StreamTokenResponse } from "./types"
+import type { AppState, CodeContextPayload, ListAdbResponse, ListComputeResponse, SaveSettingsRequest, SendMessageRequest, SettingsState, StreamTokenResponse } from "./types"
 import { type Callbacks, ProtoBusClient } from "./grpc-client-base"
 
 export class StateServiceClient extends ProtoBusClient {
@@ -14,6 +14,18 @@ export class StateServiceClient extends ProtoBusClient {
 
   static saveSettings(request: SaveSettingsRequest): Promise<void> {
     return this.makeUnaryRequest<void>("saveSettings", request)
+  }
+
+  static switchCompartment(id: string): Promise<void> {
+    return this.makeUnaryRequest<void>("switchCompartment", { id })
+  }
+
+  static saveCompartment(name: string, id: string): Promise<void> {
+    return this.makeUnaryRequest<void>("saveCompartment", { name, id })
+  }
+
+  static deleteCompartment(id: string): Promise<void> {
+    return this.makeUnaryRequest<void>("deleteCompartment", { id })
   }
 
   static subscribeToState(callbacks: Callbacks<AppState>): () => void {
@@ -42,6 +54,10 @@ export class UiServiceClient extends ProtoBusClient {
 
   static subscribeToChatButtonClicked(callbacks: Callbacks<unknown>): () => void {
     return this.makeStreamingRequest<unknown>("subscribeToChatButtonClicked", {}, callbacks)
+  }
+
+  static subscribeToCodeContextReady(callbacks: Callbacks<CodeContextPayload>): () => void {
+    return this.makeStreamingRequest<CodeContextPayload>("subscribeToCodeContextReady", {}, callbacks)
   }
 }
 

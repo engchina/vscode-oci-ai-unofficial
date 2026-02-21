@@ -1,8 +1,8 @@
 import { clsx } from "clsx"
-import { Info, LoaderCircle, Save, Settings2, Sliders, Terminal, Wrench } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { BookmarkPlus, Info, LoaderCircle, Save, Settings2, Sliders, Terminal, Trash2, Wrench } from "lucide-react"
+import { useCallback, useEffect, useState, type ChangeEvent } from "react"
 import { StateServiceClient } from "../../services/grpc-client"
-import type { SettingsState } from "../../services/types"
+import type { SavedCompartment, SettingsState } from "../../services/types"
 import Button from "../ui/Button"
 import Card from "../ui/Card"
 import Input from "../ui/Input"
@@ -15,6 +15,7 @@ interface SettingsViewProps {
 }
 
 type SettingsTab = "api-config" | "features" | "terminal" | "general" | "about"
+type UpdateFieldFn = <K extends keyof SettingsState>(field: K, value: SettingsState[K]) => void
 
 const TABS: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: "api-config", label: "API Configuration", icon: <Settings2 size={16} /> },
@@ -36,6 +37,21 @@ const EMPTY_SETTINGS: SettingsState = {
   fingerprint: "",
   privateKey: "",
   privateKeyPassphrase: "",
+  systemPrompt: "",
+
+  nativeToolCall: true,
+  parallelToolCalling: true,
+  strictPlanMode: true,
+  autoCompact: true,
+  checkpoints: true,
+
+  shellIntegrationTimeoutSec: 4,
+  chatMaxTokens: 64000,
+  chatTemperature: 0,
+  chatTopP: 1,
+
+  authMode: "config-file",
+  savedCompartments: [],
 }
 
 export default function SettingsView({ onDone, showDone = true }: SettingsViewProps) {
@@ -48,7 +64,7 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
     setActiveTab(tab)
   }, [])
 
-  // Load current settings
+  // Load current settings.
   useEffect(() => {
     StateServiceClient.getSettings()
       .then((state) => {
@@ -61,7 +77,7 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
       })
   }, [])
 
-  const updateField = useCallback((field: keyof SettingsState, value: string) => {
+  const updateField = useCallback<UpdateFieldFn>((field, value) => {
     setSettings((prev) => ({ ...prev, [field]: value }))
   }, [])
 
@@ -77,7 +93,7 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
   }, [settings])
 
   const handleFileUpload = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
+    async (e: ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0]
       if (!file) return
       const content = await file.text()
@@ -147,15 +163,30 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
             {activeTab === "api-config" && (
               <ApiConfigTab
                 settings={settings}
+                setSettings={setSettings}
                 updateField={updateField}
                 handleSave={handleSave}
                 handleFileUpload={handleFileUpload}
                 saving={saving}
               />
             )}
-            {activeTab === "features" && <FeaturesTab />}
-            {activeTab === "terminal" && <TerminalTab />}
-            {activeTab === "general" && <GeneralTab />}
+            {activeTab === "features" && (
+              <FeaturesTab
+                settings={settings}
+                updateField={updateField}
+                handleSave={handleSave}
+                saving={saving}
+              />
+            )}
+            {activeTab === "terminal" && (
+              <TerminalTab
+                settings={settings}
+                updateField={updateField}
+                handleSave={handleSave}
+                saving={saving}
+              />
+            )}
+            {activeTab === "general" && <GeneralTab settings={settings} />}
             {activeTab === "about" && <AboutTab />}
           </div>
         </div>
@@ -164,19 +195,31 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
   )
 }
 
+function validateSettings(s: SettingsState): string[] {
+  const errors: string[] = []
+  if (!s.compartmentId.trim()) errors.push("Compartment ID is required")
+  if (!s.genAiLlmModelId.trim()) errors.push("LLM Model Name is required for AI chat")
+  if (s.authMode === "config-file" && !s.profile.trim()) errors.push("Profile Name is required for config file auth")
+  return errors
+}
+
 function ApiConfigTab({
   settings,
+  setSettings,
   updateField,
   handleSave,
   handleFileUpload,
   saving,
 }: {
   settings: SettingsState
-  updateField: (field: keyof SettingsState, value: string) => void
+  setSettings: (s: SettingsState) => void
+  updateField: UpdateFieldFn
   handleSave: () => void
-  handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
+  handleFileUpload: (e: ChangeEvent<HTMLInputElement>) => void
   saving: boolean
 }) {
+  const validationErrors = validateSettings(settings)
+
   return (
     <div className="flex flex-col gap-4">
       <h3 className="flex items-center gap-1.5 text-md font-semibold">
@@ -185,7 +228,39 @@ function ApiConfigTab({
       </h3>
       <p className="-mt-2 text-xs text-description">These values are used for OCI API calls and model inference.</p>
 
-      <Card title="OCI Access (API Key + Context)">
+      {validationErrors.length > 0 && (
+        <div className="flex flex-col gap-1 rounded-lg border border-warning/30 bg-[color-mix(in_srgb,var(--vscode-editor-background)_88%,yellow_12%)] px-3 py-2.5">
+          <span className="text-xs font-medium text-warning">Configuration incomplete:</span>
+          {validationErrors.map((err) => (
+            <span key={err} className="text-xs text-warning">• {err}</span>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-description">OCI Access</h4>
+        <span
+          className={clsx(
+            "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider",
+            settings.authMode === "api-key"
+              ? "border-success/30 bg-[color-mix(in_srgb,var(--vscode-editor-background)_80%,green_20%)] text-success"
+              : "border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_90%,black_10%)] text-description",
+          )}
+          title={
+            settings.authMode === "api-key"
+              ? "Using API Key from SecretStorage"
+              : "Using OCI config file (~/.oci/config)"
+          }
+        >
+          {settings.authMode === "api-key" ? "API Key Auth" : "Config File Auth"}
+        </span>
+      </div>
+      <p className="-mt-1 text-xs text-description">
+        {settings.authMode === "api-key"
+          ? "All required API Key fields are set. Requests will use SecretStorage credentials."
+          : "Fill in Tenancy OCID, User OCID, Fingerprint, and Private Key below to switch to API Key auth."}
+      </p>
+      <Card title="Profile & Context">
         <Input
           id="profile"
           label="Profile Name"
@@ -207,6 +282,24 @@ function ApiConfigTab({
           value={settings.compartmentId}
           onChange={(e) => updateField("compartmentId", e.target.value)}
         />
+        <SavedCompartmentsSection
+          savedCompartments={settings.savedCompartments}
+          currentCompartmentId={settings.compartmentId}
+          onSwitch={async (id) => {
+            await StateServiceClient.switchCompartment(id)
+            updateField("compartmentId", id)
+          }}
+          onRefresh={async () => {
+            const fresh = await StateServiceClient.getSettings()
+            setSettings(fresh)
+          }}
+        />
+      </Card>
+
+      <Card title="API Key (SecretStorage)">
+        <p className="-mt-1 text-xs text-description">
+          When all four fields below are filled, API Key auth takes priority over the OCI config file.
+        </p>
         <Input
           id="tenancyOcid"
           label="Tenancy OCID"
@@ -285,19 +378,17 @@ function ApiConfigTab({
   )
 }
 
-function FeaturesTab() {
-  const [features, setFeatures] = useState({
-    nativeToolCall: true,
-    parallelToolCalling: true,
-    strictPlanMode: true,
-    autoCompact: true,
-    checkpoints: true,
-  })
-
-  const toggle = (key: keyof typeof features) => {
-    setFeatures((prev) => ({ ...prev, [key]: !prev[key] }))
-  }
-
+function FeaturesTab({
+  settings,
+  updateField,
+  handleSave,
+  saving,
+}: {
+  settings: SettingsState
+  updateField: UpdateFieldFn
+  handleSave: () => void
+  saving: boolean
+}) {
   return (
     <div className="flex flex-col gap-4">
       <h3 className="flex items-center gap-1.5 text-md font-semibold">
@@ -306,32 +397,78 @@ function FeaturesTab() {
       </h3>
       <p className="-mt-2 text-xs text-description">Fine tune runtime behavior for the assistant and editor workflows.</p>
 
+      <Card title="AI Behavior">
+        <Textarea
+          id="systemPrompt"
+          label="System Prompt"
+          placeholder="You are a helpful OCI cloud assistant. Answer concisely and accurately."
+          value={settings.systemPrompt}
+          onChange={(e) => updateField("systemPrompt", e.target.value)}
+        />
+        <p className="-mt-1 text-xs text-description">
+          This text is prepended to every chat session as initial instructions for the model.
+          Leave empty to use the model's default behavior.
+        </p>
+      </Card>
+
+      <Card title="Chat Generation">
+        <Input
+          id="chatMaxTokens"
+          label="Max Tokens"
+          type="number"
+          min={1}
+          max={128000}
+          value={settings.chatMaxTokens}
+          onChange={(e) => updateField("chatMaxTokens", parseIntInput(e.target.value, 64000, 1, 128000))}
+        />
+        <Input
+          id="chatTemperature"
+          label="Temperature"
+          type="number"
+          step="0.1"
+          min={0}
+          max={2}
+          value={settings.chatTemperature}
+          onChange={(e) => updateField("chatTemperature", parseFloatInput(e.target.value, 0, 0, 2))}
+        />
+        <Input
+          id="chatTopP"
+          label="Top P"
+          type="number"
+          step="0.05"
+          min={0}
+          max={1}
+          value={settings.chatTopP}
+          onChange={(e) => updateField("chatTopP", parseFloatInput(e.target.value, 1, 0, 1))}
+        />
+      </Card>
+
       <div>
         <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-description">Agent</h4>
         <div className="flex flex-col gap-2.5 rounded-xl border border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,black_8%)] p-3 sm:p-4">
           <Toggle
             label="Native Tool Call"
             description="Use native function calling when available"
-            checked={features.nativeToolCall}
-            onChange={() => toggle("nativeToolCall")}
+            checked={settings.nativeToolCall}
+            onChange={(checked) => updateField("nativeToolCall", checked)}
           />
           <Toggle
             label="Parallel Tool Calling"
             description="Execute multiple tool calls simultaneously"
-            checked={features.parallelToolCalling}
-            onChange={() => toggle("parallelToolCalling")}
+            checked={settings.parallelToolCalling}
+            onChange={(checked) => updateField("parallelToolCalling", checked)}
           />
           <Toggle
             label="Strict Plan Mode"
             description="Prevents file edits while in Plan mode"
-            checked={features.strictPlanMode}
-            onChange={() => toggle("strictPlanMode")}
+            checked={settings.strictPlanMode}
+            onChange={(checked) => updateField("strictPlanMode", checked)}
           />
           <Toggle
             label="Auto Compact"
             description="Automatically compress conversation history"
-            checked={features.autoCompact}
-            onChange={() => toggle("autoCompact")}
+            checked={settings.autoCompact}
+            onChange={(checked) => updateField("autoCompact", checked)}
           />
         </div>
       </div>
@@ -342,16 +479,31 @@ function FeaturesTab() {
           <Toggle
             label="Checkpoints"
             description="Save progress at key points for easy rollback"
-            checked={features.checkpoints}
-            onChange={() => toggle("checkpoints")}
+            checked={settings.checkpoints}
+            onChange={(checked) => updateField("checkpoints", checked)}
           />
         </div>
       </div>
+
+      <Button onClick={handleSave} disabled={saving} className="self-start px-4">
+        <Save size={14} className="mr-1.5" />
+        {saving ? "Saving..." : "Save Settings"}
+      </Button>
     </div>
   )
 }
 
-function TerminalTab() {
+function TerminalTab({
+  settings,
+  updateField,
+  handleSave,
+  saving,
+}: {
+  settings: SettingsState
+  updateField: UpdateFieldFn
+  handleSave: () => void
+  saving: boolean
+}) {
   return (
     <div className="flex flex-col gap-4">
       <h3 className="flex items-center gap-1.5 text-md font-semibold">
@@ -360,26 +512,30 @@ function TerminalTab() {
       </h3>
       <p className="-mt-2 text-xs text-description">Set terminal integration behavior used by command execution tasks.</p>
 
-      <div className="flex flex-col gap-3 rounded-xl border border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,black_8%)] p-3 sm:p-4">
-        <div className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">Shell Integration Timeout (seconds)</span>
-          <span className="text-xs text-description">
-            Set how long to wait for shell to activate before executing commands.
-          </span>
-          <input
-            type="number"
-            defaultValue={4}
-            min={1}
-            max={30}
-            className="mt-1 w-full max-w-[220px] rounded-md border border-input-border bg-input-background px-3 py-2 text-sm text-input-foreground outline-none focus:border-border"
-          />
-        </div>
-      </div>
+      <Card title="Command Execution">
+        <Input
+          id="shellIntegrationTimeoutSec"
+          label="Shell Integration Timeout (seconds)"
+          type="number"
+          min={1}
+          max={120}
+          value={settings.shellIntegrationTimeoutSec}
+          onChange={(e) => updateField("shellIntegrationTimeoutSec", parseIntInput(e.target.value, 4, 1, 120))}
+        />
+        <p className="-mt-1 text-xs text-description">
+          How long command execution should wait for shell integration before timing out.
+        </p>
+      </Card>
+
+      <Button onClick={handleSave} disabled={saving} className="self-start px-4">
+        <Save size={14} className="mr-1.5" />
+        {saving ? "Saving..." : "Save Settings"}
+      </Button>
     </div>
   )
 }
 
-function GeneralTab() {
+function GeneralTab({ settings }: { settings: SettingsState }) {
   return (
     <div className="flex flex-col gap-4">
       <h3 className="flex items-center gap-1.5 text-md font-semibold">
@@ -389,7 +545,13 @@ function GeneralTab() {
       <p className="-mt-2 text-xs text-description">Global extension preferences and behavior controls.</p>
 
       <div className="rounded-xl border border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,black_8%)] p-3 sm:p-4">
-        <p className="text-xs text-description">General preferences will appear here in future updates.</p>
+        <div className="flex flex-col gap-2 text-xs text-description">
+          <span>Native Tool Call: {settings.nativeToolCall ? "On" : "Off"}</span>
+          <span>Parallel Tool Calling: {settings.parallelToolCalling ? "On" : "Off"}</span>
+          <span>Strict Plan Mode: {settings.strictPlanMode ? "On" : "Off"}</span>
+          <span>Auto Compact: {settings.autoCompact ? "On" : "Off"}</span>
+          <span>Checkpoints: {settings.checkpoints ? "On" : "Off"}</span>
+        </div>
       </div>
     </div>
   )
@@ -422,4 +584,130 @@ function AboutTab() {
       </div>
     </div>
   )
+}
+
+function SavedCompartmentsSection({
+  savedCompartments,
+  currentCompartmentId,
+  onSwitch,
+  onRefresh,
+}: {
+  savedCompartments: SavedCompartment[]
+  currentCompartmentId: string
+  onSwitch: (id: string) => Promise<void>
+  onRefresh: () => Promise<void>
+}) {
+  const [saveName, setSaveName] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [switching, setSwitching] = useState<string | null>(null)
+
+  const handleSave = async () => {
+    const name = saveName.trim()
+    const id = currentCompartmentId.trim()
+    if (!name || !id) return
+    setSaving(true)
+    try {
+      await StateServiceClient.saveCompartment(name, id)
+      setSaveName("")
+      await onRefresh()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    setDeleting(id)
+    try {
+      await StateServiceClient.deleteCompartment(id)
+      await onRefresh()
+    } finally {
+      setDeleting(null)
+    }
+  }
+
+  const handleSwitch = async (id: string) => {
+    setSwitching(id)
+    try {
+      await onSwitch(id)
+      await onRefresh()
+    } finally {
+      setSwitching(null)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 pt-1">
+      <span className="text-xs font-medium text-description">Saved Compartments</span>
+      {savedCompartments.length > 0 && (
+        <div className="flex flex-col gap-1">
+          {savedCompartments.map((c) => (
+            <div key={c.id} className="flex items-center gap-2 rounded-md border border-border-panel px-2 py-1.5">
+              <button
+                onClick={() => handleSwitch(c.id)}
+                title={c.id}
+                disabled={switching === c.id}
+                className={clsx(
+                  "flex-1 truncate text-left text-xs disabled:opacity-50",
+                  currentCompartmentId === c.id ? "font-semibold text-foreground" : "text-description hover:text-foreground",
+                )}
+              >
+                {c.name}
+                {switching === c.id ? (
+                  <span className="ml-1 inline-flex align-middle text-description">
+                    <LoaderCircle size={11} className="animate-spin" />
+                  </span>
+                ) : currentCompartmentId === c.id ? (
+                  <span className="ml-1 text-success">✓</span>
+                ) : null}
+              </button>
+              <button
+                onClick={() => handleDelete(c.id)}
+                disabled={deleting === c.id}
+                className="shrink-0 rounded p-0.5 text-description hover:text-error disabled:opacity-40"
+                title="Remove"
+              >
+                <Trash2 size={11} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          value={saveName}
+          onChange={(e) => setSaveName(e.target.value)}
+          placeholder="Name for current compartment..."
+          className="flex-1 rounded-md border border-input-border bg-input-background px-2 py-1.5 text-xs text-input-foreground outline-none placeholder:text-input-placeholder focus:border-border"
+          onKeyDown={(e) => { if (e.key === "Enter") handleSave() }}
+        />
+        <button
+          onClick={handleSave}
+          disabled={saving || !saveName.trim() || !currentCompartmentId.trim()}
+          className="flex shrink-0 items-center gap-1 rounded-md border border-border-panel px-2 py-1.5 text-xs text-description hover:text-foreground disabled:opacity-40"
+          title="Save current compartment ID with this name"
+        >
+          <BookmarkPlus size={12} />
+          Save
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function parseIntInput(raw: string, fallback: number, min: number, max: number): number {
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isFinite(parsed)) {
+    return fallback
+  }
+  return Math.max(min, Math.min(max, parsed))
+}
+
+function parseFloatInput(raw: string, fallback: number, min: number, max: number): number {
+  const parsed = Number.parseFloat(raw)
+  if (!Number.isFinite(parsed)) {
+    return fallback
+  }
+  return Math.max(min, Math.min(max, parsed))
 }

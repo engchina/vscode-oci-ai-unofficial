@@ -1,6 +1,7 @@
 import AdbView from "./components/adb/AdbView"
 import ChatView from "./components/chat/ChatView"
 import ComputeView from "./components/compute/ComputeView"
+import HistoryView from "./components/history/HistoryView"
 import Navbar from "./components/menu/Navbar"
 import SettingsView from "./components/settings/SettingsView"
 import { useExtensionState } from "./context/ExtensionStateContext"
@@ -17,7 +18,15 @@ function getHostView(): HostView {
 }
 
 function AppContent() {
-  const { didHydrateState, navigateToHistory, newChat } = useExtensionState()
+  const {
+    didHydrateState,
+    currentView,
+    navigateToHistory,
+    navigateToChat,
+    newChat,
+    clearHistory,
+    chatMessages
+  } = useExtensionState()
   const hostView = getHostView()
 
   if (!didHydrateState) {
@@ -55,7 +64,15 @@ function AppContent() {
   return (
     <div className="flex h-screen w-full flex-col">
       <Navbar onNewChat={newChat} onHistory={navigateToHistory} />
-      <ChatView isHidden={false} />
+      {currentView === "history" ? (
+        <HistoryView
+          messages={chatMessages}
+          onBack={navigateToChat}
+          onClear={clearHistory}
+        />
+      ) : (
+        <ChatView isHidden={false} />
+      )}
     </div>
   )
 }

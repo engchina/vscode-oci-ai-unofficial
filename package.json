@@ -2,7 +2,7 @@
   "name": "vscode-oci-ai-unofficial",
   "displayName": "vscode-oci-ai-unofficial",
   "description": "OCI development toolkit for VS Code, covering AI and broader OCI workflows.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "local",
   "engines": {
     "vscode": "^1.100.0"
@@ -91,9 +91,42 @@
         "command": "ociAi.openSettings",
         "title": "vscode-oci-ai-unofficial: Open OCI Settings",
         "shortTitle": "OCI Settings"
+      },
+      {
+        "command": "ociAi.editor.sendToChat",
+        "title": "OCI AI: Send to Chat"
+      },
+      {
+        "command": "ociAi.editor.codeReview",
+        "title": "OCI AI: Code Review"
+      },
+      {
+        "command": "ociAi.editor.generateDocs",
+        "title": "OCI AI: Generate Documentation"
+      },
+      {
+        "command": "ociAi.switchCompartment",
+        "title": "vscode-oci-ai-unofficial: Switch Compartment"
       }
     ],
     "menus": {
+      "editor/context": [
+        {
+          "command": "ociAi.editor.sendToChat",
+          "group": "ociAi@1",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "ociAi.editor.codeReview",
+          "group": "ociAi@2",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "ociAi.editor.generateDocs",
+          "group": "ociAi@3",
+          "when": "editorTextFocus"
+        }
+      ],
       "view/title": [
         {
           "command": "ociAi.refreshCompute",
@@ -140,6 +173,18 @@
         },
         {
           "command": "ociAi.openSettings"
+        },
+        {
+          "command": "ociAi.editor.sendToChat"
+        },
+        {
+          "command": "ociAi.editor.codeReview"
+        },
+        {
+          "command": "ociAi.editor.generateDocs"
+        },
+        {
+          "command": "ociAi.switchCompartment"
         }
       ]
     },
@@ -185,6 +230,69 @@
           "type": "string",
           "default": "",
           "description": "Embedding model name for OCI Generative AI embedding requests"
+        },
+        "ociAi.systemPrompt": {
+          "type": "string",
+          "default": "",
+          "description": "Optional system prompt prepended to every AI chat session"
+        },
+        "ociAi.nativeToolCall": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable native tool calling when supported by the selected model"
+        },
+        "ociAi.parallelToolCalling": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow parallel tool calls when using tool-enabled chat requests"
+        },
+        "ociAi.strictPlanMode": {
+          "type": "boolean",
+          "default": true,
+          "description": "Prevent file edits in strict plan mode"
+        },
+        "ociAi.autoCompact": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic conversation compaction"
+        },
+        "ociAi.checkpoints": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable editor checkpoints for rollback"
+        },
+        "ociAi.shellIntegrationTimeoutSec": {
+          "type": "number",
+          "default": 4,
+          "description": "Timeout (seconds) to wait for shell integration before command execution"
+        },
+        "ociAi.chatMaxTokens": {
+          "type": "number",
+          "default": 64000,
+          "description": "Maximum tokens requested per chat completion (1-128000)"
+        },
+        "ociAi.chatTemperature": {
+          "type": "number",
+          "default": 0,
+          "description": "Sampling temperature for chat generation (0-2)"
+        },
+        "ociAi.chatTopP": {
+          "type": "number",
+          "default": 1,
+          "description": "Nucleus sampling parameter for chat generation (0-1)"
+        },
+        "ociAi.savedCompartments": {
+          "type": "array",
+          "default": [],
+          "description": "List of named compartments for quick switching",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "description": "Display name for this compartment" },
+              "id": { "type": "string", "description": "Compartment OCID" }
+            },
+            "required": ["name", "id"]
+          }
         }
       }
     }

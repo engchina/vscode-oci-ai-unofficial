@@ -17,6 +17,44 @@ export class OciClientFactory {
     return compartmentId;
   }
 
+  /** Returns the active auth provider.
+   *  Prefers API Key secrets from SecretStorage when all required fields are present;
+   *  otherwise falls back to the OCI config file. */
+  public async createAuthenticationProviderAsync(): Promise<common.AuthenticationDetailsProvider> {
+    const secrets = await this.authManager.getApiKeySecrets();
+    if (secrets.tenancyOcid && secrets.userOcid && secrets.fingerprint && secrets.privateKey) {
+      return new common.SimpleAuthenticationDetailsProvider(
+        secrets.tenancyOcid,
+        secrets.userOcid,
+        secrets.fingerprint,
+        secrets.privateKey,
+        secrets.privateKeyPassphrase || null
+      );
+    }
+    return this.createAuthenticationProvider();
+  }
+
+  public async createComputeClientAsync(): Promise<compute.ComputeClient> {
+    const authenticationDetailsProvider = await this.createAuthenticationProviderAsync();
+    const client = new compute.ComputeClient({ authenticationDetailsProvider });
+    const region = this.authManager.getRegion();
+    if (region) {
+      client.regionId = region;
+    }
+    return client;
+  }
+
+  public async createDatabaseClientAsync(): Promise<database.DatabaseClient> {
+    const authenticationDetailsProvider = await this.createAuthenticationProviderAsync();
+    const client = new database.DatabaseClient({ authenticationDetailsProvider });
+    const region = this.authManager.getRegion();
+    if (region) {
+      client.regionId = region;
+    }
+    return client;
+  }
+
+  /** Synchronous fallback — reads from OCI config file only. */
   public createComputeClient(): compute.ComputeClient {
     const authenticationDetailsProvider = this.createAuthenticationProvider();
     const client = new compute.ComputeClient({ authenticationDetailsProvider });
