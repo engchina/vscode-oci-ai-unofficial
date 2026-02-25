@@ -23,6 +23,7 @@ export function registerCommands(
     vscode.commands.registerCommand("ociAi.refreshAdb", refreshAdb),
     vscode.commands.registerCommand("ociAi.auth.configureProfile", async () => {
       await authManager.configureProfileInteractive();
+      await controller.broadcastState();
       refreshCompute();
       refreshAdb();
     }),

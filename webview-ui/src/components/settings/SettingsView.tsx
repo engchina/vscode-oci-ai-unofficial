@@ -1,8 +1,8 @@
 import { clsx } from "clsx"
-import { BookmarkPlus, Bot, Info, LoaderCircle, Save, Settings2, Sliders, Terminal, Trash2, Users, Wrench } from "lucide-react"
+import { Bot, Info, LoaderCircle, Save, Settings2, Sliders, Terminal, Users, Wrench } from "lucide-react"
 import { useCallback, useEffect, useState, type ChangeEvent, type Dispatch, type SetStateAction } from "react"
 import { StateServiceClient } from "../../services/grpc-client"
-import type { SavedCompartment, SettingsState } from "../../services/types"
+import type { SettingsState } from "../../services/types"
 import ProfilesCompartmentsView from "../profiles/ProfilesCompartmentsView"
 import { DEFAULT_SSH_USERNAME, clampPort, loadSshConfig, saveSshConfig, type HostPreference, type SshConfig } from "../../sshConfig"
 import Button from "../ui/Button"
@@ -178,7 +178,6 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
             {activeTab === "api-config" && (
               <ApiConfigTab
                 settings={settings}
-                setSettings={setSettings}
                 updateField={updateField}
                 handleSave={handleSave}
                 handleFileUpload={handleFileUpload}
@@ -225,7 +224,6 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
 
 function validateSettings(s: SettingsState): string[] {
   const errors: string[] = []
-  if (!s.compartmentId.trim()) errors.push("Compartment ID is required")
   if (splitModelNames(s.genAiLlmModelId).length === 0) {
     errors.push("LLM Model Name is required for AI chat")
   }
@@ -242,14 +240,12 @@ function splitModelNames(raw: string): string[] {
 
 function ApiConfigTab({
   settings,
-  setSettings,
   updateField,
   handleSave,
   handleFileUpload,
   saving,
 }: {
   settings: SettingsState
-  setSettings: (s: SettingsState) => void
   updateField: UpdateFieldFn
   handleSave: () => void
   handleFileUpload: (e: ChangeEvent<HTMLInputElement>) => void
@@ -298,42 +294,27 @@ function ApiConfigTab({
           : "Fill in Tenancy OCID, User OCID, Fingerprint, and Private Key below to switch to API Key auth."}
       </p>
 
-      <Card title="Legacy Profile & Context">
-        <p className="text-[11px] text-description -mt-1 mb-2">Used as fallback if specific features are not configured.</p>
-        <Input
+      <div className="flex flex-col gap-1">
+        <label htmlFor="profile" className="text-xs text-description font-medium">Profile</label>
+        <select
           id="profile"
-          label="Profile Name"
-          placeholder="DEFAULT"
-          value={settings.profile}
+          value={settings.profile || "DEFAULT"}
           onChange={(e) => updateField("profile", e.target.value)}
-        />
-        <Input
-          id="region"
-          label="Region"
-          placeholder="us-phoenix-1"
-          value={settings.region}
-          onChange={(e) => updateField("region", e.target.value)}
-        />
-        <Input
-          id="compartmentId"
-          label="Compartment ID"
-          placeholder="ocid1.compartment..."
-          value={settings.compartmentId}
-          onChange={(e) => updateField("compartmentId", e.target.value)}
-        />
-        <SavedCompartmentsSection
-          savedCompartments={settings.savedCompartments}
-          currentCompartmentId={settings.compartmentId}
-          onSwitch={async (id) => {
-            await StateServiceClient.switchCompartment(id)
-            updateField("compartmentId", id)
-          }}
-          onRefresh={async () => {
-            const fresh = await StateServiceClient.getSettings()
-            setSettings(fresh)
-          }}
-        />
-      </Card>
+          className="w-full rounded-md border border-input-border bg-input-background px-2 py-1.5 text-xs outline-none focus:border-border"
+        >
+          {(settings.profilesConfig || []).length > 0 ? (
+            (settings.profilesConfig || []).map(p => (
+              <option key={p.name} value={p.name}>{p.name}</option>
+            ))
+          ) : (
+            <option value="DEFAULT">DEFAULT</option>
+          )}
+          {settings.profile && settings.profile !== "DEFAULT" && !(settings.profilesConfig || []).some(p => p.name === settings.profile) && (
+            <option value={settings.profile}>{settings.profile} (Not configured)</option>
+          )}
+        </select>
+        <p className="text-[10px] text-description">Select a profile for editing on this page. This does not change the global active profile.</p>
+      </div>
 
       <Card title="API Key (SecretStorage)">
         <p className="-mt-1 text-xs text-description">
@@ -382,6 +363,13 @@ function ApiConfigTab({
           type="password"
           value={settings.privateKeyPassphrase}
           onChange={(e) => updateField("privateKeyPassphrase", e.target.value)}
+        />
+        <Input
+          id="region"
+          label="Region"
+          placeholder="us-phoenix-1"
+          value={settings.region}
+          onChange={(e) => updateField("region", e.target.value)}
         />
       </Card>
 
@@ -717,115 +705,7 @@ function AboutTab() {
   )
 }
 
-function SavedCompartmentsSection({
-  savedCompartments,
-  currentCompartmentId,
-  onSwitch,
-  onRefresh,
-}: {
-  savedCompartments: SavedCompartment[]
-  currentCompartmentId: string
-  onSwitch: (id: string) => Promise<void>
-  onRefresh: () => Promise<void>
-}) {
-  const [saveName, setSaveName] = useState("")
-  const [saving, setSaving] = useState(false)
-  const [deleting, setDeleting] = useState<string | null>(null)
-  const [switching, setSwitching] = useState<string | null>(null)
 
-  const handleSave = async () => {
-    const name = saveName.trim()
-    const id = currentCompartmentId.trim()
-    if (!name || !id) return
-    setSaving(true)
-    try {
-      await StateServiceClient.saveCompartment(name, id)
-      setSaveName("")
-      await onRefresh()
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleDelete = async (id: string) => {
-    setDeleting(id)
-    try {
-      await StateServiceClient.deleteCompartment(id)
-      await onRefresh()
-    } finally {
-      setDeleting(null)
-    }
-  }
-
-  const handleSwitch = async (id: string) => {
-    setSwitching(id)
-    try {
-      await onSwitch(id)
-      await onRefresh()
-    } finally {
-      setSwitching(null)
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-2 pt-1">
-      <span className="text-xs font-medium text-description">Saved Compartments</span>
-      {savedCompartments.length > 0 && (
-        <div className="flex flex-col gap-1">
-          {savedCompartments.map((c) => (
-            <div key={c.id} className="flex items-center gap-2 rounded-md border border-border-panel px-2 py-1.5">
-              <button
-                onClick={() => handleSwitch(c.id)}
-                title={c.id}
-                disabled={switching === c.id}
-                className={clsx(
-                  "flex-1 truncate text-left text-xs disabled:opacity-50",
-                  currentCompartmentId === c.id ? "font-semibold text-foreground" : "text-description hover:text-foreground",
-                )}
-              >
-                {c.name}
-                {switching === c.id ? (
-                  <span className="ml-1 inline-flex align-middle text-description">
-                    <LoaderCircle size={11} className="animate-spin" />
-                  </span>
-                ) : currentCompartmentId === c.id ? (
-                  <span className="ml-1 text-success">✓</span>
-                ) : null}
-              </button>
-              <button
-                onClick={() => handleDelete(c.id)}
-                disabled={deleting === c.id}
-                className="shrink-0 rounded p-0.5 text-description hover:text-error disabled:opacity-40"
-                title="Remove"
-              >
-                <Trash2 size={11} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="flex gap-1.5">
-        <input
-          type="text"
-          value={saveName}
-          onChange={(e) => setSaveName(e.target.value)}
-          placeholder="Name for current compartment..."
-          className="flex-1 rounded-md border border-input-border bg-input-background px-2 py-1.5 text-xs text-input-foreground outline-none placeholder:text-input-placeholder focus:border-border"
-          onKeyDown={(e) => { if (e.key === "Enter") handleSave() }}
-        />
-        <button
-          onClick={handleSave}
-          disabled={saving || !saveName.trim() || !currentCompartmentId.trim()}
-          className="flex shrink-0 items-center gap-1 rounded-md border border-border-panel px-2 py-1.5 text-xs text-description hover:text-foreground disabled:opacity-40"
-          title="Save current compartment ID with this name"
-        >
-          <BookmarkPlus size={12} />
-          Save
-        </button>
-      </div>
-    </div>
-  )
-}
 
 function parseIntInput(raw: string, fallback: number, min: number, max: number): number {
   const parsed = Number.parseInt(raw, 10)

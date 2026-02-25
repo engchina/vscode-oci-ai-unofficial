@@ -17,7 +17,7 @@ export type ApiKeySecrets = {
 };
 
 export class AuthManager {
-  constructor(private readonly context: vscode.ExtensionContext) {}
+  constructor(private readonly context: vscode.ExtensionContext) { }
 
   public getProfile(): string {
     return vscode.workspace.getConfiguration("ociAi").get<string>("profile", "DEFAULT");
@@ -46,57 +46,49 @@ export class AuthManager {
 
   public async configureProfileInteractive(): Promise<void> {
     const cfg = vscode.workspace.getConfiguration("ociAi");
-    const existingProfile = cfg.get<string>("profile", "DEFAULT");
-    const existingRegion = cfg.get<string>("region", "");
-    const existingCompartment = cfg.get<string>("compartmentId", "");
-    const existingConfigPath = cfg.get<string>("configFilePath", "");
+    const currentActive = cfg.get<string>("activeProfile", "DEFAULT");
+    const profilesConfig = cfg.get<{ name: string; compartments: { id: string; name: string }[] }[]>("profilesConfig", []);
+    const profiles = Array.isArray(profilesConfig) ? profilesConfig : [];
 
-    const profile = await vscode.window.showInputBox({
-      title: "OCI Profile",
-      prompt: "Profile name in OCI config file",
-      value: existingProfile || "DEFAULT",
-      ignoreFocusOut: true
+    // Build QuickPick items from configured profiles
+    type QpItem = vscode.QuickPickItem & { profileName: string };
+    const items: QpItem[] = [];
+
+    // Always include DEFAULT
+    items.push({
+      label: "DEFAULT",
+      description: currentActive === "DEFAULT" ? "$(check) Active" : undefined,
+      profileName: "DEFAULT",
     });
-    if (!profile) {
-      return;
+
+    // Add configured profiles
+    for (const p of profiles) {
+      if (p.name === "DEFAULT") continue; // avoid duplicate
+      const compartmentCount = p.compartments?.length ?? 0;
+      items.push({
+        label: p.name,
+        description: currentActive === p.name ? "$(check) Active" : undefined,
+        detail: `${compartmentCount} compartment${compartmentCount !== 1 ? "s" : ""} configured`,
+        profileName: p.name,
+      });
     }
 
-    const region = await vscode.window.showInputBox({
-      title: "OCI Region",
-      prompt: "Optional region override (example: us-phoenix-1)",
-      value: existingRegion,
-      ignoreFocusOut: true
+    const picked = await vscode.window.showQuickPick(items, {
+      placeHolder: `Current: ${currentActive}`,
+      title: "Switch Active Profile",
     });
-    if (region === undefined) {
-      return;
+    if (!picked) return;
+
+    const targetProfile = picked.profileName;
+
+    if (targetProfile === currentActive) {
+      return; // no change needed
     }
 
-    const compartmentId = await vscode.window.showInputBox({
-      title: "Compartment OCID",
-      prompt: "Compartment OCID for Compute and ADB operations",
-      value: existingCompartment,
-      ignoreFocusOut: true
-    });
-    if (compartmentId === undefined) {
-      return;
-    }
+    await cfg.update("activeProfile", targetProfile, vscode.ConfigurationTarget.Global);
+    await cfg.update("profile", targetProfile, vscode.ConfigurationTarget.Global);
 
-    const configFilePath = await vscode.window.showInputBox({
-      title: "OCI Config File Path",
-      prompt: "Optional custom config path. Leave empty to use ~/.oci/config",
-      value: existingConfigPath,
-      ignoreFocusOut: true
-    });
-    if (configFilePath === undefined) {
-      return;
-    }
-
-    await cfg.update("profile", profile.trim() || "DEFAULT", vscode.ConfigurationTarget.Global);
-    await cfg.update("region", region.trim(), vscode.ConfigurationTarget.Global);
-    await cfg.update("compartmentId", compartmentId.trim(), vscode.ConfigurationTarget.Global);
-    await cfg.update("configFilePath", configFilePath.trim(), vscode.ConfigurationTarget.Global);
-
-    vscode.window.showInformationMessage("OCI profile settings updated.");
+    vscode.window.showInformationMessage(`Switched to profile: ${targetProfile}`);
   }
 
   public async configureApiKeyInteractive(): Promise<void> {

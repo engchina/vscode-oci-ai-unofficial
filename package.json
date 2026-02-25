@@ -57,7 +57,7 @@
       },
       {
         "command": "ociAi.auth.configureProfile",
-        "title": "vscode-oci-ai-unofficial: Configure Profile",
+        "title": "vscode-oci-ai-unofficial: Switch Profile",
         "shortTitle": "Profile"
       },
       {
