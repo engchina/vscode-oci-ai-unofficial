@@ -25,7 +25,7 @@ function AppContent() {
 
   if (!didHydrateState) {
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-[var(--vscode-sideBar-background)]">
+      <div className="flex h-full w-full items-center justify-center bg-[var(--vscode-sideBar-background)]">
         <div className="text-[var(--vscode-descriptionForeground)] text-sm">Loading...</div>
       </div>
     )
@@ -36,7 +36,7 @@ function AppContent() {
   }
 
   return (
-    <div className="flex h-screen w-full flex-col bg-[var(--vscode-sideBar-background)] overflow-hidden">
+    <div className="flex h-full w-full flex-col bg-[var(--vscode-sideBar-background)] overflow-hidden">
       <AccordionItem
         title="Settings"
         isOpen={openSection === "settings"}

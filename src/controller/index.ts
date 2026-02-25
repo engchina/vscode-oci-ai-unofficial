@@ -72,12 +72,13 @@ export class Controller {
   }
 
   /** Get current app state */
-  public getState(): AppState {
+  public async getState(): Promise<AppState> {
     const cfg = vscode.workspace.getConfiguration("ociAi");
     const compartmentId = cfg.get<string>("compartmentId", "").trim();
     const genAiLlmModelIdRaw =
       cfg.get<string>("genAiLlmModelId", "").trim() || cfg.get<string>("genAiModelId", "").trim();
     const hasModelName = splitModelNames(genAiLlmModelIdRaw).length > 0;
+    const secrets = await this.authManager.getApiKeySecrets();
 
     const warnings: string[] = [];
     if (!compartmentId) warnings.push("Compartment ID not set (OCI Settings → Compartment ID).");
@@ -92,6 +93,7 @@ export class Controller {
       chatCompartmentId: cfg.get<string>("chatCompartmentId", ""),
       adbCompartmentIds: Array.isArray(cfg.get("adbCompartmentIds")) ? cfg.get<string[]>("adbCompartmentIds") as string[] : [],
       profilesConfig: Array.isArray(cfg.get("profilesConfig")) ? cfg.get<any[]>("profilesConfig") as any[] : [],
+      tenancyOcid: secrets.tenancyOcid || "",
       genAiRegion: cfg.get<string>("genAiRegion", ""),
       genAiLlmModelId: genAiLlmModelIdRaw,
       genAiEmbeddingModelId: cfg.get<string>("genAiEmbeddingModelId", ""),
@@ -199,10 +201,10 @@ export class Controller {
   }
 
   /** Subscribe to state updates */
-  public subscribeToState(requestId: string, stream: StreamingResponseHandler<AppState>): void {
+  public async subscribeToState(requestId: string, stream: StreamingResponseHandler<AppState>): Promise<void> {
     this.stateSubscribers.set(requestId, stream);
     // Send initial state immediately
-    stream(this.getState(), false);
+    stream(await this.getState(), false);
   }
 
   /** Unsubscribe from state */
@@ -212,7 +214,7 @@ export class Controller {
 
   /** Broadcast state to all subscribers */
   public async broadcastState(): Promise<void> {
-    const state = this.getState();
+    const state = await this.getState();
     for (const [, stream] of this.stateSubscribers) {
       await stream(state, false);
     }

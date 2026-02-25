@@ -1,0 +1,272 @@
+import { clsx } from "clsx"
+import { Lock, Plus, Save, Trash2, Users } from "lucide-react"
+import { useCallback, useEffect, useState } from "react"
+import { StateServiceClient } from "../../services/grpc-client"
+import type { SettingsState, SavedCompartment } from "../../services/types"
+import Button from "../ui/Button"
+import Card from "../ui/Card"
+
+const EMPTY_SETTINGS: SettingsState = {
+    activeProfile: "DEFAULT",
+    profile: "",
+    region: "",
+    compartmentId: "",
+    computeCompartmentIds: [],
+    chatCompartmentId: "",
+    adbCompartmentIds: [],
+    genAiRegion: "",
+    genAiLlmModelId: "",
+    genAiEmbeddingModelId: "",
+    tenancyOcid: "",
+    userOcid: "",
+    fingerprint: "",
+    privateKey: "",
+    privateKeyPassphrase: "",
+    systemPrompt: "",
+    nativeToolCall: true,
+    parallelToolCalling: true,
+    strictPlanMode: true,
+    autoCompact: true,
+    checkpoints: true,
+    shellIntegrationTimeoutSec: 4,
+    chatMaxTokens: 64000,
+    chatTemperature: 0,
+    chatTopP: 1,
+    authMode: "config-file",
+    savedCompartments: [],
+    profilesConfig: [],
+}
+
+export default function ProfilesCompartmentsView() {
+    const [settings, setSettings] = useState<SettingsState>(EMPTY_SETTINGS)
+    const [loaded, setLoaded] = useState(false)
+    const [saving, setSaving] = useState(false)
+
+    useEffect(() => {
+        StateServiceClient.getSettings()
+            .then((state) => {
+                setSettings(state)
+                setLoaded(true)
+            })
+            .catch((error) => {
+                console.error("Failed to load settings:", error)
+                setLoaded(true)
+            })
+    }, [])
+
+    const updateField = useCallback(<K extends keyof SettingsState>(field: K, value: SettingsState[K]) => {
+        setSettings((prev) => ({ ...prev, [field]: value }))
+    }, [])
+
+    const handleSave = useCallback(async () => {
+        setSaving(true)
+        try {
+            await StateServiceClient.saveSettings({ ...settings, suppressNotification: true })
+        } catch (error) {
+            console.error("Failed to save settings:", error)
+        } finally {
+            setSaving(false)
+        }
+    }, [settings])
+
+    if (!loaded) {
+        return (
+            <div className="flex h-full items-center justify-center px-6">
+                <span className="text-sm text-description">Loading...</span>
+            </div>
+        )
+    }
+
+    return (
+        <div className="flex flex-col gap-4">
+            <h3 className="flex items-center gap-1.5 text-md font-semibold">
+                <Users size={14} />
+                Profiles & Compartments
+            </h3>
+            <p className="-mt-2 text-xs text-description">Manage OCI profiles and their compartment mappings.</p>
+
+            <ProfileConfigEditor settings={settings} updateField={updateField} />
+
+            <Button onClick={handleSave} disabled={saving} className="self-start px-4">
+                <Save size={14} className="mr-1.5" />
+                {saving ? "Saving..." : "Save Settings"}
+            </Button>
+        </div>
+    )
+}
+
+function ProfileConfigEditor({
+    settings,
+    updateField,
+}: {
+    settings: SettingsState
+    updateField: <K extends keyof SettingsState>(field: K, value: SettingsState[K]) => void
+}) {
+    const [newProfile, setNewProfile] = useState("")
+    const [newCompId, setNewCompId] = useState("")
+    const [newCompName, setNewCompName] = useState("")
+    const [editingProfile, setEditingProfile] = useState<string | null>(null)
+
+    const profiles = settings.profilesConfig || []
+    const tenancyOcid = settings.tenancyOcid?.trim() || ""
+
+    const addProfile = () => {
+        if (!newProfile.trim() || profiles.some(p => p.name === newProfile.trim())) return
+        const updated = [...profiles, { name: newProfile.trim(), compartments: [] }]
+        updateField("profilesConfig", updated)
+        if (!settings.activeProfile || settings.activeProfile === "DEFAULT") {
+            updateField("activeProfile", newProfile.trim())
+        }
+        setNewProfile("")
+    }
+
+    const removeProfile = (name: string) => {
+        const updated = profiles.filter(p => p.name !== name)
+        updateField("profilesConfig", updated)
+        if (settings.activeProfile === name) {
+            updateField("activeProfile", updated.length > 0 ? updated[0].name : "DEFAULT")
+        }
+    }
+
+    const addCompartment = (profileName: string) => {
+        if (!newCompId.trim() || !newCompName.trim()) return
+        const updated = profiles.map(p => {
+            if (p.name === profileName) {
+                if (p.compartments.some(c => c.id === newCompId.trim())) return p
+                return { ...p, compartments: [...p.compartments, { id: newCompId.trim(), name: newCompName.trim() }] }
+            }
+            return p
+        })
+        updateField("profilesConfig", updated)
+        setNewCompId("")
+        setNewCompName("")
+    }
+
+    const removeCompartment = (profileName: string, compId: string) => {
+        const updated = profiles.map(p => {
+            if (p.name === profileName) {
+                return { ...p, compartments: p.compartments.filter(c => c.id !== compId) }
+            }
+            return p
+        })
+        updateField("profilesConfig", updated)
+    }
+
+    return (
+        <div className="flex flex-col gap-4">
+            {/* Global Active Profile Selector */}
+            <Card title="Active Profile">
+                <div className="flex flex-col gap-1.5">
+                    <label className="text-xs text-description font-medium">Global Active Profile</label>
+                    <select
+                        value={settings.activeProfile || "DEFAULT"}
+                        onChange={e => updateField("activeProfile", e.target.value)}
+                        className="w-full rounded-md border border-input-border bg-input-background px-2 py-1.5 text-xs outline-none focus:border-border"
+                    >
+                        {profiles.length > 0 ? (
+                            profiles.map(p => (
+                                <option key={p.name} value={p.name}>{p.name}</option>
+                            ))
+                        ) : (
+                            <option value="DEFAULT">DEFAULT</option>
+                        )}
+                        {settings.activeProfile && settings.activeProfile !== "DEFAULT" && !profiles.some(p => p.name === settings.activeProfile) && (
+                            <option value={settings.activeProfile}>{settings.activeProfile} (Not configured)</option>
+                        )}
+                    </select>
+                    <p className="text-[10px] text-description">All feature compartments are fetched based on the global active profile.</p>
+                </div>
+            </Card>
+
+            {/* Profile List */}
+            <div className="flex flex-col gap-2">
+                {profiles.map(p => (
+                    <div key={p.name} className="flex flex-col gap-2 rounded-md border border-border-panel p-2 bg-[color-mix(in_srgb,var(--vscode-editor-background)_96%,black_4%)]">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold">{p.name}</span>
+                            <button
+                                onClick={() => removeProfile(p.name)}
+                                className="rounded p-1 text-description hover:bg-list-background-hover hover:text-error transition-colors"
+                                title="Remove Profile"
+                            >
+                                <Trash2 size={12} />
+                            </button>
+                        </div>
+
+                        {/* Compartments inside Profile */}
+                        <div className="flex flex-col pl-2 gap-1 border-l-2 border-border-panel">
+                            {/* Immutable Root Compartment (Tenancy OCID) */}
+                            {tenancyOcid && (
+                                <div className="flex items-center justify-between gap-2 px-2 py-1 rounded bg-[color-mix(in_srgb,var(--vscode-editor-background)_85%,black_15%)]">
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                        <Lock size={10} className="shrink-0 text-description" />
+                                        <div className="flex flex-col min-w-0">
+                                            <span className="text-xs truncate font-medium">Root (Tenancy)</span>
+                                            <span className="text-[10px] text-description truncate" title={tenancyOcid}>{tenancyOcid}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* User-defined Compartments */}
+                            {p.compartments.map(c => (
+                                <div key={c.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded bg-[color-mix(in_srgb,var(--vscode-editor-background)_90%,black_10%)]">
+                                    <div className="flex flex-col min-w-0">
+                                        <span className="text-xs truncate">{c.name}</span>
+                                        <span className="text-[10px] text-description truncate" title={c.id}>{c.id}</span>
+                                    </div>
+                                    <button
+                                        onClick={() => removeCompartment(p.name, c.id)}
+                                        className="shrink-0 text-description hover:text-error"
+                                    >
+                                        <Trash2 size={10} />
+                                    </button>
+                                </div>
+                            ))}
+
+                            {editingProfile === p.name ? (
+                                <div className="flex flex-col gap-1.5 mt-1 border-t border-border-panel pt-2">
+                                    <input
+                                        placeholder="Compartment Name (e.g. Prod)"
+                                        value={newCompName}
+                                        onChange={e => setNewCompName(e.target.value)}
+                                        className="rounded-md border border-input-border bg-input-background px-2 py-1.5 text-xs outline-none"
+                                    />
+                                    <input
+                                        placeholder="Compartment OCID"
+                                        value={newCompId}
+                                        onChange={e => setNewCompId(e.target.value)}
+                                        className="rounded-md border border-input-border bg-input-background px-2 py-1.5 text-xs outline-none"
+                                    />
+                                    <div className="flex gap-2 justify-end">
+                                        <Button size="sm" variant="secondary" onClick={() => setEditingProfile(null)}>Cancel</Button>
+                                        <Button size="sm" disabled={!newCompId.trim() || !newCompName.trim()} onClick={() => { addCompartment(p.name); setEditingProfile(null); }}>Add</Button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => { setEditingProfile(p.name); setNewCompId(""); setNewCompName(""); }}
+                                    className="flex items-center gap-1.5 mt-1 px-2 py-1 text-xs text-description hover:text-foreground transition-colors w-fit"
+                                >
+                                    <Plus size={12} /> Add Compartment
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                ))}
+
+                {/* Add Profile */}
+                <div className="flex gap-2 mt-2">
+                    <input
+                        placeholder="New Profile Name..."
+                        value={newProfile}
+                        onChange={e => setNewProfile(e.target.value)}
+                        onKeyDown={e => e.key === "Enter" && addProfile()}
+                        className="flex-1 rounded-md border border-input-border bg-input-background px-2 py-1.5 text-xs outline-none focus:border-border"
+                    />
+                    <Button size="sm" variant="secondary" onClick={addProfile} disabled={!newProfile.trim()}>Add Profile</Button>
+                </div>
+            </div>
+        </div>
+    )
+}

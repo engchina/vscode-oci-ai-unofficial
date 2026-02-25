@@ -1,5 +1,5 @@
 import { clsx } from "clsx"
-import { Check, ChevronDown, MonitorStop } from "lucide-react"
+import { Check, ChevronDown, Lock, MonitorStop } from "lucide-react"
 import { useState, useRef, useEffect } from "react"
 import { useExtensionState } from "../../context/ExtensionStateContext"
 import { StateServiceClient } from "../../services/grpc-client"
@@ -16,6 +16,7 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
         chatCompartmentId,
         adbCompartmentIds,
         profilesConfig,
+        tenancyOcid,
     } = useExtensionState()
 
     const [isOpen, setIsOpen] = useState(false)
@@ -23,13 +24,29 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
 
     // Determine current active profile config
     const activeProfileConfig = profilesConfig.find(p => p.name === activeProfile)
-    const availableCompartments = activeProfileConfig?.compartments || []
+    const profileCompartments = activeProfileConfig?.compartments || []
+
+    // Build available compartments: root (tenancy) first, then profile compartments
+    const rootCompartment = tenancyOcid?.trim()
+        ? { id: tenancyOcid.trim(), name: "Root (Tenancy)", isRoot: true }
+        : null
+    const availableCompartments = [
+        ...(rootCompartment ? [rootCompartment] : []),
+        ...profileCompartments.map(c => ({ ...c, isRoot: false })),
+    ]
 
     // Determine currently selected items for this feature
     let currentSelection: string[] = []
     if (featureKey === "compute") currentSelection = computeCompartmentIds
     else if (featureKey === "adb") currentSelection = adbCompartmentIds
-    else if (featureKey === "chat") currentSelection = chatCompartmentId ? [chatCompartmentId] : []
+    else if (featureKey === "chat") {
+        // Default chat to root compartment if nothing selected
+        if (chatCompartmentId) {
+            currentSelection = [chatCompartmentId]
+        } else if (rootCompartment) {
+            currentSelection = [rootCompartment.id]
+        }
+    }
 
     // Filter selection to only what's available
     currentSelection = currentSelection.filter(id => availableCompartments.some(c => c.id === id))
@@ -115,9 +132,12 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
                                 )}>
                                     {isSelected && <Check size={10} className={multiple ? "text-button-primary-foreground" : ""} />}
                                 </div>
-                                <div className="flex flex-col min-w-0">
-                                    <span className="truncate text-foreground font-medium">{comp.name}</span>
-                                    <span className="truncate text-description text-[10px]">{comp.id}</span>
+                                <div className="flex items-center gap-1 min-w-0">
+                                    {comp.isRoot && <Lock size={10} className="shrink-0 text-description" />}
+                                    <div className="flex flex-col min-w-0">
+                                        <span className="truncate text-foreground font-medium">{comp.name}</span>
+                                        <span className="truncate text-description text-[10px]">{comp.id}</span>
+                                    </div>
                                 </div>
                             </button>
                         )
@@ -127,3 +147,4 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
         </div>
     )
 }
+

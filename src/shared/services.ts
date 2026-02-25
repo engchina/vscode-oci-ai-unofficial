@@ -31,6 +31,7 @@ export interface AppState {
   chatCompartmentId: string;
   adbCompartmentIds: string[];
   profilesConfig: ProfileConfig[];
+  tenancyOcid: string;
   genAiRegion: string;
   genAiLlmModelId: string;
   genAiEmbeddingModelId: string;
