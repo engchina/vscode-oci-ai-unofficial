@@ -4,11 +4,12 @@
   "description": "OCI development toolkit for VS Code, covering AI and broader OCI workflows.",
   "version": "0.0.4",
   "publisher": "local",
+  "icon": "icon.png",
   "engines": {
     "vscode": "^1.100.0"
   },
   "categories": [
-    "Cloud"
+    "Machine Learning"
   ],
   "activationEvents": [],
   "main": "./dist/extension.js",
@@ -28,24 +29,28 @@
           "id": "ociAi.settingsView",
           "type": "webview",
           "name": "OCI Settings",
+          "icon": "resources/oci-ai.svg",
           "visibility": "collapsed"
         },
         {
           "id": "ociAi.adbView",
           "type": "webview",
           "name": "Autonomous AI Databases",
+          "icon": "resources/oci-ai.svg",
           "visibility": "collapsed"
         },
         {
           "id": "ociAi.computeView",
           "type": "webview",
           "name": "Compute Instances",
+          "icon": "resources/oci-ai.svg",
           "visibility": "collapsed"
         },
         {
           "type": "webview",
           "id": "ociAi.chatView",
           "name": "Generative AI Chat",
+          "icon": "resources/oci-ai.svg",
           "visibility": "visible"
         }
       ]
@@ -288,10 +293,19 @@
           "items": {
             "type": "object",
             "properties": {
-              "name": { "type": "string", "description": "Display name for this compartment" },
-              "id": { "type": "string", "description": "Compartment OCID" }
+              "name": {
+                "type": "string",
+                "description": "Display name for this compartment"
+              },
+              "id": {
+                "type": "string",
+                "description": "Compartment OCID"
+              }
             },
-            "required": ["name", "id"]
+            "required": [
+              "name",
+              "id"
+            ]
           }
         }
       }
