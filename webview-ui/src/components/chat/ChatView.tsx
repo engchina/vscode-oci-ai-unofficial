@@ -5,6 +5,7 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso"
 import { useExtensionState } from "../../context/ExtensionStateContext"
 import ChatRow from "./ChatRow"
 import ChatTextArea from "./ChatTextArea"
+import CompartmentSelector from "../ui/CompartmentSelector"
 import StreamingRow from "./StreamingRow"
 
 interface ChatViewProps {
@@ -48,6 +49,9 @@ export default function ChatView({ isHidden = false }: ChatViewProps) {
           <span>{configWarning}</span>
         </div>
       )}
+      <div className="px-3 pt-3 pb-1 border-b border-border-panel shrink-0">
+        <CompartmentSelector featureKey="chat" />
+      </div>
       <div className="flex min-h-0 flex-1 flex-col">
         {totalItems === 0 ? (
           <WelcomeSection />

@@ -16,11 +16,21 @@ export interface ChatMessageData {
   images?: ChatImageData[];
 }
 
+export interface ProfileConfig {
+  name: string;
+  compartments: SavedCompartment[];
+}
+
 /** Full application state pushed to webview */
 export interface AppState {
-  profile: string;
+  activeProfile: string;
+  profile: string; // legacy support
   region: string;
-  compartmentId: string;
+  compartmentId: string; // legacy support
+  computeCompartmentIds: string[];
+  chatCompartmentId: string;
+  adbCompartmentIds: string[];
+  profilesConfig: ProfileConfig[];
   genAiRegion: string;
   genAiLlmModelId: string;
   genAiEmbeddingModelId: string;
@@ -32,9 +42,13 @@ export interface AppState {
 
 /** Settings payload for saving */
 export interface SaveSettingsRequest {
-  profile: string;
+  activeProfile: string;
+  profile: string; // legacy support
   region: string;
-  compartmentId: string;
+  compartmentId: string; // legacy support
+  computeCompartmentIds: string[];
+  chatCompartmentId: string;
+  adbCompartmentIds: string[];
   genAiRegion: string;
   genAiLlmModelId: string;
   genAiEmbeddingModelId: string;
@@ -57,6 +71,9 @@ export interface SaveSettingsRequest {
   chatMaxTokens: number;
   chatTemperature: number;
   chatTopP: number;
+
+  // UI behavior
+  suppressNotification?: boolean;
 }
 
 /** A saved compartment entry */
@@ -69,8 +86,10 @@ export interface SavedCompartment {
 export interface SettingsState extends SaveSettingsRequest {
   /** Indicates which authentication method is currently active */
   authMode: "api-key" | "config-file";
-  /** Named compartments saved for quick switching */
+  /** Named compartments saved for quick switching (legacy) */
   savedCompartments: SavedCompartment[];
+  /** Named profiles and their compartments */
+  profilesConfig: ProfileConfig[];
 }
 
 /** Chat send request */

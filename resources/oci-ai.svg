@@ -1,48 +1,52 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
   <!-- Background removed for sidebar compatibility -->
   
-  <!-- Cloud Silhouette (Deep Red) -->
-  <path d="M70 160 h110 c25 0 45 -20 45 -45 c0 -23.5 -18 -42.5 -41 -44.5 c-6 -25 -28 -45 -54 -45 c-25 0 -47 17.5 -53 42 c-22 1 -40 20 -40 42.5 c0 24.5 19.5 45 44 45 Z" 
-        fill="none" stroke="#A71930" stroke-width="18" stroke-linejoin="round"/>
+  <g transform="translate(13, 25) scale(0.9)">
+    <g transform="translate(0, 15)">
+      <!-- Cloud Silhouette (Deep Red) -->
+      <path d="M70 160 h110 c25 0 45 -20 45 -45 c0 -23.5 -18 -42.5 -41 -44.5 c-6 -25 -28 -45 -54 -45 c-25 0 -47 17.5 -53 42 c-22 1 -40 20 -40 42.5 c0 24.5 19.5 45 44 45 Z" 
+            fill="none" stroke="#A71930" stroke-width="18" stroke-linejoin="round"/>
+            
+      <!-- Secondary Cloud Inner shadow effect line -->
+      <path d="M70 160 h110 c25 0 45 -20 45 -45 c0 -23.5 -18 -42.5 -41 -44.5 c-6 -25 -28 -45 -54 -45 c-25 0 -47 17.5 -53 42 c-22 1 -40 20 -40 42.5 c0 24.5 19.5 45 44 45 Z" 
+            fill="none" stroke="#500000" stroke-width="6" stroke-linejoin="round" transform="translate(0, 4)"/>
+
+      <!-- AI Brain / Node Network Background glow -->
+      <ellipse cx="128" cy="118" rx="35" ry="50" fill="none" stroke="#FF5050" stroke-width="8" opacity="0.8"/>
+      <ellipse cx="128" cy="118" rx="35" ry="50" fill="none" stroke="#FF8080" stroke-width="3" opacity="0.5"/>
+
+      <!-- Core 'O' Node -->
+      <circle cx="128" cy="118" r="10" fill="#FFC0C0" opacity="0.9"/>
+      <circle cx="128" cy="118" r="16" fill="none" stroke="#FF5050" stroke-width="4" opacity="0.6"/>
+
+      <!-- Neural Network Connections -->
+      <g stroke="#A71930" stroke-width="5" stroke-linecap="round">
+        <!-- Center to top/bottom -->
+        <line x1="128" y1="68" x2="128" y2="108" />
+        <line x1="128" y1="128" x2="128" y2="168" />
         
-  <!-- Secondary Cloud Inner shadow effect line -->
-  <path d="M70 160 h110 c25 0 45 -20 45 -45 c0 -23.5 -18 -42.5 -41 -44.5 c-6 -25 -28 -45 -54 -45 c-25 0 -47 17.5 -53 42 c-22 1 -40 20 -40 42.5 c0 24.5 19.5 45 44 45 Z" 
-        fill="none" stroke="#500000" stroke-width="6" stroke-linejoin="round" transform="translate(0, 4)"/>
+        <!-- Left side connections -->
+        <line x1="93" y1="118" x2="118" y2="118" />
+        <line x1="99" y1="88" x2="120" y2="110" />
+        <line x1="99" y1="148" x2="120" y2="126" />
 
-  <!-- AI Brain / Node Network Background glow -->
-  <ellipse cx="128" cy="118" rx="35" ry="50" fill="none" stroke="#FF5050" stroke-width="8" opacity="0.8"/>
-  <ellipse cx="128" cy="118" rx="35" ry="50" fill="none" stroke="#FF8080" stroke-width="3" opacity="0.5"/>
+        <!-- Right side connections -->
+        <line x1="163" y1="118" x2="138" y2="118" />
+        <line x1="157" y1="88" x2="136" y2="110" />
+        <line x1="157" y1="148" x2="136" y2="126" />
+      </g>
 
-  <!-- Core 'O' Node -->
-  <circle cx="128" cy="118" r="10" fill="#FFC0C0" opacity="0.9"/>
-  <circle cx="128" cy="118" r="16" fill="none" stroke="#FF5050" stroke-width="4" opacity="0.6"/>
-
-  <!-- Neural Network Connections -->
-  <g stroke="#A71930" stroke-width="5" stroke-linecap="round">
-    <!-- Center to top/bottom -->
-    <line x1="128" y1="68" x2="128" y2="108" />
-    <line x1="128" y1="128" x2="128" y2="168" />
-    
-    <!-- Left side connections -->
-    <line x1="93" y1="118" x2="118" y2="118" />
-    <line x1="99" y1="88" x2="120" y2="110" />
-    <line x1="99" y1="148" x2="120" y2="126" />
-
-    <!-- Right side connections -->
-    <line x1="163" y1="118" x2="138" y2="118" />
-    <line x1="157" y1="88" x2="136" y2="110" />
-    <line x1="157" y1="148" x2="136" y2="126" />
-  </g>
-
-  <!-- Network Nodes (Outer Dots) -->
-  <g fill="#FFA0A0">
-    <circle cx="128" cy="68" r="6" />
-    <circle cx="128" cy="168" r="6" />
-    <circle cx="93" cy="118" r="6" />
-    <circle cx="163" cy="118" r="6" />
-    <circle cx="99" cy="88" r="6" />
-    <circle cx="157" cy="88" r="6" />
-    <circle cx="99" cy="148" r="6" />
-    <circle cx="157" cy="148" r="6" />
+      <!-- Network Nodes (Outer Dots) -->
+      <g fill="#FFA0A0">
+        <circle cx="128" cy="68" r="6" />
+        <circle cx="128" cy="168" r="6" />
+        <circle cx="93" cy="118" r="6" />
+        <circle cx="163" cy="118" r="6" />
+        <circle cx="99" cy="88" r="6" />
+        <circle cx="157" cy="88" r="6" />
+        <circle cx="99" cy="148" r="6" />
+        <circle cx="157" cy="148" r="6" />
+      </g>
+    </g>
   </g>
 </svg>

@@ -84,9 +84,14 @@ export class Controller {
     if (!hasModelName) warnings.push("LLM Model Name not set (OCI Settings → LLM Model Name).");
 
     return {
+      activeProfile: cfg.get<string>("activeProfile", "DEFAULT"),
       profile: cfg.get<string>("profile", "DEFAULT"),
       region: cfg.get<string>("region", ""),
       compartmentId,
+      computeCompartmentIds: Array.isArray(cfg.get("computeCompartmentIds")) ? cfg.get<string[]>("computeCompartmentIds") as string[] : [],
+      chatCompartmentId: cfg.get<string>("chatCompartmentId", ""),
+      adbCompartmentIds: Array.isArray(cfg.get("adbCompartmentIds")) ? cfg.get<string[]>("adbCompartmentIds") as string[] : [],
+      profilesConfig: Array.isArray(cfg.get("profilesConfig")) ? cfg.get<any[]>("profilesConfig") as any[] : [],
       genAiRegion: cfg.get<string>("genAiRegion", ""),
       genAiLlmModelId: genAiLlmModelIdRaw,
       genAiEmbeddingModelId: cfg.get<string>("genAiEmbeddingModelId", ""),
@@ -105,10 +110,15 @@ export class Controller {
         ? "api-key"
         : "config-file";
     const savedCompartments = cfg.get<SavedCompartment[]>("savedCompartments", []);
+    const profilesConfig = cfg.get<any[]>("profilesConfig", []);
     return {
+      activeProfile: cfg.get<string>("activeProfile", "DEFAULT"),
       profile: cfg.get<string>("profile", "DEFAULT"),
       region: cfg.get<string>("region", ""),
       compartmentId: cfg.get<string>("compartmentId", ""),
+      computeCompartmentIds: Array.isArray(cfg.get("computeCompartmentIds")) ? cfg.get<string[]>("computeCompartmentIds") as string[] : [],
+      chatCompartmentId: cfg.get<string>("chatCompartmentId", ""),
+      adbCompartmentIds: Array.isArray(cfg.get("adbCompartmentIds")) ? cfg.get<string[]>("adbCompartmentIds") as string[] : [],
       genAiRegion: cfg.get<string>("genAiRegion", ""),
       genAiLlmModelId: cfg.get<string>("genAiLlmModelId", "") || cfg.get<string>("genAiModelId", ""),
       genAiEmbeddingModelId: cfg.get<string>("genAiEmbeddingModelId", ""),
@@ -125,15 +135,25 @@ export class Controller {
       ...secrets,
       authMode,
       savedCompartments: Array.isArray(savedCompartments) ? savedCompartments : [],
+      profilesConfig: Array.isArray(profilesConfig) ? profilesConfig : [],
     };
   }
 
   /** Save settings */
-  public async saveSettings(payload: SaveSettingsRequest): Promise<void> {
+  public async saveSettings(payload: SaveSettingsRequest & { profilesConfig?: any[] }): Promise<void> {
     const cfg = vscode.workspace.getConfiguration("ociAi");
+    await cfg.update("activeProfile", String(payload.activeProfile ?? "").trim() || "DEFAULT", vscode.ConfigurationTarget.Global);
     await cfg.update("profile", String(payload.profile ?? "").trim() || "DEFAULT", vscode.ConfigurationTarget.Global);
     await this.authManager.updateRegion(String(payload.region ?? ""));
     await this.authManager.updateCompartmentId(String(payload.compartmentId ?? ""));
+    await cfg.update("computeCompartmentIds", Array.isArray(payload.computeCompartmentIds) ? payload.computeCompartmentIds : [], vscode.ConfigurationTarget.Global);
+    await cfg.update("chatCompartmentId", String(payload.chatCompartmentId ?? "").trim(), vscode.ConfigurationTarget.Global);
+    await cfg.update("adbCompartmentIds", Array.isArray(payload.adbCompartmentIds) ? payload.adbCompartmentIds : [], vscode.ConfigurationTarget.Global);
+
+    if (payload.profilesConfig) {
+      await cfg.update("profilesConfig", payload.profilesConfig, vscode.ConfigurationTarget.Global);
+    }
+
     await cfg.update("genAiRegion", String(payload.genAiRegion ?? "").trim(), vscode.ConfigurationTarget.Global);
     await cfg.update("genAiLlmModelId", String(payload.genAiLlmModelId ?? "").trim(), vscode.ConfigurationTarget.Global);
     await cfg.update("genAiEmbeddingModelId", String(payload.genAiEmbeddingModelId ?? "").trim(), vscode.ConfigurationTarget.Global);
@@ -171,7 +191,9 @@ export class Controller {
       privateKey: String(payload.privateKey ?? ""),
       privateKeyPassphrase: String(payload.privateKeyPassphrase ?? ""),
     });
-    vscode.window.showInformationMessage("OCI settings saved.");
+    if (!payload.suppressNotification) {
+      vscode.window.showInformationMessage("OCI settings saved.");
+    }
     // Push updated state to subscribers
     await this.broadcastState();
   }

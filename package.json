@@ -36,20 +36,12 @@
     },
     "commands": [
       {
-        "command": "ociAi.refreshCompute",
-        "title": "Refresh Compute"
-      },
-      {
         "command": "ociAi.compute.start",
         "title": "Compute: Start Instance"
       },
       {
         "command": "ociAi.compute.stop",
         "title": "Compute: Stop Instance"
-      },
-      {
-        "command": "ociAi.refreshAdb",
-        "title": "Refresh ADB"
       },
       {
         "command": "ociAi.adb.start",
@@ -65,7 +57,8 @@
       },
       {
         "command": "ociAi.auth.configureProfile",
-        "title": "vscode-oci-ai-unofficial: Configure Profile"
+        "title": "vscode-oci-ai-unofficial: Configure Profile",
+        "shortTitle": "Profile"
       },
       {
         "command": "ociAi.auth.configureApiKey",
@@ -113,12 +106,7 @@
       ],
       "view/title": [
         {
-          "command": "ociAi.refreshCompute",
-          "when": "view == ociAi.mainView",
-          "group": "navigation"
-        },
-        {
-          "command": "ociAi.refreshAdb",
+          "command": "ociAi.auth.configureProfile",
           "when": "view == ociAi.mainView",
           "group": "navigation"
         }
@@ -175,10 +163,15 @@
     "configuration": {
       "title": "vscode-oci-ai-unofficial",
       "properties": {
+        "ociAi.activeProfile": {
+          "type": "string",
+          "default": "DEFAULT",
+          "description": "The currently active global profile"
+        },
         "ociAi.profile": {
           "type": "string",
           "default": "DEFAULT",
-          "description": "OCI profile name from ~/.oci/config"
+          "description": "Legacy OCI profile name from ~/.oci/config"
         },
         "ociAi.region": {
           "type": "string",
@@ -285,6 +278,63 @@
               "name",
               "id"
             ]
+          }
+        },
+        "ociAi.profilesConfig": {
+          "type": "array",
+          "default": [],
+          "description": "List of profiles and their associated compartments",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "OCI Profile name"
+              },
+              "compartments": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "compartments"
+            ]
+          }
+        },
+        "ociAi.computeCompartmentIds": {
+          "type": "array",
+          "default": [],
+          "description": "Selected compartment IDs for Compute",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ociAi.chatCompartmentId": {
+          "type": "string",
+          "default": "",
+          "description": "Selected compartment ID for Chat"
+        },
+        "ociAi.adbCompartmentIds": {
+          "type": "array",
+          "default": [],
+          "description": "Selected compartment IDs for ADB",
+          "items": {
+            "type": "string"
           }
         }
       }

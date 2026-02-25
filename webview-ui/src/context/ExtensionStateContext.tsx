@@ -15,10 +15,14 @@ export interface ExtensionStateContextType {
   // Hydration
   didHydrateState: boolean
 
-  // App state
+  activeProfile: string
   profile: string
   region: string
   compartmentId: string
+  computeCompartmentIds: string[]
+  chatCompartmentId: string
+  adbCompartmentIds: string[]
+  profilesConfig: { name: string; compartments: { id: string; name: string }[] }[]
   genAiRegion: string
   genAiLlmModelId: string
   genAiEmbeddingModelId: string
@@ -59,9 +63,14 @@ export function ExtensionStateContextProvider({ children }: { children: ReactNod
   const [isStreaming, setIsStreaming] = useState(false)
 
   const [state, setState] = useState<AppState>({
+    activeProfile: "DEFAULT",
     profile: "",
     region: "",
     compartmentId: "",
+    computeCompartmentIds: [],
+    chatCompartmentId: "",
+    adbCompartmentIds: [],
+    profilesConfig: [],
     genAiRegion: "",
     genAiLlmModelId: "",
     genAiEmbeddingModelId: "",
@@ -94,13 +103,13 @@ export function ExtensionStateContextProvider({ children }: { children: ReactNod
     const unsubscribeSettings = UiServiceClient.subscribeToSettingsButtonClicked({
       onResponse: () => setCurrentView("settings"),
       onError: (error) => console.error("Settings button subscription error:", error),
-      onComplete: () => {},
+      onComplete: () => { },
     })
 
     const unsubscribeChat = UiServiceClient.subscribeToChatButtonClicked({
       onResponse: () => setCurrentView("chat"),
       onError: (error) => console.error("Chat button subscription error:", error),
-      onComplete: () => {},
+      onComplete: () => { },
     })
 
     const unsubscribeCodeContext = UiServiceClient.subscribeToCodeContextReady({
@@ -109,7 +118,7 @@ export function ExtensionStateContextProvider({ children }: { children: ReactNod
         setCurrentView("chat")
       },
       onError: (error) => console.error("Code context subscription error:", error),
-      onComplete: () => {},
+      onComplete: () => { },
     })
 
     return () => {

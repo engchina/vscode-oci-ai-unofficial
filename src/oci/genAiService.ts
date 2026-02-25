@@ -29,7 +29,7 @@ type GenerationOverrides = {
 };
 
 export class GenAiService {
-  constructor(private readonly factory: OciClientFactory) {}
+  constructor(private readonly factory: OciClientFactory) { }
 
   public async chatStream(
     messages: ChatMessage[],
@@ -50,8 +50,8 @@ export class GenAiService {
     if (!modelName) {
       onToken(
         "Set `ociAi.genAiLlmModelId` (model name) to call OCI Generative AI.\n\n" +
-          "Echo: " +
-          (messages[messages.length - 1]?.text ?? "")
+        "Echo: " +
+        (messages[messages.length - 1]?.text ?? "")
       );
       return;
     }
@@ -95,7 +95,7 @@ export class GenAiService {
       triedVariants.push(variant.name);
       const request = {
         chatDetails: {
-          compartmentId: this.factory.getCompartmentId(),
+          compartmentId: cfg.get<string>("chatCompartmentId", "").trim() || this.factory.getCompartmentId(),
           servingMode: {
             servingType: "ON_DEMAND",
             modelId: modelName

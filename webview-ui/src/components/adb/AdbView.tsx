@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ResourceServiceClient } from "../../services/grpc-client"
 import type { AdbResource, ConnectAdbResponse, ExecuteAdbSqlResponse } from "../../services/types"
 import Button from "../ui/Button"
+import CompartmentSelector from "../ui/CompartmentSelector"
 import Input from "../ui/Input"
 import Textarea from "../ui/Textarea"
 
@@ -287,8 +288,9 @@ export default function AdbView() {
         </button>
       </div>
 
-      {databases.length > 0 && (
-        <div className="border-b border-border-panel px-3 py-2">
+      <div className="border-b border-border-panel px-3 pt-3 pb-2 flex flex-col gap-2">
+        <CompartmentSelector featureKey="adb" multiple />
+        {databases.length > 0 && (
           <div className="flex items-center gap-2 rounded-lg border border-input-border bg-input-background px-2.5 py-1.5">
             <Search size={12} className="shrink-0 text-description" />
             <input
@@ -299,8 +301,8 @@ export default function AdbView() {
               className="flex-1 bg-transparent text-xs text-input-foreground outline-none placeholder:text-input-placeholder"
             />
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-4">
         {error && (

@@ -19,10 +19,20 @@ export interface ChatMessageData {
   images?: ChatImageData[]
 }
 
+export interface ProfileConfig {
+  name: string
+  compartments: SavedCompartment[]
+}
+
 export interface AppState {
+  activeProfile: string
   profile: string
   region: string
   compartmentId: string
+  computeCompartmentIds: string[]
+  chatCompartmentId: string
+  adbCompartmentIds: string[]
+  profilesConfig: ProfileConfig[]
   genAiRegion: string
   genAiLlmModelId: string
   genAiEmbeddingModelId: string
@@ -32,9 +42,13 @@ export interface AppState {
 }
 
 export interface SaveSettingsRequest {
+  activeProfile: string
   profile: string
   region: string
   compartmentId: string
+  computeCompartmentIds: string[]
+  chatCompartmentId: string
+  adbCompartmentIds: string[]
   genAiRegion: string
   genAiLlmModelId: string
   genAiEmbeddingModelId: string
@@ -55,6 +69,8 @@ export interface SaveSettingsRequest {
   chatMaxTokens: number
   chatTemperature: number
   chatTopP: number
+
+  suppressNotification?: boolean
 }
 
 export interface SavedCompartment {
@@ -67,6 +83,7 @@ export interface SettingsState extends SaveSettingsRequest {
   authMode: "api-key" | "config-file"
   /** Named compartments saved for quick switching */
   savedCompartments: SavedCompartment[]
+  profilesConfig: ProfileConfig[]
 }
 
 export interface SendMessageRequest {

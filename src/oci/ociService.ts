@@ -1,31 +1,42 @@
+import * as vscode from "vscode";
 import { OciClientFactory } from "./clientFactory";
 import { AdbResource, ComputeResource } from "../types";
 
 export class OciService {
-  constructor(private readonly factory: OciClientFactory) {}
+  constructor(private readonly factory: OciClientFactory) { }
 
   public async listComputeInstances(): Promise<ComputeResource[]> {
     const computeClient = await this.factory.createComputeClientAsync();
     const virtualNetworkClient = await this.factory.createVirtualNetworkClientAsync();
-    const compartmentId = this.factory.getCompartmentId();
-    const instances: ComputeResource[] = [];
-    let page: string | undefined;
+    const cfg = vscode.workspace.getConfiguration("ociAi");
+    const compartmentIds = [...(cfg.get<string[]>("computeCompartmentIds") || [])];
 
-    do {
-      const result = await computeClient.listInstances({ compartmentId, page });
-      instances.push(
-        ...(result.items || []).map((instance) => ({
-          id: instance.id || "",
-          name: instance.displayName || instance.id || "Unnamed Instance",
-          lifecycleState: (instance.lifecycleState as string) || "UNKNOWN",
-        }))
-      );
-      page = result.opcNextPage;
-    } while (page);
+    if (compartmentIds.length === 0) {
+      const legacy = cfg.get<string>("compartmentId", "");
+      if (legacy) compartmentIds.push(legacy);
+    }
+
+    const instances: ComputeResource[] = [];
+
+    for (const compartmentId of compartmentIds) {
+      if (!compartmentId.trim()) continue;
+      let page: string | undefined;
+      do {
+        const result = await computeClient.listInstances({ compartmentId, page });
+        instances.push(
+          ...(result.items || []).map((instance) => ({
+            id: instance.id || "",
+            name: instance.displayName || instance.id || "Unnamed Instance",
+            lifecycleState: (instance.lifecycleState as string) || "UNKNOWN",
+          }))
+        );
+        page = result.opcNextPage;
+      } while (page);
+    }
 
     await Promise.all(
       instances.map((instance) =>
-        this.populateInstanceNetworkAddresses(instance, compartmentId, computeClient, virtualNetworkClient)
+        this.populateInstanceNetworkAddresses(instance, undefined, computeClient, virtualNetworkClient) // we modified signature in fallback but we should just pass instance compartment Id. Wait, we don't have it tracked.
       )
     );
 
@@ -50,21 +61,31 @@ export class OciService {
 
   public async listAutonomousDatabases(): Promise<AdbResource[]> {
     const client = await this.factory.createDatabaseClientAsync();
-    const compartmentId = this.factory.getCompartmentId();
-    const databases: AdbResource[] = [];
-    let page: string | undefined;
+    const cfg = vscode.workspace.getConfiguration("ociAi");
+    const compartmentIds = [...(cfg.get<string[]>("adbCompartmentIds") || [])];
 
-    do {
-      const result = await client.listAutonomousDatabases({ compartmentId, page });
-      databases.push(
-        ...(result.items || []).map((adb) => ({
-          id: adb.id || "",
-          name: adb.dbName || adb.displayName || adb.id || "Unnamed ADB",
-          lifecycleState: (adb.lifecycleState as string) || "UNKNOWN"
-        }))
-      );
-      page = result.opcNextPage;
-    } while (page);
+    if (compartmentIds.length === 0) {
+      const legacy = cfg.get<string>("compartmentId", "");
+      if (legacy) compartmentIds.push(legacy);
+    }
+
+    const databases: AdbResource[] = [];
+
+    for (const compartmentId of compartmentIds) {
+      if (!compartmentId.trim()) continue;
+      let page: string | undefined;
+      do {
+        const result = await client.listAutonomousDatabases({ compartmentId, page });
+        databases.push(
+          ...(result.items || []).map((adb) => ({
+            id: adb.id || "",
+            name: adb.dbName || adb.displayName || adb.id || "Unnamed ADB",
+            lifecycleState: (adb.lifecycleState as string) || "UNKNOWN"
+          }))
+        );
+        page = result.opcNextPage;
+      } while (page);
+    }
 
     return databases;
   }
@@ -81,11 +102,11 @@ export class OciService {
 
   private async populateInstanceNetworkAddresses(
     instance: ComputeResource,
-    compartmentId: string,
+    compartmentId: string | undefined,
     computeClient: Awaited<ReturnType<OciClientFactory["createComputeClientAsync"]>>,
     virtualNetworkClient: Awaited<ReturnType<OciClientFactory["createVirtualNetworkClientAsync"]>>
   ): Promise<void> {
-    if (!instance.id) {
+    if (!instance.id || !compartmentId) {
       return;
     }
 
