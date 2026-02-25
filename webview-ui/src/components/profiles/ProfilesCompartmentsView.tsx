@@ -42,6 +42,7 @@ export default function ProfilesCompartmentsView() {
     const [loaded, setLoaded] = useState(false)
     const [saving, setSaving] = useState(false)
 
+    // Load settings and subscribe to state broadcasts for refresh
     useEffect(() => {
         StateServiceClient.getSettings()
             .then((state) => {
@@ -52,6 +53,20 @@ export default function ProfilesCompartmentsView() {
                 console.error("Failed to load settings:", error)
                 setLoaded(true)
             })
+
+        // Subscribe to state broadcasts so we refresh when profiles change from other tabs
+        const unsubscribe = StateServiceClient.subscribeToState({
+            onResponse: () => {
+                // Re-fetch full settings when state changes
+                StateServiceClient.getSettings()
+                    .then((state) => setSettings(state))
+                    .catch((error) => console.error("Failed to refresh settings:", error))
+            },
+            onError: (error) => console.error("State subscription error:", error),
+            onComplete: () => { },
+        })
+
+        return () => { unsubscribe() }
     }, [])
 
     const updateField = useCallback(<K extends keyof SettingsState>(field: K, value: SettingsState[K]) => {
@@ -106,17 +121,21 @@ function ProfileConfigEditor({
     const [newCompId, setNewCompId] = useState("")
     const [newCompName, setNewCompName] = useState("")
     const [editingProfile, setEditingProfile] = useState<string | null>(null)
+    const [selectedProfile, setSelectedProfile] = useState<string | null>(null)
 
     const profiles = settings.profilesConfig || []
     const tenancyOcid = settings.tenancyOcid?.trim() || ""
+
+    // Auto-select first profile if none selected or if current selection no longer exists
+    const effectiveSelectedProfile = (selectedProfile && profiles.some(p => p.name === selectedProfile))
+        ? selectedProfile
+        : (profiles.length > 0 ? profiles[0].name : null)
 
     const addProfile = () => {
         if (!newProfile.trim() || profiles.some(p => p.name === newProfile.trim())) return
         const updated = [...profiles, { name: newProfile.trim(), compartments: [] }]
         updateField("profilesConfig", updated)
-        if (!settings.activeProfile || settings.activeProfile === "DEFAULT") {
-            updateField("activeProfile", newProfile.trim())
-        }
+        setSelectedProfile(newProfile.trim())
         setNewProfile("")
     }
 
@@ -125,6 +144,9 @@ function ProfileConfigEditor({
         updateField("profilesConfig", updated)
         if (settings.activeProfile === name) {
             updateField("activeProfile", updated.length > 0 ? updated[0].name : "DEFAULT")
+        }
+        if (selectedProfile === name) {
+            setSelectedProfile(updated.length > 0 ? updated[0].name : null)
         }
     }
 
@@ -154,13 +176,13 @@ function ProfileConfigEditor({
 
     return (
         <div className="flex flex-col gap-4">
-            {/* Global Active Profile Selector */}
-            <Card title="Active Profile">
+            {/* Profile Selector (for compartment maintenance, NOT global active profile) */}
+            <Card title="Profile">
                 <div className="flex flex-col gap-1.5">
-                    <label className="text-xs text-description font-medium">Global Active Profile</label>
+                    <label className="text-xs text-description font-medium">Select Profile to Manage Compartments</label>
                     <select
-                        value={settings.activeProfile || "DEFAULT"}
-                        onChange={e => updateField("activeProfile", e.target.value)}
+                        value={effectiveSelectedProfile || ""}
+                        onChange={e => setSelectedProfile(e.target.value)}
                         className="w-full rounded-md border border-input-border bg-input-background px-2 py-1.5 text-xs outline-none focus:border-border"
                     >
                         {profiles.length > 0 ? (
@@ -168,20 +190,19 @@ function ProfileConfigEditor({
                                 <option key={p.name} value={p.name}>{p.name}</option>
                             ))
                         ) : (
-                            <option value="DEFAULT">DEFAULT</option>
-                        )}
-                        {settings.activeProfile && settings.activeProfile !== "DEFAULT" && !profiles.some(p => p.name === settings.activeProfile) && (
-                            <option value={settings.activeProfile}>{settings.activeProfile} (Not configured)</option>
+                            <option value="" disabled>No profiles available</option>
                         )}
                     </select>
-                    <p className="text-[10px] text-description">All feature compartments are fetched based on the global active profile.</p>
+                    <p className="text-[10px] text-description">Choose which profile's compartments to manage below. This does not affect the global active profile.</p>
                 </div>
             </Card>
 
-            {/* Profile List */}
-            <div className="flex flex-col gap-2">
-                {profiles.map(p => (
-                    <div key={p.name} className="flex flex-col gap-2 rounded-md border border-border-panel p-2 bg-[color-mix(in_srgb,var(--vscode-editor-background)_96%,black_4%)]">
+            {/* Compartments for Selected Profile */}
+            {effectiveSelectedProfile && (() => {
+                const p = profiles.find(pr => pr.name === effectiveSelectedProfile)
+                if (!p) return null
+                return (
+                    <div className="flex flex-col gap-2 rounded-md border border-border-panel p-2 bg-[color-mix(in_srgb,var(--vscode-editor-background)_96%,black_4%)]">
                         <div className="flex items-center justify-between">
                             <span className="text-xs font-semibold">{p.name}</span>
                             <button
@@ -253,19 +274,23 @@ function ProfileConfigEditor({
                             )}
                         </div>
                     </div>
-                ))}
+                )
+            })()}
 
-                {/* Add Profile */}
-                <div className="flex gap-2 mt-2">
-                    <input
-                        placeholder="New Profile Name..."
-                        value={newProfile}
-                        onChange={e => setNewProfile(e.target.value)}
-                        onKeyDown={e => e.key === "Enter" && addProfile()}
-                        className="flex-1 rounded-md border border-input-border bg-input-background px-2 py-1.5 text-xs outline-none focus:border-border"
-                    />
-                    <Button size="sm" variant="secondary" onClick={addProfile} disabled={!newProfile.trim()}>Add Profile</Button>
-                </div>
+            {!effectiveSelectedProfile && profiles.length === 0 && (
+                <div className="text-xs text-description px-2 py-2">No profiles available. Add a profile in the API Configuration tab or below.</div>
+            )}
+
+            {/* Add Profile */}
+            <div className="flex gap-2 mt-2">
+                <input
+                    placeholder="New Profile Name..."
+                    value={newProfile}
+                    onChange={e => setNewProfile(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && addProfile()}
+                    className="flex-1 rounded-md border border-input-border bg-input-background px-2 py-1.5 text-xs outline-none focus:border-border"
+                />
+                <Button size="sm" variant="secondary" onClick={addProfile} disabled={!newProfile.trim()}>Add Profile</Button>
             </div>
         </div>
     )

@@ -1,5 +1,5 @@
 import { clsx } from "clsx"
-import { Bot, Info, LoaderCircle, Save, Settings2, Sliders, Terminal, Users, Wrench } from "lucide-react"
+import { Bot, Info, LoaderCircle, Plus, Save, Settings2, Sliders, Terminal, Trash2, Users, Wrench } from "lucide-react"
 import { useCallback, useEffect, useState, type ChangeEvent, type Dispatch, type SetStateAction } from "react"
 import { StateServiceClient } from "../../services/grpc-client"
 import type { SettingsState } from "../../services/types"
@@ -178,6 +178,7 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
             {activeTab === "api-config" && (
               <ApiConfigTab
                 settings={settings}
+                setSettings={setSettings}
                 updateField={updateField}
                 handleSave={handleSave}
                 handleFileUpload={handleFileUpload}
@@ -240,18 +241,56 @@ function splitModelNames(raw: string): string[] {
 
 function ApiConfigTab({
   settings,
+  setSettings,
   updateField,
   handleSave,
   handleFileUpload,
   saving,
 }: {
   settings: SettingsState
+  setSettings: React.Dispatch<React.SetStateAction<SettingsState>>
   updateField: UpdateFieldFn
   handleSave: () => void
   handleFileUpload: (e: ChangeEvent<HTMLInputElement>) => void
   saving: boolean
 }) {
+  const [newProfileName, setNewProfileName] = useState("")
   const validationErrors = validateSettings(settings)
+  const profiles = settings.profilesConfig || []
+
+  const addProfile = async () => {
+    const name = newProfileName.trim()
+    if (!name || profiles.some(p => p.name === name)) return
+    const updatedProfiles = [...profiles, { name, compartments: [] }]
+    const updatedSettings = { ...settings, profilesConfig: updatedProfiles }
+    if (!settings.profile || settings.profile === "DEFAULT") {
+      updatedSettings.profile = name
+    }
+    setSettings(updatedSettings)
+    setNewProfileName("")
+    try {
+      await StateServiceClient.saveSettings({ ...updatedSettings, suppressNotification: true })
+    } catch (error) {
+      console.error("Failed to save profile:", error)
+    }
+  }
+
+  const deleteProfile = async (name: string) => {
+    const updatedProfiles = profiles.filter(p => p.name !== name)
+    const updatedSettings = { ...settings, profilesConfig: updatedProfiles }
+    if (settings.profile === name) {
+      updatedSettings.profile = updatedProfiles.length > 0 ? updatedProfiles[0].name : "DEFAULT"
+    }
+    if (settings.activeProfile === name) {
+      updatedSettings.activeProfile = updatedProfiles.length > 0 ? updatedProfiles[0].name : "DEFAULT"
+    }
+    setSettings(updatedSettings)
+    try {
+      await StateServiceClient.saveSettings({ ...updatedSettings, suppressNotification: true })
+    } catch (error) {
+      console.error("Failed to delete profile:", error)
+    }
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -294,27 +333,59 @@ function ApiConfigTab({
           : "Fill in Tenancy OCID, User OCID, Fingerprint, and Private Key below to switch to API Key auth."}
       </p>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="profile" className="text-xs text-description font-medium">Profile</label>
-        <select
-          id="profile"
-          value={settings.profile || "DEFAULT"}
-          onChange={(e) => updateField("profile", e.target.value)}
-          className="w-full rounded-md border border-input-border bg-input-background px-2 py-1.5 text-xs outline-none focus:border-border"
-        >
-          {(settings.profilesConfig || []).length > 0 ? (
-            (settings.profilesConfig || []).map(p => (
-              <option key={p.name} value={p.name}>{p.name}</option>
-            ))
-          ) : (
-            <option value="DEFAULT">DEFAULT</option>
-          )}
-          {settings.profile && settings.profile !== "DEFAULT" && !(settings.profilesConfig || []).some(p => p.name === settings.profile) && (
-            <option value={settings.profile}>{settings.profile} (Not configured)</option>
-          )}
-        </select>
-        <p className="text-[10px] text-description">Select a profile for editing on this page. This does not change the global active profile.</p>
-      </div>
+      {/* Profile Management */}
+      <Card title="Profile">
+        <div className="flex flex-col gap-1">
+          <label htmlFor="profile" className="text-xs text-description font-medium">Select Profile</label>
+          <div className="flex flex-col gap-2">
+            {profiles.length > 0 ? (
+              profiles.map(p => (
+                <div key={p.name} className={clsx(
+                  "flex items-center justify-between gap-2 rounded-md border px-2 py-1.5 transition-colors",
+                  settings.profile === p.name
+                    ? "border-button-primary-background bg-[color-mix(in_srgb,var(--vscode-editor-background)_85%,var(--vscode-button-background)_15%)]"
+                    : "border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_96%,black_4%)]"
+                )}>
+                  <button
+                    className="flex-1 text-left text-xs font-medium"
+                    onClick={() => updateField("profile", p.name)}
+                  >
+                    {p.name}
+                    {settings.profile === p.name && (
+                      <span className="ml-2 text-[10px] text-description">(Selected)</span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => deleteProfile(p.name)}
+                    className="shrink-0 rounded p-1 text-description hover:bg-list-background-hover hover:text-error transition-colors"
+                    title={`Delete profile "${p.name}"`}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))
+            ) : (
+              <div className="text-xs text-description px-2 py-1.5">No profiles configured. Add one below.</div>
+            )}
+          </div>
+          <p className="text-[10px] text-description mt-1">Select a profile for editing on this page. This does not change the global active profile.</p>
+        </div>
+
+        {/* Add Profile */}
+        <div className="flex gap-2 mt-2 border-t border-border-panel pt-3">
+          <input
+            placeholder="New Profile Name..."
+            value={newProfileName}
+            onChange={e => setNewProfileName(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && addProfile()}
+            className="flex-1 rounded-md border border-input-border bg-input-background px-2 py-1.5 text-xs outline-none focus:border-border"
+          />
+          <Button size="sm" variant="secondary" onClick={addProfile} disabled={!newProfileName.trim()}>
+            <Plus size={12} className="mr-1" />
+            Add
+          </Button>
+        </div>
+      </Card>
 
       <Card title="API Key (SecretStorage)">
         <p className="-mt-1 text-xs text-description">
