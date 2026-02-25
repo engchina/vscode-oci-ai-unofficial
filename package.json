@@ -26,30 +26,9 @@
     "views": {
       "ociAi": [
         {
-          "id": "ociAi.settingsView",
+          "id": "ociAi.mainView",
           "type": "webview",
-          "name": "OCI Settings",
-          "icon": "resources/oci-ai.svg",
-          "visibility": "collapsed"
-        },
-        {
-          "id": "ociAi.adbView",
-          "type": "webview",
-          "name": "Autonomous AI Databases",
-          "icon": "resources/oci-ai.svg",
-          "visibility": "collapsed"
-        },
-        {
-          "id": "ociAi.computeView",
-          "type": "webview",
-          "name": "Compute Instances",
-          "icon": "resources/oci-ai.svg",
-          "visibility": "collapsed"
-        },
-        {
-          "type": "webview",
-          "id": "ociAi.chatView",
-          "name": "Generative AI Chat",
+          "name": "OCI Tools",
           "icon": "resources/oci-ai.svg",
           "visibility": "visible"
         }
@@ -135,34 +114,34 @@
       "view/title": [
         {
           "command": "ociAi.refreshCompute",
-          "when": "view == ociAi.computeView",
+          "when": "view == ociAi.mainView",
           "group": "navigation"
         },
         {
           "command": "ociAi.refreshAdb",
-          "when": "view == ociAi.adbView",
+          "when": "view == ociAi.mainView",
           "group": "navigation"
         }
       ],
       "view/item/context": [
         {
           "command": "ociAi.compute.start",
-          "when": "view == ociAi.computeView && viewItem == computeInstance",
+          "when": "view == ociAi.mainView && viewItem == computeInstance",
           "group": "inline"
         },
         {
           "command": "ociAi.compute.stop",
-          "when": "view == ociAi.computeView && viewItem == computeInstance",
+          "when": "view == ociAi.mainView && viewItem == computeInstance",
           "group": "inline"
         },
         {
           "command": "ociAi.adb.start",
-          "when": "view == ociAi.adbView && viewItem == adbInstance",
+          "when": "view == ociAi.mainView && viewItem == adbInstance",
           "group": "inline"
         },
         {
           "command": "ociAi.adb.stop",
-          "when": "view == ociAi.adbView && viewItem == adbInstance",
+          "when": "view == ociAi.mainView && viewItem == adbInstance",
           "group": "inline"
         }
       ],

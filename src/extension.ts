@@ -19,33 +19,15 @@ export function activate(context: vscode.ExtensionContext): void {
   const controller = new Controller(authManager, ociService, genAiService, adbSqlService, context.workspaceState);
 
   // Sidebar webview providers (React app)
-  const chatWebviewProvider = new OciWebviewProvider(context, controller, "chat");
-  const settingsWebviewProvider = new OciWebviewProvider(context, controller, "settings");
-  const computeWebviewProvider = new OciWebviewProvider(context, controller, "compute");
-  const adbWebviewProvider = new OciWebviewProvider(context, controller, "adb");
+  const mainWebviewProvider = new OciWebviewProvider(context, controller, "main");
 
   context.subscriptions.push(
     new vscode.Disposable(() => {
       void adbSqlService.dispose();
     }),
     vscode.window.registerWebviewViewProvider(
-      OciWebviewProvider.CHAT_VIEW_ID,
-      chatWebviewProvider,
-      { webviewOptions: { retainContextWhenHidden: true } },
-    ),
-    vscode.window.registerWebviewViewProvider(
-      OciWebviewProvider.SETTINGS_VIEW_ID,
-      settingsWebviewProvider,
-      { webviewOptions: { retainContextWhenHidden: true } },
-    ),
-    vscode.window.registerWebviewViewProvider(
-      OciWebviewProvider.COMPUTE_VIEW_ID,
-      computeWebviewProvider,
-      { webviewOptions: { retainContextWhenHidden: true } },
-    ),
-    vscode.window.registerWebviewViewProvider(
-      OciWebviewProvider.ADB_VIEW_ID,
-      adbWebviewProvider,
+      OciWebviewProvider.MAIN_VIEW_ID,
+      mainWebviewProvider,
       { webviewOptions: { retainContextWhenHidden: true } },
     ),
   );
@@ -56,12 +38,12 @@ export function activate(context: vscode.ExtensionContext): void {
     ociService,
     genAiService,
     controller,
-    refreshCompute: () => computeWebviewProvider.refresh(),
-    refreshAdb: () => adbWebviewProvider.refresh(),
+    refreshCompute: () => mainWebviewProvider.refresh(),
+    refreshAdb: () => mainWebviewProvider.refresh(),
   });
 
   // Ensure Generative AI Chat is open by default on every activation/reload
-  vscode.commands.executeCommand("ociAi.chatView.focus");
+  vscode.commands.executeCommand("ociAi.mainView.focus");
 }
 
-export function deactivate(): void {}
+export function deactivate(): void { }

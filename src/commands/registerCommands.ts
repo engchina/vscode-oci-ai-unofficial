@@ -31,11 +31,11 @@ export function registerCommands(
     }),
     // Open settings: reveal OCI Settings view
     vscode.commands.registerCommand("ociAi.openSettings", async () => {
-      await vscode.commands.executeCommand("ociAi.settingsView.focus");
+      await vscode.commands.executeCommand("ociAi.mainView.focus");
     }),
     // Open chat: reveal Generative AI Chat view
     vscode.commands.registerCommand("ociAi.openChat", async () => {
-      await vscode.commands.executeCommand("ociAi.chatView.focus");
+      await vscode.commands.executeCommand("ociAi.mainView.focus");
     }),
     // Send selected code (or current file) to AI chat
     vscode.commands.registerCommand("ociAi.editor.sendToChat", async () => {
@@ -59,7 +59,7 @@ export function registerCommands(
       const language = editor.document.languageId;
 
       await controller.fireCodeContext({ code, filename, language });
-      await vscode.commands.executeCommand("ociAi.chatView.focus");
+      await vscode.commands.executeCommand("ociAi.mainView.focus");
     }),
     // AI Code Review: send selected code with a review prompt
     vscode.commands.registerCommand("ociAi.editor.codeReview", async () => {
@@ -80,7 +80,7 @@ export function registerCommands(
       const language = editor.document.languageId;
       const prompt = "Please review this code. Identify any bugs, security issues, performance problems, and suggest improvements.";
       await controller.fireCodeContext({ code, filename, language, prompt });
-      await vscode.commands.executeCommand("ociAi.chatView.focus");
+      await vscode.commands.executeCommand("ociAi.mainView.focus");
     }),
     // Generate Docs: send selected code with a doc generation prompt
     vscode.commands.registerCommand("ociAi.editor.generateDocs", async () => {
@@ -101,7 +101,7 @@ export function registerCommands(
       const language = editor.document.languageId;
       const prompt = "Please generate comprehensive documentation (JSDoc/docstring) for this code, including parameter descriptions, return values, and usage examples.";
       await controller.fireCodeContext({ code, filename, language, prompt });
-      await vscode.commands.executeCommand("ociAi.chatView.focus");
+      await vscode.commands.executeCommand("ociAi.mainView.focus");
     }),
     // Switch compartment via QuickPick
     vscode.commands.registerCommand("ociAi.switchCompartment", async () => {
@@ -144,9 +144,9 @@ export function registerCommands(
       refreshAdb();
     }),
     // Start/Stop commands are handled directly in the webview; these are no-ops for compatibility
-    vscode.commands.registerCommand("ociAi.compute.start", () => {}),
-    vscode.commands.registerCommand("ociAi.compute.stop", () => {}),
-    vscode.commands.registerCommand("ociAi.adb.start", () => {}),
-    vscode.commands.registerCommand("ociAi.adb.stop", () => {}),
+    vscode.commands.registerCommand("ociAi.compute.start", () => { }),
+    vscode.commands.registerCommand("ociAi.compute.stop", () => { }),
+    vscode.commands.registerCommand("ociAi.adb.start", () => { }),
+    vscode.commands.registerCommand("ociAi.adb.stop", () => { }),
   );
 }

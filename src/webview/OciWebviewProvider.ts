@@ -5,13 +5,10 @@ import { Controller } from "../controller/index";
 import { handleGrpcRequest, handleGrpcRequestCancel } from "../controller/grpc-handler";
 import type { ExtensionMessage, WebviewMessage } from "../shared/messages";
 
-type HostView = "chat" | "settings" | "compute" | "adb";
+type HostView = "main";
 
 export class OciWebviewProvider implements vscode.WebviewViewProvider {
-  public static readonly CHAT_VIEW_ID = "ociAi.chatView";
-  public static readonly SETTINGS_VIEW_ID = "ociAi.settingsView";
-  public static readonly COMPUTE_VIEW_ID = "ociAi.computeView";
-  public static readonly ADB_VIEW_ID = "ociAi.adbView";
+  public static readonly MAIN_VIEW_ID = "ociAi.mainView";
 
   private webview?: vscode.WebviewView;
   private disposables: vscode.Disposable[] = [];
@@ -20,7 +17,7 @@ export class OciWebviewProvider implements vscode.WebviewViewProvider {
     private readonly context: vscode.ExtensionContext,
     private readonly controller: Controller,
     private readonly hostView: HostView,
-  ) {}
+  ) { }
 
   /** Send a refresh signal to the webview */
   public refresh(): void {
