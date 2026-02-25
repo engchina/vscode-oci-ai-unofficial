@@ -382,7 +382,7 @@ export class Controller {
         : vscode.TaskScope.Global;
 
     const task = new vscode.Task(
-      { type: "ociAiSsh", instanceId: request.instanceId || host },
+      { type: "ociAiSsh", instanceId: request.instanceId || host, _ts: Date.now() },
       taskScope,
       `SSH ${request.instanceName?.trim() || host}`,
       "OCI AI",
@@ -391,7 +391,7 @@ export class Controller {
     task.presentationOptions = {
       reveal: vscode.TaskRevealKind.Always,
       focus: true,
-      panel: vscode.TaskPanelKind.Dedicated,
+      panel: vscode.TaskPanelKind.New,
       clear: false,
     };
     await vscode.tasks.executeTask(task);

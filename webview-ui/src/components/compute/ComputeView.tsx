@@ -13,6 +13,7 @@ const POLL_INTERVAL_MS = 5000
 const SSH_USER_OVERRIDES_STORAGE_KEY = "ociAi.compute.sshUserOverrides"
 const SSH_USER_OVERRIDES_MIGRATION_V2_KEY = "ociAi.compute.sshUserOverridesMigration.v2"
 const LEGACY_COMPUTE_DEFAULT_USERNAME = "ubuntu"
+const SSH_KEY_OVERRIDES_STORAGE_KEY = "ociAi.compute.sshKeyOverrides"
 
 export default function ComputeView() {
   const [instances, setInstances] = useState<ComputeResource[]>([])
@@ -23,6 +24,7 @@ export default function ComputeView() {
   const [query, setQuery] = useState("")
   const [sshConfig, setSshConfig] = useState<SshConfig>(loadSshConfig)
   const [sshUserOverrides, setSshUserOverrides] = useState<Record<string, string>>(loadSshUserOverrides)
+  const [sshKeyOverrides, setSshKeyOverrides] = useState<Record<string, string>>(loadSshKeyOverrides)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -115,6 +117,9 @@ export default function ComputeView() {
         return
       }
 
+      const effectiveKeyPath =
+        sshKeyOverrides[instance.id]?.trim() || sshConfig.privateKeyPath.trim() || undefined
+
       setConnectingId(instance.id)
       try {
         await ResourceServiceClient.connectComputeSsh({
@@ -123,7 +128,7 @@ export default function ComputeView() {
           host,
           username,
           port: sshConfig.port,
-          privateKeyPath: sshConfig.privateKeyPath.trim() || undefined,
+          privateKeyPath: effectiveKeyPath,
           disableHostKeyChecking: sshConfig.disableHostKeyChecking,
         })
       } catch (err) {
@@ -132,7 +137,7 @@ export default function ComputeView() {
         setConnectingId(null)
       }
     },
-    [sshConfig, sshUserOverrides],
+    [sshConfig, sshUserOverrides, sshKeyOverrides],
   )
 
   useEffect(() => {
@@ -171,6 +176,14 @@ export default function ComputeView() {
       // Ignore local persistence failures in restricted webview environments.
     }
   }, [sshUserOverrides])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SSH_KEY_OVERRIDES_STORAGE_KEY, JSON.stringify(sshKeyOverrides))
+    } catch {
+      // Ignore local persistence failures in restricted webview environments.
+    }
+  }, [sshKeyOverrides])
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -249,11 +262,15 @@ export default function ComputeView() {
                   connectingId={connectingId}
                   sshConfig={sshConfig}
                   sshUserOverride={sshUserOverrides[instance.id] || ""}
+                  sshKeyOverride={sshKeyOverrides[instance.id] || ""}
                   onStart={handleStart}
                   onStop={handleStop}
                   onConnect={handleConnect}
                   onChangeSshUserOverride={(instanceId, username) =>
                     setSshUserOverrides((prev) => ({ ...prev, [instanceId]: username }))
+                  }
+                  onChangeSshKeyOverride={(instanceId, keyPath) =>
+                    setSshKeyOverrides((prev) => ({ ...prev, [instanceId]: keyPath }))
                   }
                 />
               ))
@@ -271,20 +288,24 @@ function InstanceCard({
   connectingId,
   sshConfig,
   sshUserOverride,
+  sshKeyOverride,
   onStart,
   onStop,
   onConnect,
   onChangeSshUserOverride,
+  onChangeSshKeyOverride,
 }: {
   instance: ComputeResource
   actionState: ActionState
   connectingId: string | null
   sshConfig: SshConfig
   sshUserOverride: string
+  sshKeyOverride: string
   onStart: (id: string) => void
   onStop: (id: string) => void
   onConnect: (instance: ComputeResource) => void
   onChangeSshUserOverride: (instanceId: string, username: string) => void
+  onChangeSshKeyOverride: (instanceId: string, keyPath: string) => void
 }) {
   const isActing = actionState?.id === instance.id
   const isConnecting = connectingId === instance.id
@@ -321,6 +342,17 @@ function InstanceCard({
               placeholder={defaultUsername}
               className="h-7 min-w-0 flex-1 rounded-md border border-input-border bg-input-background px-2 text-xs outline-none"
               title="Per-instance SSH username override"
+            />
+          </div>
+          <div className="mt-1 flex max-w-[320px] items-center gap-2">
+            <span className="shrink-0 text-[11px] text-description">Identity</span>
+            <input
+              type="text"
+              value={sshKeyOverride}
+              onChange={(e) => onChangeSshKeyOverride(instance.id, e.target.value)}
+              placeholder={sshConfig.privateKeyPath.trim() || "~/.ssh/id_rsa"}
+              className="h-7 min-w-0 flex-1 rounded-md border border-input-border bg-input-background px-2 text-xs outline-none"
+              title="Per-instance private key path override (e.g. ~/.ssh/id_rsa)"
             />
           </div>
         </div>
@@ -430,6 +462,23 @@ function loadSshUserOverrides(): Record<string, string> {
         window.localStorage.setItem(SSH_USER_OVERRIDES_STORAGE_KEY, JSON.stringify(cleaned))
       }
       window.localStorage.setItem(SSH_USER_OVERRIDES_MIGRATION_V2_KEY, "1")
+    }
+    return cleaned
+  } catch {
+    return {}
+  }
+}
+
+function loadSshKeyOverrides(): Record<string, string> {
+  try {
+    const raw = window.localStorage.getItem(SSH_KEY_OVERRIDES_STORAGE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    const cleaned: Record<string, string> = {}
+    for (const [instanceId, keyPath] of Object.entries(parsed || {})) {
+      if (typeof keyPath === "string") {
+        cleaned[instanceId] = keyPath
+      }
     }
     return cleaned
   } catch {
