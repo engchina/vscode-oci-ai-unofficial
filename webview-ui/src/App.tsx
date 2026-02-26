@@ -1,5 +1,6 @@
 import { useState } from "react"
 import AdbView from "./components/adb/AdbView"
+import DbSystemsView from "./components/dbsystems/DbSystemsView"
 import ChatView from "./components/chat/ChatView"
 import ComputeView from "./components/compute/ComputeView"
 import VcnView from "./components/vcn/VcnView"
@@ -59,12 +60,22 @@ function AppContent() {
       </AccordionItem>
 
       <AccordionItem
-        title="Autonomous AI Databases"
+        title="Autonomous AI Database"
         isOpen={openSection === "adb"}
         onToggle={() => toggleSection("adb")}
       >
         <div className="flex flex-col h-full">
           <AdbView />
+        </div>
+      </AccordionItem>
+
+      <AccordionItem
+        title="Oracle Base Database Service"
+        isOpen={openSection === "dbsystem"}
+        onToggle={() => toggleSection("dbsystem")}
+      >
+        <div className="flex flex-col h-full">
+          <DbSystemsView />
         </div>
       </AccordionItem>
 

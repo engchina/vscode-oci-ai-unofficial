@@ -32,6 +32,7 @@ export interface AppState {
   computeCompartmentIds: string[]
   chatCompartmentId: string
   adbCompartmentIds: string[]
+  dbSystemCompartmentIds: string[]
   vcnCompartmentIds: string[]
   profilesConfig: ProfileConfig[]
   tenancyOcid: string
@@ -51,6 +52,7 @@ export interface SaveSettingsRequest {
   computeCompartmentIds: string[]
   chatCompartmentId: string
   adbCompartmentIds: string[]
+  dbSystemCompartmentIds: string[]
   vcnCompartmentIds: string[]
   genAiRegion: string
   genAiLlmModelId: string
@@ -188,6 +190,15 @@ export interface AdbResource {
   region?: string
 }
 
+export interface DbSystemResource {
+  id: string
+  name: string
+  lifecycleState: ResourceState | string
+  compartmentId?: string
+  region?: string
+  nodeIps?: string[]
+}
+
 export interface VcnResource {
   id: string;
   name: string;
@@ -235,6 +246,57 @@ export interface ListComputeResponse {
 export interface ListAdbResponse {
   databases: AdbResource[]
 }
+
+export interface ListDbSystemsResponse {
+  dbSystems: DbSystemResource[]
+}
+
+export interface ConnectDbSystemRequest {
+  dbSystemId: string
+  username: string
+  password?: string
+  serviceName: string
+}
+
+export interface ConnectDbSystemResponse {
+  connectionId: string
+  dbSystemId: string
+  serviceName: string
+}
+
+export interface ConnectDbSystemSshRequest {
+  dbSystemId: string
+  dbSystemName?: string
+  host: string
+  username: string
+  port?: number
+  privateKeyPath?: string
+  disableHostKeyChecking?: boolean
+}
+
+export interface ConnectDbSystemSshResponse {
+  launched: boolean
+}
+
+export interface ExecuteDbSystemSqlRequest {
+  connectionId: string
+  sql: string
+}
+
+export interface SaveDbSystemConnectionRequest {
+  dbSystemId: string
+  username: string
+  password?: string
+  serviceName: string
+}
+
+export interface LoadDbSystemConnectionResponse {
+  dbSystemId: string
+  username: string
+  password?: string
+  serviceName: string
+}
+
 
 export interface ListVcnResponse {
   vcns: VcnResource[];

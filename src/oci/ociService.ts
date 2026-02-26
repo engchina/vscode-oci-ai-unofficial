@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { OciClientFactory } from "./clientFactory";
-import { AdbResource, ComputeResource, VcnResource, SecurityListResource, SecurityRule } from "../types";
+import { AdbResource, ComputeResource, VcnResource, SecurityListResource, SecurityRule, DbSystemResource } from "../types";
 
 export class OciService {
   constructor(private readonly factory: OciClientFactory) { }
@@ -108,6 +108,82 @@ export class OciService {
   public async stopAutonomousDatabase(autonomousDatabaseId: string, region?: string): Promise<void> {
     const client = await this.factory.createDatabaseClientAsync(region);
     await client.stopAutonomousDatabase({ autonomousDatabaseId });
+  }
+
+  public async listDbSystems(): Promise<DbSystemResource[]> {
+    const cfg = vscode.workspace.getConfiguration("ociAi");
+    const compartmentIds = [...(cfg.get<string[]>("dbSystemCompartmentIds") || [])];
+    const regions = splitRegions(cfg.get<string>("region", ""));
+
+    if (compartmentIds.length === 0) {
+      const legacy = cfg.get<string>("compartmentId", "");
+      if (legacy) compartmentIds.push(legacy);
+    }
+
+    const dbSystems: DbSystemResource[] = [];
+
+    for (const region of regions) {
+      const dbClient = await this.factory.createDatabaseClientAsync(region);
+      const vcnClient = await this.factory.createVirtualNetworkClientAsync(region);
+
+      for (const compartmentId of compartmentIds) {
+        const normalized = compartmentId.trim();
+        if (!normalized) continue;
+
+        let page: string | undefined;
+        do {
+          const result = await dbClient.listDbSystems({ compartmentId: normalized, page });
+          const regionSystems = (result.items || []).map((sys) => ({
+            id: sys.id || "",
+            name: sys.displayName || sys.id || "Unnamed DB System",
+            lifecycleState: (sys.lifecycleState as string) || "UNKNOWN",
+            compartmentId: normalized,
+            region,
+            nodeIps: [],
+          }));
+
+          dbSystems.push(...regionSystems);
+
+          await Promise.all(
+            regionSystems.map((sys) =>
+              this.populateDbSystemNetworkAddresses(sys, normalized, dbClient, vcnClient)
+            )
+          );
+
+          page = result.opcNextPage;
+        } while (page);
+      }
+    }
+
+    return dbSystems;
+  }
+
+  public async startDbSystem(dbSystemId: string, region?: string): Promise<void> {
+    const client = await this.factory.createDatabaseClientAsync(region);
+    const dbSystem = await client.getDbSystem({ dbSystemId });
+    const nodes = await client.listDbNodes({
+      compartmentId: dbSystem.dbSystem.compartmentId || "",
+      dbSystemId
+    });
+    for (const node of nodes.items || []) {
+      if (node.id) {
+        await client.dbNodeAction({ dbNodeId: node.id, action: "START" });
+      }
+    }
+  }
+
+  public async stopDbSystem(dbSystemId: string, region?: string): Promise<void> {
+    const client = await this.factory.createDatabaseClientAsync(region);
+    const dbSystem = await client.getDbSystem({ dbSystemId });
+    const nodes = await client.listDbNodes({
+      compartmentId: dbSystem.dbSystem.compartmentId || "",
+      dbSystemId
+    });
+    for (const node of nodes.items || []) {
+      if (node.id) {
+        await client.dbNodeAction({ dbNodeId: node.id, action: "STOP" });
+      }
+    }
   }
 
   public async listVcns(): Promise<VcnResource[]> {
@@ -255,6 +331,32 @@ export class OciService {
     } catch {
       // Best-effort enrichment: if address lookup fails, keep listing instances without IPs.
     }
+  }
+
+  private async populateDbSystemNetworkAddresses(
+    dbSystem: DbSystemResource,
+    compartmentId: string,
+    dbClient: Awaited<ReturnType<OciClientFactory["createDatabaseClientAsync"]>>,
+    vcnClient: Awaited<ReturnType<OciClientFactory["createVirtualNetworkClientAsync"]>>
+  ): Promise<void> {
+    if (!dbSystem.id) return;
+    try {
+      const nodesResult = await dbClient.listDbNodes({
+        compartmentId,
+        dbSystemId: dbSystem.id,
+      });
+      const ips: string[] = [];
+      for (const node of nodesResult.items || []) {
+        if (node.vnicId) {
+          try {
+            const vnic = (await vcnClient.getVnic({ vnicId: node.vnicId })).vnic;
+            if (vnic?.privateIp) ips.push(vnic.privateIp);
+            if (vnic?.publicIp) ips.push(vnic.publicIp);
+          } catch { }
+        }
+      }
+      dbSystem.nodeIps = ips.filter((v, i, a) => a.indexOf(v) === i); // Unique IPs
+    } catch { }
   }
 
   private async listAllVnicAttachments(

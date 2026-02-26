@@ -96,6 +96,7 @@ export class Controller {
       computeCompartmentIds: Array.isArray(cfg.get("computeCompartmentIds")) ? cfg.get<string[]>("computeCompartmentIds") as string[] : [],
       chatCompartmentId: cfg.get<string>("chatCompartmentId", ""),
       adbCompartmentIds: Array.isArray(cfg.get("adbCompartmentIds")) ? cfg.get<string[]>("adbCompartmentIds") as string[] : [],
+      dbSystemCompartmentIds: Array.isArray(cfg.get("dbSystemCompartmentIds")) ? cfg.get<string[]>("dbSystemCompartmentIds") as string[] : [],
       vcnCompartmentIds: Array.isArray(cfg.get("vcnCompartmentIds")) ? cfg.get<string[]>("vcnCompartmentIds") as string[] : [],
       profilesConfig: Array.isArray(cfg.get("profilesConfig")) ? cfg.get<any[]>("profilesConfig") as any[] : [],
       tenancyOcid: secrets.tenancyOcid || "",
@@ -127,6 +128,7 @@ export class Controller {
       computeCompartmentIds: Array.isArray(cfg.get("computeCompartmentIds")) ? cfg.get<string[]>("computeCompartmentIds") as string[] : [],
       chatCompartmentId: cfg.get<string>("chatCompartmentId", ""),
       adbCompartmentIds: Array.isArray(cfg.get("adbCompartmentIds")) ? cfg.get<string[]>("adbCompartmentIds") as string[] : [],
+      dbSystemCompartmentIds: Array.isArray(cfg.get("dbSystemCompartmentIds")) ? cfg.get<string[]>("dbSystemCompartmentIds") as string[] : [],
       vcnCompartmentIds: Array.isArray(cfg.get("vcnCompartmentIds")) ? cfg.get<string[]>("vcnCompartmentIds") as string[] : [],
       genAiRegion: cfg.get<string>("genAiRegion", ""),
       genAiLlmModelId: cfg.get<string>("genAiLlmModelId", "") || cfg.get<string>("genAiModelId", ""),
@@ -170,6 +172,7 @@ export class Controller {
     await cfg.update("computeCompartmentIds", Array.isArray(payload.computeCompartmentIds) ? payload.computeCompartmentIds : [], vscode.ConfigurationTarget.Global);
     await cfg.update("chatCompartmentId", String(payload.chatCompartmentId ?? "").trim(), vscode.ConfigurationTarget.Global);
     await cfg.update("adbCompartmentIds", Array.isArray(payload.adbCompartmentIds) ? payload.adbCompartmentIds : [], vscode.ConfigurationTarget.Global);
+    await cfg.update("dbSystemCompartmentIds", Array.isArray(payload.dbSystemCompartmentIds) ? payload.dbSystemCompartmentIds : [], vscode.ConfigurationTarget.Global);
     await cfg.update("vcnCompartmentIds", Array.isArray(payload.vcnCompartmentIds) ? payload.vcnCompartmentIds : [], vscode.ConfigurationTarget.Global);
 
     if (payload.profilesConfig) {
@@ -580,6 +583,147 @@ export class Controller {
   public async listVcns(): Promise<import("../types").VcnResource[]> {
     return this.ociService.listVcns();
   }
+
+  public async listDbSystems(): Promise<import("../types").DbSystemResource[]> {
+    return this.ociService.listDbSystems();
+  }
+
+  public async startDbSystem(dbSystemId: string, region?: string): Promise<void> {
+    return this.ociService.startDbSystem(dbSystemId, region);
+  }
+
+  public async stopDbSystem(dbSystemId: string, region?: string): Promise<void> {
+    return this.ociService.stopDbSystem(dbSystemId, region);
+  }
+
+  public async connectDbSystem(request: import("../shared/services").ConnectDbSystemRequest): Promise<import("../shared/services").ConnectDbSystemResponse> {
+    return this.adbSqlService.connectDbSystem(request);
+  }
+
+  public async disconnectDbSystem(connectionId: string): Promise<void> {
+    return this.adbSqlService.disconnect(connectionId);
+  }
+
+  public async executeDbSystemSql(request: import("../shared/services").ExecuteDbSystemSqlRequest): Promise<import("../shared/services").ExecuteAdbSqlResponse> {
+    return this.adbSqlService.executeDbSystemSql(request);
+  }
+
+  public async saveDbSystemConnection(request: import("../shared/services").SaveDbSystemConnectionRequest): Promise<void> {
+    const dbId = String(request.dbSystemId ?? "").trim();
+    if (!dbId) {
+      throw new Error("dbSystemId is required.");
+    }
+
+    const cfg = vscode.workspace.getConfiguration("ociAi");
+    const existing = cfg.get<any[]>("dbSystemConnectionProfiles", []);
+    const profiles = Array.isArray(existing) ? existing : [];
+
+    const profile = {
+      dbSystemId: dbId,
+      username: String(request.username ?? "").trim(),
+      serviceName: String(request.serviceName ?? "").trim(),
+    };
+
+    const updated = profiles.filter(p => p.dbSystemId !== dbId).concat(profile);
+    await cfg.update("dbSystemConnectionProfiles", updated, vscode.ConfigurationTarget.Global);
+
+    const secrets = this.authManager;
+    await secrets["context"].secrets.store(`ociAi.dbSystem.${dbId}.password`, String(request.password ?? ""));
+  }
+
+  public async loadDbSystemConnection(dbSystemId: string): Promise<import("../shared/services").LoadDbSystemConnectionResponse | null> {
+    const dbId = String(dbSystemId ?? "").trim();
+    if (!dbId) {
+      return null;
+    }
+
+    const cfg = vscode.workspace.getConfiguration("ociAi");
+    const existing = cfg.get<any[]>("dbSystemConnectionProfiles", []);
+    const profiles = Array.isArray(existing) ? existing : [];
+    const profile = profiles.find(p => p.dbSystemId === dbId);
+    if (!profile) {
+      return null;
+    }
+
+    const secretStore = this.authManager["context"].secrets;
+    const password = (await secretStore.get(`ociAi.dbSystem.${dbId}.password`)) ?? "";
+
+    return {
+      dbSystemId: profile.dbSystemId,
+      username: profile.username,
+      serviceName: profile.serviceName,
+      password,
+    };
+  }
+
+  public async deleteDbSystemConnection(dbSystemId: string): Promise<void> {
+    const dbId = String(dbSystemId ?? "").trim();
+    if (!dbId) {
+      return;
+    }
+
+    const cfg = vscode.workspace.getConfiguration("ociAi");
+    const existing = cfg.get<any[]>("dbSystemConnectionProfiles", []);
+    const profiles = Array.isArray(existing) ? existing : [];
+    await cfg.update(
+      "dbSystemConnectionProfiles",
+      profiles.filter(p => p.dbSystemId !== dbId),
+      vscode.ConfigurationTarget.Global,
+    );
+
+    const secretStore = this.authManager["context"].secrets;
+    await secretStore.delete(`ociAi.dbSystem.${dbId}.password`);
+  }
+
+  public async connectDbSystemSsh(request: import("../shared/services").ConnectDbSystemSshRequest): Promise<import("../shared/services").ConnectDbSystemSshResponse> {
+    const host = String(request.host ?? "").trim();
+    const username = String(request.username ?? "").trim();
+    if (!host) {
+      throw new Error("SSH host is required.");
+    }
+    if (!username) {
+      throw new Error("SSH username is required.");
+    }
+
+    const rawPort = request.port;
+    const port = typeof rawPort === "number" ? rawPort : Number(rawPort);
+    const privateKeyPath = expandHomePath(String(request.privateKeyPath ?? "").trim());
+    const disableHostKeyChecking = Boolean(request.disableHostKeyChecking);
+
+    const args: string[] = [];
+    if (Number.isFinite(port) && port > 0 && port <= 65535 && port !== 22) {
+      args.push("-p", String(Math.trunc(port)));
+    }
+    if (privateKeyPath) {
+      args.push("-i", privateKeyPath);
+    }
+    if (disableHostKeyChecking) {
+      args.push("-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null");
+    }
+    args.push(`${username}@${host}`);
+
+    const taskScope =
+      vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0
+        ? vscode.TaskScope.Workspace
+        : vscode.TaskScope.Global;
+
+    const task = new vscode.Task(
+      { type: "ociAiSshDbSystem", dbSystemId: request.dbSystemId || host, _ts: Date.now() },
+      taskScope,
+      `SSH DB Node: ${request.dbSystemName?.trim() || host}`,
+      "OCI AI",
+      new vscode.ShellExecution("ssh", args)
+    );
+    task.presentationOptions = {
+      reveal: vscode.TaskRevealKind.Always,
+      focus: true,
+      panel: vscode.TaskPanelKind.New,
+      clear: false,
+    };
+    await vscode.tasks.executeTask(task);
+    return { launched: true };
+  }
+
 
   public async listSecurityLists(vcnId: string, region?: string): Promise<import("../types").SecurityListResource[]> {
     return this.ociService.listSecurityLists(vcnId, region);

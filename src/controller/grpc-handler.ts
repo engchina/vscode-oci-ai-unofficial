@@ -170,6 +170,34 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
       await c.deleteAdbConnection(String(msg.autonomousDatabaseId ?? ""));
       return {};
     },
+    listDbSystems: async (c) => ({ dbSystems: await c.listDbSystems() }),
+    startDbSystem: async (c, msg) => {
+      await c.startDbSystem(msg.dbSystemId, typeof msg.region === "string" ? msg.region : undefined);
+      return {};
+    },
+    stopDbSystem: async (c, msg) => {
+      await c.stopDbSystem(msg.dbSystemId, typeof msg.region === "string" ? msg.region : undefined);
+      return {};
+    },
+    connectDbSystem: async (c, msg) => c.connectDbSystem(msg),
+    connectDbSystemSsh: async (c, msg) => c.connectDbSystemSsh(msg),
+    disconnectDbSystem: async (c, msg) => {
+      await c.disconnectDbSystem(msg.connectionId);
+      return {};
+    },
+    executeDbSystemSql: async (c, msg) => c.executeDbSystemSql(msg),
+    saveDbSystemConnection: async (c, msg) => {
+      await c.saveDbSystemConnection(msg);
+      return {};
+    },
+    loadDbSystemConnection: async (c, msg) => {
+      const result = await c.loadDbSystemConnection(String(msg.dbSystemId ?? ""));
+      return result ?? {};
+    },
+    deleteDbSystemConnection: async (c, msg) => {
+      await c.deleteDbSystemConnection(String(msg.dbSystemId ?? ""));
+      return {};
+    },
     listVcns: async (c) => ({ vcns: await c.listVcns() }),
     listSecurityLists: async (c, msg) => ({ securityLists: await c.listSecurityLists(msg.vcnId, msg.region) }),
     createSecurityList: async (c, msg) => {

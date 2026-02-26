@@ -177,13 +177,22 @@ function SecurityListForm({
         }
         setSaving(true)
         setError(null)
+
+        const sanitizeRules = (rules: SecurityRule[]) => rules.map(r => {
+            const copy = { ...r };
+            if (!copy.description || copy.description.trim() === "") {
+                delete copy.description;
+            }
+            return copy;
+        });
+
         try {
             if (initialData) {
                 await ResourceServiceClient.updateSecurityList({
                     securityListId: initialData.id,
                     region,
-                    ingressSecurityRules: ingressRules,
-                    egressSecurityRules: egressRules
+                    ingressSecurityRules: sanitizeRules(ingressRules),
+                    egressSecurityRules: sanitizeRules(egressRules)
                 })
             } else {
                 await ResourceServiceClient.createSecurityList({
@@ -191,8 +200,8 @@ function SecurityListForm({
                     compartmentId,
                     name,
                     region,
-                    ingressSecurityRules: ingressRules,
-                    egressSecurityRules: egressRules
+                    ingressSecurityRules: sanitizeRules(ingressRules),
+                    egressSecurityRules: sanitizeRules(egressRules)
                 })
             }
             onSave()

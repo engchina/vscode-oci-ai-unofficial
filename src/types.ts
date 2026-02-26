@@ -10,6 +10,15 @@ export interface ComputeResource {
   privateIp?: string;
 }
 
+export interface DbSystemResource {
+  id: string;
+  name: string;
+  lifecycleState: ResourceState | string;
+  compartmentId?: string;
+  region?: string;
+  nodeIps?: string[];
+}
+
 export interface AdbResource {
   id: string;
   name: string;

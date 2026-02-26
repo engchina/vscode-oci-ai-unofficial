@@ -349,7 +349,7 @@ export default function AdbView() {
             <Database size={14} />
           </div>
           <div className="flex min-w-0 flex-col">
-            <span className="text-sm font-semibold">Autonomous AI Databases</span>
+            <span className="text-sm font-semibold">Autonomous AI Database</span>
             {isPolling ? (
               <span className="text-xs text-warning animate-pulse">Auto-refreshing every 5s...</span>
             ) : (

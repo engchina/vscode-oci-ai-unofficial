@@ -12,6 +12,9 @@ import type {
   DownloadAdbWalletResponse,
   ExecuteAdbSqlRequest,
   ExecuteAdbSqlResponse,
+  ConnectDbSystemRequest,
+  ConnectDbSystemResponse,
+  ExecuteDbSystemSqlRequest,
 } from "../shared/services";
 
 type DbConnection = {
@@ -145,6 +148,50 @@ export class AdbSqlService {
     await entry.connection.close();
   }
 
+  public async connectDbSystem(request: ConnectDbSystemRequest): Promise<ConnectDbSystemResponse> {
+    const dbSystemId = request.dbSystemId.trim();
+    const username = request.username.trim();
+    const serviceName = request.serviceName.trim();
+
+    if (!dbSystemId) throw new Error("dbSystemId is required.");
+    if (!username) throw new Error("username is required.");
+    if (!request.password) throw new Error("password is required.");
+    if (!serviceName) throw new Error("serviceName (connection string) is required.");
+
+    const oracledb = loadOracleDb();
+    await this.disconnectAll();
+
+    let connection: DbConnection;
+    try {
+      connection = (await oracledb.getConnection({
+        user: username,
+        password: request.password,
+        connectString: serviceName,
+      })) as DbConnection;
+    } catch (error) {
+      throw enrichConnectError(error, dbSystemId, serviceName);
+    }
+
+    const connectionId = randomUUID();
+    this.connections.set(connectionId, {
+      connection,
+      autonomousDatabaseId: dbSystemId,
+    });
+    return {
+      connectionId,
+      dbSystemId,
+      serviceName,
+    };
+  }
+
+  public async executeDbSystemSql(request: ExecuteDbSystemSqlRequest): Promise<ExecuteAdbSqlResponse> {
+    // Database execution logic is identical
+    return this.executeSql({
+      connectionId: request.connectionId,
+      sql: request.sql,
+    });
+  }
+
   public async executeSql(request: ExecuteAdbSqlRequest): Promise<ExecuteAdbSqlResponse> {
     const connectionId = request.connectionId.trim();
     const sql = request.sql.trim();
@@ -169,8 +216,8 @@ export class AdbSqlService {
     if (Array.isArray(result.rows)) {
       const columns = Array.isArray(result.metaData)
         ? result.metaData
-            .map((m: any) => String(m?.name ?? "").trim())
-            .filter((name: string) => name.length > 0)
+          .map((m: any) => String(m?.name ?? "").trim())
+          .filter((name: string) => name.length > 0)
         : [];
       const rows = normalizeRows(result.rows, columns);
       return {

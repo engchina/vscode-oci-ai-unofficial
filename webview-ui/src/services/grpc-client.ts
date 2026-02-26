@@ -24,6 +24,14 @@ import type {
   UpdateSecurityListRequest,
   CreateSecurityListRequest,
   DeleteSecurityListRequest,
+  ConnectDbSystemRequest,
+  ConnectDbSystemResponse,
+  ConnectDbSystemSshRequest,
+  ConnectDbSystemSshResponse,
+  ExecuteDbSystemSqlRequest,
+  ListDbSystemsResponse,
+  LoadDbSystemConnectionResponse,
+  SaveDbSystemConnectionRequest,
 } from "./types"
 import { type Callbacks, ProtoBusClient } from "./grpc-client-base"
 
@@ -148,6 +156,46 @@ export class ResourceServiceClient extends ProtoBusClient {
 
   static deleteAdbConnection(autonomousDatabaseId: string): Promise<void> {
     return this.makeUnaryRequest<void>("deleteAdbConnection", { autonomousDatabaseId })
+  }
+
+  static listDbSystems(): Promise<ListDbSystemsResponse> {
+    return this.makeUnaryRequest<ListDbSystemsResponse>("listDbSystems", {})
+  }
+
+  static startDbSystem(dbSystemId: string, region?: string): Promise<void> {
+    return this.makeUnaryRequest<void>("startDbSystem", { dbSystemId, region })
+  }
+
+  static stopDbSystem(dbSystemId: string, region?: string): Promise<void> {
+    return this.makeUnaryRequest<void>("stopDbSystem", { dbSystemId, region })
+  }
+
+  static connectDbSystem(request: ConnectDbSystemRequest): Promise<ConnectDbSystemResponse> {
+    return this.makeUnaryRequest<ConnectDbSystemResponse>("connectDbSystem", request)
+  }
+
+  static connectDbSystemSsh(request: ConnectDbSystemSshRequest): Promise<ConnectDbSystemSshResponse> {
+    return this.makeUnaryRequest<ConnectDbSystemSshResponse>("connectDbSystemSsh", request)
+  }
+
+  static disconnectDbSystem(connectionId: string): Promise<void> {
+    return this.makeUnaryRequest<void>("disconnectDbSystem", { connectionId })
+  }
+
+  static executeDbSystemSql(request: ExecuteDbSystemSqlRequest): Promise<ExecuteAdbSqlResponse> {
+    return this.makeUnaryRequest<ExecuteAdbSqlResponse>("executeDbSystemSql", request, 120000)
+  }
+
+  static saveDbSystemConnection(request: SaveDbSystemConnectionRequest): Promise<void> {
+    return this.makeUnaryRequest<void>("saveDbSystemConnection", request)
+  }
+
+  static loadDbSystemConnection(dbSystemId: string): Promise<LoadDbSystemConnectionResponse> {
+    return this.makeUnaryRequest<LoadDbSystemConnectionResponse>("loadDbSystemConnection", { dbSystemId })
+  }
+
+  static deleteDbSystemConnection(dbSystemId: string): Promise<void> {
+    return this.makeUnaryRequest<void>("deleteDbSystemConnection", { dbSystemId })
   }
 
   static listVcns(): Promise<ListVcnResponse> {

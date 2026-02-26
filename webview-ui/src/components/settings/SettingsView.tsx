@@ -38,6 +38,7 @@ const EMPTY_SETTINGS: SettingsState = {
   computeCompartmentIds: [],
   chatCompartmentId: "",
   adbCompartmentIds: [],
+  dbSystemCompartmentIds: [],
   vcnCompartmentIds: [],
   genAiRegion: "",
   genAiLlmModelId: "",
