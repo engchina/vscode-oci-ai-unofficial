@@ -30,6 +30,7 @@ export interface AppState {
   computeCompartmentIds: string[];
   chatCompartmentId: string;
   adbCompartmentIds: string[];
+  vcnCompartmentIds: string[];
   profilesConfig: ProfileConfig[];
   tenancyOcid: string;
   genAiRegion: string;
@@ -50,6 +51,7 @@ export interface SaveSettingsRequest {
   computeCompartmentIds: string[];
   chatCompartmentId: string;
   adbCompartmentIds: string[];
+  vcnCompartmentIds: string[];
   genAiRegion: string;
   genAiLlmModelId: string;
   genAiEmbeddingModelId: string;
@@ -162,6 +164,40 @@ export interface ExecuteAdbSqlResponse {
   rows: AdbSqlRow[];
   rowsAffected: number;
   message: string;
+}
+
+export interface ListVcnResponse {
+  vcns: import("../types").VcnResource[];
+}
+
+export interface ListSecurityListRequest {
+  vcnId: string;
+  region?: string;
+}
+
+export interface ListSecurityListResponse {
+  securityLists: import("../types").SecurityListResource[];
+}
+
+export interface UpdateSecurityListRequest {
+  securityListId: string;
+  region?: string;
+  ingressSecurityRules: import("../types").SecurityRule[];
+  egressSecurityRules: import("../types").SecurityRule[];
+}
+
+export interface CreateSecurityListRequest {
+  vcnId: string;
+  compartmentId: string;
+  name: string;
+  region?: string;
+  ingressSecurityRules: import("../types").SecurityRule[];
+  egressSecurityRules: import("../types").SecurityRule[];
+}
+
+export interface DeleteSecurityListRequest {
+  securityListId: string;
+  region?: string;
 }
 
 /** Non-sensitive ADB connection profile stored in VSCode config */

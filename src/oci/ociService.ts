@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { OciClientFactory } from "./clientFactory";
-import { AdbResource, ComputeResource } from "../types";
+import { AdbResource, ComputeResource, VcnResource, SecurityListResource, SecurityRule } from "../types";
 
 export class OciService {
   constructor(private readonly factory: OciClientFactory) { }
@@ -108,6 +108,112 @@ export class OciService {
   public async stopAutonomousDatabase(autonomousDatabaseId: string, region?: string): Promise<void> {
     const client = await this.factory.createDatabaseClientAsync(region);
     await client.stopAutonomousDatabase({ autonomousDatabaseId });
+  }
+
+  public async listVcns(): Promise<VcnResource[]> {
+    const cfg = vscode.workspace.getConfiguration("ociAi");
+    const compartmentIds = [...(cfg.get<string[]>("vcnCompartmentIds") || [])];
+    const regions = splitRegions(cfg.get<string>("region", ""));
+
+    if (compartmentIds.length === 0) {
+      const legacy = cfg.get<string>("compartmentId", "");
+      if (legacy) compartmentIds.push(legacy);
+    }
+
+    const vcns: VcnResource[] = [];
+
+    for (const region of regions) {
+      const client = await this.factory.createVirtualNetworkClientAsync(region);
+      for (const compartmentId of compartmentIds) {
+        const normalizedCompartmentId = compartmentId.trim();
+        if (!normalizedCompartmentId) continue;
+        let page: string | undefined;
+        do {
+          const result = await client.listVcns({ compartmentId: normalizedCompartmentId, page });
+          vcns.push(
+            ...(result.items || []).map((vcn) => ({
+              id: vcn.id || "",
+              name: vcn.displayName || vcn.id || "Unnamed VCN",
+              lifecycleState: (vcn.lifecycleState as string) || "UNKNOWN",
+              compartmentId: normalizedCompartmentId,
+              region,
+              cidrBlocks: vcn.cidrBlocks || [],
+            }))
+          );
+          page = result.opcNextPage;
+        } while (page);
+      }
+    }
+
+    return vcns;
+  }
+
+  public async listSecurityLists(vcnId: string, region?: string): Promise<SecurityListResource[]> {
+    const client = await this.factory.createVirtualNetworkClientAsync(region);
+    const vcn = await client.getVcn({ vcnId });
+    const compartmentId = vcn.vcn.compartmentId;
+
+    const securityLists: SecurityListResource[] = [];
+    let page: string | undefined;
+    do {
+      const result = await client.listSecurityLists({ compartmentId, vcnId, page });
+      securityLists.push(
+        ...(result.items || []).map((sl) => ({
+          id: sl.id || "",
+          name: sl.displayName || sl.id || "Unnamed Security List",
+          lifecycleState: (sl.lifecycleState as string) || "UNKNOWN",
+          compartmentId: sl.compartmentId || "",
+          vcnId: sl.vcnId || "",
+          region: region || "",
+          ingressSecurityRules: sl.ingressSecurityRules as any,
+          egressSecurityRules: sl.egressSecurityRules as any,
+        }))
+      );
+      page = result.opcNextPage;
+    } while (page);
+
+    return securityLists;
+  }
+
+  public async updateSecurityList(
+    securityListId: string,
+    ingressSecurityRules: SecurityRule[],
+    egressSecurityRules: SecurityRule[],
+    region?: string
+  ): Promise<void> {
+    const client = await this.factory.createVirtualNetworkClientAsync(region);
+    await client.updateSecurityList({
+      securityListId,
+      updateSecurityListDetails: {
+        ingressSecurityRules: ingressSecurityRules as any,
+        egressSecurityRules: egressSecurityRules as any,
+      }
+    });
+  }
+
+  public async createSecurityList(
+    compartmentId: string,
+    vcnId: string,
+    name: string,
+    ingressSecurityRules: SecurityRule[],
+    egressSecurityRules: SecurityRule[],
+    region?: string
+  ): Promise<void> {
+    const client = await this.factory.createVirtualNetworkClientAsync(region);
+    await client.createSecurityList({
+      createSecurityListDetails: {
+        compartmentId,
+        vcnId,
+        displayName: name,
+        ingressSecurityRules: ingressSecurityRules as any,
+        egressSecurityRules: egressSecurityRules as any,
+      }
+    });
+  }
+
+  public async deleteSecurityList(securityListId: string, region?: string): Promise<void> {
+    const client = await this.factory.createVirtualNetworkClientAsync(region);
+    await client.deleteSecurityList({ securityListId });
   }
 
   private async populateInstanceNetworkAddresses(

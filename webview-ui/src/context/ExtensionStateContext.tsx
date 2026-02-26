@@ -22,6 +22,7 @@ export interface ExtensionStateContextType {
   computeCompartmentIds: string[]
   chatCompartmentId: string
   adbCompartmentIds: string[]
+  vcnCompartmentIds: string[]
   profilesConfig: { name: string; compartments: { id: string; name: string }[] }[]
   tenancyOcid: string
   genAiRegion: string
@@ -71,6 +72,7 @@ export function ExtensionStateContextProvider({ children }: { children: ReactNod
     computeCompartmentIds: [],
     chatCompartmentId: "",
     adbCompartmentIds: [],
+    vcnCompartmentIds: [],
     profilesConfig: [],
     tenancyOcid: "",
     genAiRegion: "",

@@ -170,6 +170,32 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
       await c.deleteAdbConnection(String(msg.autonomousDatabaseId ?? ""));
       return {};
     },
+    listVcns: async (c) => ({ vcns: await c.listVcns() }),
+    listSecurityLists: async (c, msg) => ({ securityLists: await c.listSecurityLists(msg.vcnId, msg.region) }),
+    createSecurityList: async (c, msg) => {
+      await c.createSecurityList(
+        msg.compartmentId,
+        msg.vcnId,
+        msg.name,
+        msg.ingressSecurityRules || [],
+        msg.egressSecurityRules || [],
+        msg.region
+      );
+      return {};
+    },
+    updateSecurityList: async (c, msg) => {
+      await c.updateSecurityList(
+        msg.securityListId,
+        msg.ingressSecurityRules || [],
+        msg.egressSecurityRules || [],
+        msg.region
+      );
+      return {};
+    },
+    deleteSecurityList: async (c, msg) => {
+      await c.deleteSecurityList(msg.securityListId, msg.region);
+      return {};
+    },
   },
 };
 

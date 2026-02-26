@@ -2,6 +2,7 @@ import { useState } from "react"
 import AdbView from "./components/adb/AdbView"
 import ChatView from "./components/chat/ChatView"
 import ComputeView from "./components/compute/ComputeView"
+import VcnView from "./components/vcn/VcnView"
 import HistoryView from "./components/history/HistoryView"
 import Navbar from "./components/menu/Navbar"
 import SettingsView from "./components/settings/SettingsView"
@@ -48,6 +49,16 @@ function AppContent() {
       </AccordionItem>
 
       <AccordionItem
+        title="Virtual Cloud Networks"
+        isOpen={openSection === "vcn"}
+        onToggle={() => toggleSection("vcn")}
+      >
+        <div className="flex flex-col h-full">
+          <VcnView />
+        </div>
+      </AccordionItem>
+
+      <AccordionItem
         title="Autonomous AI Databases"
         isOpen={openSection === "adb"}
         onToggle={() => toggleSection("adb")}
@@ -66,6 +77,7 @@ function AppContent() {
           <ComputeView />
         </div>
       </AccordionItem>
+
 
       <AccordionItem
         title="Generative AI Chat"

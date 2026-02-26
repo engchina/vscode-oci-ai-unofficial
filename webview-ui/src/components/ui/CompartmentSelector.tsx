@@ -6,7 +6,7 @@ import { StateServiceClient } from "../../services/grpc-client"
 import type { SettingsState } from "../../services/types"
 
 interface CompartmentSelectorProps {
-    featureKey: "compute" | "adb" | "chat"
+    featureKey: "compute" | "adb" | "chat" | "vcn"
     multiple?: boolean
 }
 
@@ -16,6 +16,7 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
         computeCompartmentIds,
         chatCompartmentId,
         adbCompartmentIds,
+        vcnCompartmentIds,
         profilesConfig,
         tenancyOcid,
     } = useExtensionState()
@@ -51,6 +52,7 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
         let selection: string[] = []
         if (featureKey === "compute") selection = computeCompartmentIds
         else if (featureKey === "adb") selection = adbCompartmentIds
+        else if (featureKey === "vcn") selection = vcnCompartmentIds
         else if (featureKey === "chat") {
             // Default chat to root compartment if nothing selected
             if (chatCompartmentId) {
@@ -66,6 +68,7 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
         featureKey,
         computeCompartmentIds,
         adbCompartmentIds,
+        vcnCompartmentIds,
         chatCompartmentId,
         rootCompartment,
         availableCompartments,
@@ -129,6 +132,8 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
             state.computeCompartmentIds = newSelection
         } else if (featureKey === "adb") {
             state.adbCompartmentIds = newSelection
+        } else if (featureKey === "vcn") {
+            state.vcnCompartmentIds = newSelection
         } else if (featureKey === "chat") {
             state.chatCompartmentId = newSelection[0] || ""
         }

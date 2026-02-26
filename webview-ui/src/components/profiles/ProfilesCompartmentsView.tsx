@@ -34,6 +34,7 @@ const EMPTY_SETTINGS: SettingsState = {
     chatTopP: 1,
     authMode: "config-file",
     savedCompartments: [],
+    vcnCompartmentIds: [],
     profilesConfig: [],
 }
 

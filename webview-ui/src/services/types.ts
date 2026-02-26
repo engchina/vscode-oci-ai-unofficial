@@ -32,6 +32,7 @@ export interface AppState {
   computeCompartmentIds: string[]
   chatCompartmentId: string
   adbCompartmentIds: string[]
+  vcnCompartmentIds: string[]
   profilesConfig: ProfileConfig[]
   tenancyOcid: string
   genAiRegion: string
@@ -50,6 +51,7 @@ export interface SaveSettingsRequest {
   computeCompartmentIds: string[]
   chatCompartmentId: string
   adbCompartmentIds: string[]
+  vcnCompartmentIds: string[]
   genAiRegion: string
   genAiLlmModelId: string
   genAiEmbeddingModelId: string
@@ -166,10 +168,12 @@ export interface ExecuteAdbSqlResponse {
   message: string
 }
 
+export type ResourceState = "RUNNING" | "STOPPED" | "STARTING" | "STOPPING" | "UNKNOWN"
+
 export interface ComputeResource {
   id: string
   name: string
-  lifecycleState: string
+  lifecycleState: ResourceState | string
   compartmentId?: string
   region?: string
   publicIp?: string
@@ -179,9 +183,49 @@ export interface ComputeResource {
 export interface AdbResource {
   id: string
   name: string
-  lifecycleState: string
+  lifecycleState: ResourceState | string
   compartmentId?: string
   region?: string
+}
+
+export interface VcnResource {
+  id: string;
+  name: string;
+  lifecycleState: string;
+  compartmentId: string;
+  region: string;
+  cidrBlocks: string[];
+}
+
+export interface SecurityRule {
+  isStateless: boolean;
+  protocol: string;
+  source?: string;
+  destination?: string;
+  description?: string;
+  tcpOptions?: {
+    destinationPortRange?: { min: number; max: number };
+    sourcePortRange?: { min: number; max: number };
+  };
+  udpOptions?: {
+    destinationPortRange?: { min: number; max: number };
+    sourcePortRange?: { min: number; max: number };
+  };
+  icmpOptions?: {
+    type: number;
+    code?: number;
+  };
+}
+
+export interface SecurityListResource {
+  id: string;
+  name: string;
+  lifecycleState: string;
+  compartmentId: string;
+  vcnId: string;
+  region: string;
+  ingressSecurityRules: SecurityRule[];
+  egressSecurityRules: SecurityRule[];
 }
 
 export interface ListComputeResponse {
@@ -190,6 +234,40 @@ export interface ListComputeResponse {
 
 export interface ListAdbResponse {
   databases: AdbResource[]
+}
+
+export interface ListVcnResponse {
+  vcns: VcnResource[];
+}
+
+export interface ListSecurityListRequest {
+  vcnId: string;
+  region?: string;
+}
+
+export interface ListSecurityListResponse {
+  securityLists: SecurityListResource[];
+}
+
+export interface UpdateSecurityListRequest {
+  securityListId: string;
+  region?: string;
+  ingressSecurityRules: SecurityRule[];
+  egressSecurityRules: SecurityRule[];
+}
+
+export interface CreateSecurityListRequest {
+  vcnId: string;
+  compartmentId: string;
+  name: string;
+  region?: string;
+  ingressSecurityRules: SecurityRule[];
+  egressSecurityRules: SecurityRule[];
+}
+
+export interface DeleteSecurityListRequest {
+  securityListId: string;
+  region?: string;
 }
 
 /** Non-sensitive ADB connection profile stored in VSCode config */

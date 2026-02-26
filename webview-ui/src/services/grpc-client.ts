@@ -18,6 +18,12 @@ import type {
   SendMessageRequest,
   SettingsState,
   StreamTokenResponse,
+  ListVcnResponse,
+  ListSecurityListRequest,
+  ListSecurityListResponse,
+  UpdateSecurityListRequest,
+  CreateSecurityListRequest,
+  DeleteSecurityListRequest,
 } from "./types"
 import { type Callbacks, ProtoBusClient } from "./grpc-client-base"
 
@@ -142,5 +148,25 @@ export class ResourceServiceClient extends ProtoBusClient {
 
   static deleteAdbConnection(autonomousDatabaseId: string): Promise<void> {
     return this.makeUnaryRequest<void>("deleteAdbConnection", { autonomousDatabaseId })
+  }
+
+  static listVcns(): Promise<ListVcnResponse> {
+    return this.makeUnaryRequest<ListVcnResponse>("listVcns", {})
+  }
+
+  static listSecurityLists(request: ListSecurityListRequest): Promise<ListSecurityListResponse> {
+    return this.makeUnaryRequest<ListSecurityListResponse>("listSecurityLists", request)
+  }
+
+  static createSecurityList(request: CreateSecurityListRequest): Promise<void> {
+    return this.makeUnaryRequest<void>("createSecurityList", request)
+  }
+
+  static updateSecurityList(request: UpdateSecurityListRequest): Promise<void> {
+    return this.makeUnaryRequest<void>("updateSecurityList", request)
+  }
+
+  static deleteSecurityList(request: DeleteSecurityListRequest): Promise<void> {
+    return this.makeUnaryRequest<void>("deleteSecurityList", request)
   }
 }

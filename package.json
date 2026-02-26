@@ -337,11 +337,19 @@
         },
         "ociAi.computeCompartmentIds": {
           "type": "array",
-          "default": [],
-          "description": "Selected compartment IDs for Compute",
           "items": {
             "type": "string"
-          }
+          },
+          "default": [],
+          "description": "OCID of the compartment where Compute instances are located. Array of strings."
+        },
+        "ociAi.vcnCompartmentIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "OCID of the compartment where Virtual Cloud Networks are located. Array of strings."
         },
         "ociAi.chatCompartmentId": {
           "type": "string",

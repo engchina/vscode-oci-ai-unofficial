@@ -96,6 +96,7 @@ export class Controller {
       computeCompartmentIds: Array.isArray(cfg.get("computeCompartmentIds")) ? cfg.get<string[]>("computeCompartmentIds") as string[] : [],
       chatCompartmentId: cfg.get<string>("chatCompartmentId", ""),
       adbCompartmentIds: Array.isArray(cfg.get("adbCompartmentIds")) ? cfg.get<string[]>("adbCompartmentIds") as string[] : [],
+      vcnCompartmentIds: Array.isArray(cfg.get("vcnCompartmentIds")) ? cfg.get<string[]>("vcnCompartmentIds") as string[] : [],
       profilesConfig: Array.isArray(cfg.get("profilesConfig")) ? cfg.get<any[]>("profilesConfig") as any[] : [],
       tenancyOcid: secrets.tenancyOcid || "",
       genAiRegion: cfg.get<string>("genAiRegion", ""),
@@ -126,6 +127,7 @@ export class Controller {
       computeCompartmentIds: Array.isArray(cfg.get("computeCompartmentIds")) ? cfg.get<string[]>("computeCompartmentIds") as string[] : [],
       chatCompartmentId: cfg.get<string>("chatCompartmentId", ""),
       adbCompartmentIds: Array.isArray(cfg.get("adbCompartmentIds")) ? cfg.get<string[]>("adbCompartmentIds") as string[] : [],
+      vcnCompartmentIds: Array.isArray(cfg.get("vcnCompartmentIds")) ? cfg.get<string[]>("vcnCompartmentIds") as string[] : [],
       genAiRegion: cfg.get<string>("genAiRegion", ""),
       genAiLlmModelId: cfg.get<string>("genAiLlmModelId", "") || cfg.get<string>("genAiModelId", ""),
       genAiEmbeddingModelId: cfg.get<string>("genAiEmbeddingModelId", ""),
@@ -168,6 +170,7 @@ export class Controller {
     await cfg.update("computeCompartmentIds", Array.isArray(payload.computeCompartmentIds) ? payload.computeCompartmentIds : [], vscode.ConfigurationTarget.Global);
     await cfg.update("chatCompartmentId", String(payload.chatCompartmentId ?? "").trim(), vscode.ConfigurationTarget.Global);
     await cfg.update("adbCompartmentIds", Array.isArray(payload.adbCompartmentIds) ? payload.adbCompartmentIds : [], vscode.ConfigurationTarget.Global);
+    await cfg.update("vcnCompartmentIds", Array.isArray(payload.vcnCompartmentIds) ? payload.vcnCompartmentIds : [], vscode.ConfigurationTarget.Global);
 
     if (payload.profilesConfig) {
       await cfg.update("profilesConfig", payload.profilesConfig, vscode.ConfigurationTarget.Global);
@@ -572,6 +575,38 @@ export class Controller {
     const secretStore = this.authManager["context"].secrets;
     await secretStore.delete(`ociAi.adb.${dbId}.walletPassword`);
     await secretStore.delete(`ociAi.adb.${dbId}.password`);
+  }
+
+  public async listVcns(): Promise<import("../types").VcnResource[]> {
+    return this.ociService.listVcns();
+  }
+
+  public async listSecurityLists(vcnId: string, region?: string): Promise<import("../types").SecurityListResource[]> {
+    return this.ociService.listSecurityLists(vcnId, region);
+  }
+
+  public async updateSecurityList(
+    securityListId: string,
+    ingressSecurityRules: import("../types").SecurityRule[],
+    egressSecurityRules: import("../types").SecurityRule[],
+    region?: string
+  ): Promise<void> {
+    return this.ociService.updateSecurityList(securityListId, ingressSecurityRules, egressSecurityRules, region);
+  }
+
+  public async createSecurityList(
+    compartmentId: string,
+    vcnId: string,
+    name: string,
+    ingressSecurityRules: import("../types").SecurityRule[],
+    egressSecurityRules: import("../types").SecurityRule[],
+    region?: string
+  ): Promise<void> {
+    return this.ociService.createSecurityList(compartmentId, vcnId, name, ingressSecurityRules, egressSecurityRules, region);
+  }
+
+  public async deleteSecurityList(securityListId: string, region?: string): Promise<void> {
+    return this.ociService.deleteSecurityList(securityListId, region);
   }
 }
 
