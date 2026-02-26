@@ -2,7 +2,7 @@
   "name": "vscode-oci-ai-unofficial",
   "displayName": "vscode-oci-ai-unofficial",
   "description": "OCI development toolkit for VS Code, covering AI and broader OCI workflows.",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "publisher": "local",
   "icon": "icon.png",
   "engines": {
@@ -58,7 +58,8 @@
       {
         "command": "ociAi.auth.configureProfile",
         "title": "vscode-oci-ai-unofficial: Switch Profile",
-        "shortTitle": "Profile"
+        "shortTitle": "Profile",
+        "icon": "$(chevron-down)"
       },
       {
         "command": "ociAi.auth.configureApiKey",
@@ -173,10 +174,20 @@
           "default": "DEFAULT",
           "description": "Legacy OCI profile name from ~/.oci/config"
         },
+        "ociAi.authMode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "api-key",
+            "config-file"
+          ],
+          "default": "auto",
+          "description": "Authentication mode: auto (prefer API key then fallback), api-key (no fallback), or config-file"
+        },
         "ociAi.region": {
           "type": "string",
           "default": "",
-          "description": "Optional OCI region override (e.g. us-phoenix-1)"
+          "description": "Optional OCI region override(s), comma-separated (e.g. us-phoenix-1,us-chicago-1)"
         },
         "ociAi.compartmentId": {
           "type": "string",
@@ -314,6 +325,14 @@
               "name",
               "compartments"
             ]
+          }
+        },
+        "ociAi.profileRegionMap": {
+          "type": "object",
+          "default": {},
+          "description": "Per-profile OCI region mapping used by API Configuration profile selection",
+          "additionalProperties": {
+            "type": "string"
           }
         },
         "ociAi.computeCompartmentIds": {

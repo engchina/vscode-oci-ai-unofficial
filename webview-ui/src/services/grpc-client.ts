@@ -11,6 +11,9 @@ import type {
   ExecuteAdbSqlResponse,
   ListAdbResponse,
   ListComputeResponse,
+  LoadAdbConnectionResponse,
+  ProfileSecretsResponse,
+  SaveAdbConnectionRequest,
   SaveSettingsRequest,
   SendMessageRequest,
   SettingsState,
@@ -31,6 +34,10 @@ export class StateServiceClient extends ProtoBusClient {
 
   static saveSettings(request: SaveSettingsRequest): Promise<void> {
     return this.makeUnaryRequest<void>("saveSettings", request)
+  }
+
+  static getProfileSecrets(profile: string): Promise<ProfileSecretsResponse> {
+    return this.makeUnaryRequest<ProfileSecretsResponse>("getProfileSecrets", { profile })
   }
 
   static switchCompartment(id: string): Promise<void> {
@@ -85,12 +92,12 @@ export class ResourceServiceClient extends ProtoBusClient {
     return this.makeUnaryRequest<ListComputeResponse>("listCompute", {})
   }
 
-  static startCompute(instanceId: string): Promise<void> {
-    return this.makeUnaryRequest<void>("startCompute", { instanceId })
+  static startCompute(instanceId: string, region?: string): Promise<void> {
+    return this.makeUnaryRequest<void>("startCompute", { instanceId, region })
   }
 
-  static stopCompute(instanceId: string): Promise<void> {
-    return this.makeUnaryRequest<void>("stopCompute", { instanceId })
+  static stopCompute(instanceId: string, region?: string): Promise<void> {
+    return this.makeUnaryRequest<void>("stopCompute", { instanceId, region })
   }
 
   static connectComputeSsh(request: ConnectComputeSshRequest): Promise<ConnectComputeSshResponse> {
@@ -101,12 +108,12 @@ export class ResourceServiceClient extends ProtoBusClient {
     return this.makeUnaryRequest<ListAdbResponse>("listAdb", {})
   }
 
-  static startAdb(autonomousDatabaseId: string): Promise<void> {
-    return this.makeUnaryRequest<void>("startAdb", { autonomousDatabaseId })
+  static startAdb(autonomousDatabaseId: string, region?: string): Promise<void> {
+    return this.makeUnaryRequest<void>("startAdb", { autonomousDatabaseId, region })
   }
 
-  static stopAdb(autonomousDatabaseId: string): Promise<void> {
-    return this.makeUnaryRequest<void>("stopAdb", { autonomousDatabaseId })
+  static stopAdb(autonomousDatabaseId: string, region?: string): Promise<void> {
+    return this.makeUnaryRequest<void>("stopAdb", { autonomousDatabaseId, region })
   }
 
   static downloadAdbWallet(request: DownloadAdbWalletRequest): Promise<DownloadAdbWalletResponse> {
@@ -123,5 +130,17 @@ export class ResourceServiceClient extends ProtoBusClient {
 
   static executeAdbSql(request: ExecuteAdbSqlRequest): Promise<ExecuteAdbSqlResponse> {
     return this.makeUnaryRequest<ExecuteAdbSqlResponse>("executeAdbSql", request, 120000)
+  }
+
+  static saveAdbConnection(request: SaveAdbConnectionRequest): Promise<void> {
+    return this.makeUnaryRequest<void>("saveAdbConnection", request)
+  }
+
+  static loadAdbConnection(autonomousDatabaseId: string): Promise<LoadAdbConnectionResponse> {
+    return this.makeUnaryRequest<LoadAdbConnectionResponse>("loadAdbConnection", { autonomousDatabaseId })
+  }
+
+  static deleteAdbConnection(autonomousDatabaseId: string): Promise<void> {
+    return this.makeUnaryRequest<void>("deleteAdbConnection", { autonomousDatabaseId })
   }
 }

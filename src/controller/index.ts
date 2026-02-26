@@ -1,7 +1,7 @@
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
-import { AuthManager } from "../auth/authManager";
+import { AuthManager, type ApiKeySecrets } from "../auth/authManager";
 import { GenAiService, type ChatMessage } from "../oci/genAiService";
 import { AdbSqlService } from "../oci/adbSqlService";
 import { OciService } from "../oci/ociService";
@@ -14,6 +14,9 @@ import type {
   DownloadAdbWalletResponse,
   ExecuteAdbSqlRequest,
   ExecuteAdbSqlResponse,
+  AdbConnectionProfile,
+  SaveAdbConnectionRequest,
+  LoadAdbConnectionResponse,
   AppState,
   ChatImageData,
   SavedCompartment,
@@ -74,6 +77,7 @@ export class Controller {
   /** Get current app state */
   public async getState(): Promise<AppState> {
     const cfg = vscode.workspace.getConfiguration("ociAi");
+    const profile = cfg.get<string>("profile", "DEFAULT");
     const compartmentId = cfg.get<string>("compartmentId", "").trim();
     const genAiLlmModelIdRaw =
       cfg.get<string>("genAiLlmModelId", "").trim() || cfg.get<string>("genAiModelId", "").trim();
@@ -86,8 +90,8 @@ export class Controller {
 
     return {
       activeProfile: cfg.get<string>("activeProfile", "DEFAULT"),
-      profile: cfg.get<string>("profile", "DEFAULT"),
-      region: cfg.get<string>("region", ""),
+      profile,
+      region: await this.authManager.getRegionForProfile(profile),
       compartmentId,
       computeCompartmentIds: Array.isArray(cfg.get("computeCompartmentIds")) ? cfg.get<string[]>("computeCompartmentIds") as string[] : [],
       chatCompartmentId: cfg.get<string>("chatCompartmentId", ""),
@@ -106,7 +110,8 @@ export class Controller {
   /** Get settings including secrets */
   public async getSettings(): Promise<SettingsState> {
     const cfg = vscode.workspace.getConfiguration("ociAi");
-    const secrets = await this.authManager.getApiKeySecrets();
+    const profile = cfg.get<string>("profile", "DEFAULT");
+    const secrets = await this.authManager.getApiKeySecrets(profile);
     const authMode: "api-key" | "config-file" =
       secrets.tenancyOcid && secrets.userOcid && secrets.fingerprint && secrets.privateKey
         ? "api-key"
@@ -115,8 +120,8 @@ export class Controller {
     const profilesConfig = cfg.get<any[]>("profilesConfig", []);
     return {
       activeProfile: cfg.get<string>("activeProfile", "DEFAULT"),
-      profile: cfg.get<string>("profile", "DEFAULT"),
-      region: cfg.get<string>("region", ""),
+      profile,
+      region: await this.authManager.getRegionForProfile(profile),
       compartmentId: cfg.get<string>("compartmentId", ""),
       computeCompartmentIds: Array.isArray(cfg.get("computeCompartmentIds")) ? cfg.get<string[]>("computeCompartmentIds") as string[] : [],
       chatCompartmentId: cfg.get<string>("chatCompartmentId", ""),
@@ -141,12 +146,24 @@ export class Controller {
     };
   }
 
+  /** Get API key secrets for a specific profile */
+  public async getProfileSecrets(profile: string): Promise<ApiKeySecrets & { authMode: "api-key" | "config-file"; region: string }> {
+    const secrets = await this.authManager.getApiKeySecrets(profile);
+    const region = await this.authManager.getRegionForProfile(profile);
+    const authMode: "api-key" | "config-file" =
+      secrets.tenancyOcid && secrets.userOcid && secrets.fingerprint && secrets.privateKey
+        ? "api-key"
+        : "config-file";
+    return { ...secrets, authMode, region };
+  }
+
   /** Save settings */
   public async saveSettings(payload: SaveSettingsRequest & { profilesConfig?: any[] }): Promise<void> {
     const cfg = vscode.workspace.getConfiguration("ociAi");
+    const targetProfile = String(payload.profile ?? "").trim() || "DEFAULT";
     await cfg.update("activeProfile", String(payload.activeProfile ?? "").trim() || "DEFAULT", vscode.ConfigurationTarget.Global);
-    await cfg.update("profile", String(payload.profile ?? "").trim() || "DEFAULT", vscode.ConfigurationTarget.Global);
-    await this.authManager.updateRegion(String(payload.region ?? ""));
+    await cfg.update("profile", targetProfile, vscode.ConfigurationTarget.Global);
+    await this.authManager.updateRegionForProfile(targetProfile, String(payload.region ?? ""));
     await this.authManager.updateCompartmentId(String(payload.compartmentId ?? ""));
     await cfg.update("computeCompartmentIds", Array.isArray(payload.computeCompartmentIds) ? payload.computeCompartmentIds : [], vscode.ConfigurationTarget.Global);
     await cfg.update("chatCompartmentId", String(payload.chatCompartmentId ?? "").trim(), vscode.ConfigurationTarget.Global);
@@ -192,7 +209,7 @@ export class Controller {
       fingerprint: String(payload.fingerprint ?? ""),
       privateKey: String(payload.privateKey ?? ""),
       privateKeyPassphrase: String(payload.privateKeyPassphrase ?? ""),
-    });
+    }, targetProfile);
     if (!payload.suppressNotification) {
       vscode.window.showInformationMessage("OCI settings saved.");
     }
@@ -363,13 +380,13 @@ export class Controller {
   }
 
   /** Start a compute instance */
-  public async startComputeInstance(instanceId: string): Promise<void> {
-    return this.ociService.startComputeInstance(instanceId);
+  public async startComputeInstance(instanceId: string, region?: string): Promise<void> {
+    return this.ociService.startComputeInstance(instanceId, region);
   }
 
   /** Stop a compute instance */
-  public async stopComputeInstance(instanceId: string): Promise<void> {
-    return this.ociService.stopComputeInstance(instanceId);
+  public async stopComputeInstance(instanceId: string, region?: string): Promise<void> {
+    return this.ociService.stopComputeInstance(instanceId, region);
   }
 
   /** Open an SSH connection to a compute instance in an integrated terminal task */
@@ -428,13 +445,13 @@ export class Controller {
   }
 
   /** Start an autonomous database */
-  public async startAutonomousDatabase(autonomousDatabaseId: string): Promise<void> {
-    return this.ociService.startAutonomousDatabase(autonomousDatabaseId);
+  public async startAutonomousDatabase(autonomousDatabaseId: string, region?: string): Promise<void> {
+    return this.ociService.startAutonomousDatabase(autonomousDatabaseId, region);
   }
 
   /** Stop an autonomous database */
-  public async stopAutonomousDatabase(autonomousDatabaseId: string): Promise<void> {
-    return this.ociService.stopAutonomousDatabase(autonomousDatabaseId);
+  public async stopAutonomousDatabase(autonomousDatabaseId: string, region?: string): Promise<void> {
+    return this.ociService.stopAutonomousDatabase(autonomousDatabaseId, region);
   }
 
   /** Download wallet for an autonomous database */
@@ -478,6 +495,83 @@ export class Controller {
     const existing = cfg.get<SavedCompartment[]>("savedCompartments", []);
     const list = Array.isArray(existing) ? existing : [];
     await cfg.update("savedCompartments", list.filter(c => c.id !== id), vscode.ConfigurationTarget.Global);
+  }
+
+  /** Save ADB connection profile (non-sensitive in config, passwords in SecretStorage) */
+  public async saveAdbConnection(request: SaveAdbConnectionRequest): Promise<void> {
+    const dbId = String(request.autonomousDatabaseId ?? "").trim();
+    if (!dbId) {
+      throw new Error("autonomousDatabaseId is required.");
+    }
+
+    const cfg = vscode.workspace.getConfiguration("ociAi");
+    const existing = cfg.get<AdbConnectionProfile[]>("adbConnectionProfiles", []);
+    const profiles = Array.isArray(existing) ? existing : [];
+
+    const profile: AdbConnectionProfile = {
+      autonomousDatabaseId: dbId,
+      walletPath: String(request.walletPath ?? "").trim(),
+      username: String(request.username ?? "").trim(),
+      serviceName: String(request.serviceName ?? "").trim(),
+    };
+
+    const updated = profiles.filter(p => p.autonomousDatabaseId !== dbId).concat(profile);
+    await cfg.update("adbConnectionProfiles", updated, vscode.ConfigurationTarget.Global);
+
+    // Store sensitive fields in SecretStorage
+    const secrets = this.authManager;
+    await secrets["context"].secrets.store(`ociAi.adb.${dbId}.walletPassword`, String(request.walletPassword ?? ""));
+    await secrets["context"].secrets.store(`ociAi.adb.${dbId}.password`, String(request.password ?? ""));
+  }
+
+  /** Load a saved ADB connection profile */
+  public async loadAdbConnection(autonomousDatabaseId: string): Promise<LoadAdbConnectionResponse | null> {
+    const dbId = String(autonomousDatabaseId ?? "").trim();
+    if (!dbId) {
+      return null;
+    }
+
+    const cfg = vscode.workspace.getConfiguration("ociAi");
+    const existing = cfg.get<AdbConnectionProfile[]>("adbConnectionProfiles", []);
+    const profiles = Array.isArray(existing) ? existing : [];
+    const profile = profiles.find(p => p.autonomousDatabaseId === dbId);
+    if (!profile) {
+      return null;
+    }
+
+    const secretStore = this.authManager["context"].secrets;
+    const walletPassword = (await secretStore.get(`ociAi.adb.${dbId}.walletPassword`)) ?? "";
+    const password = (await secretStore.get(`ociAi.adb.${dbId}.password`)) ?? "";
+
+    return {
+      autonomousDatabaseId: profile.autonomousDatabaseId,
+      walletPath: profile.walletPath,
+      username: profile.username,
+      serviceName: profile.serviceName,
+      walletPassword,
+      password,
+    };
+  }
+
+  /** Delete a saved ADB connection profile and its secrets */
+  public async deleteAdbConnection(autonomousDatabaseId: string): Promise<void> {
+    const dbId = String(autonomousDatabaseId ?? "").trim();
+    if (!dbId) {
+      return;
+    }
+
+    const cfg = vscode.workspace.getConfiguration("ociAi");
+    const existing = cfg.get<AdbConnectionProfile[]>("adbConnectionProfiles", []);
+    const profiles = Array.isArray(existing) ? existing : [];
+    await cfg.update(
+      "adbConnectionProfiles",
+      profiles.filter(p => p.autonomousDatabaseId !== dbId),
+      vscode.ConfigurationTarget.Global,
+    );
+
+    const secretStore = this.authManager["context"].secrets;
+    await secretStore.delete(`ociAi.adb.${dbId}.walletPassword`);
+    await secretStore.delete(`ociAi.adb.${dbId}.password`);
   }
 }
 

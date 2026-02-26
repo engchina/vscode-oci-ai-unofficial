@@ -1,6 +1,7 @@
 import { clsx } from "clsx"
 import { AlertCircle, Loader2, MonitorPlay, MonitorStop, RefreshCw, Search, Server, SquareTerminal } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useExtensionState } from "../../context/ExtensionStateContext"
 import { ResourceServiceClient } from "../../services/grpc-client"
 import type { ComputeResource } from "../../services/types"
 import { DEFAULT_SSH_USERNAME, SSH_CONFIG_STORAGE_KEY, loadSshConfig, saveSshConfig, type HostPreference, type SshConfig } from "../../sshConfig"
@@ -17,6 +18,7 @@ const LEGACY_COMPUTE_DEFAULT_USERNAME = "ubuntu"
 const SSH_KEY_OVERRIDES_STORAGE_KEY = "ociAi.compute.sshKeyOverrides"
 
 export default function ComputeView() {
+  const { activeProfile, profilesConfig, tenancyOcid } = useExtensionState()
   const [instances, setInstances] = useState<ComputeResource[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -32,6 +34,21 @@ export default function ComputeView() {
     if (!q) return instances
     return instances.filter(i => i.name.toLowerCase().includes(q) || i.id.toLowerCase().includes(q))
   }, [instances, query])
+  const grouped = useMemo(() => groupComputeByCompartmentAndRegion(filtered), [filtered])
+  const compartmentNameById = useMemo(() => {
+    const map = new Map<string, string>()
+    const rootId = tenancyOcid?.trim()
+    if (rootId) {
+      map.set(rootId, "Root (Tenancy)")
+    }
+    const activeProfileConfig = profilesConfig.find((p) => p.name === activeProfile)
+    for (const c of activeProfileConfig?.compartments ?? []) {
+      if (c.id?.trim()) {
+        map.set(c.id.trim(), c.name?.trim() || c.id.trim())
+      }
+    }
+    return map
+  }, [activeProfile, profilesConfig, tenancyOcid])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -76,10 +93,10 @@ export default function ComputeView() {
   }, [isPolling, load])
 
   const handleStart = useCallback(
-    async (id: string) => {
+    async (id: string, region?: string) => {
       setActionState({ id, action: "starting" })
       try {
-        await ResourceServiceClient.startCompute(id)
+        await ResourceServiceClient.startCompute(id, region)
         await load()
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err))
@@ -91,10 +108,10 @@ export default function ComputeView() {
   )
 
   const handleStop = useCallback(
-    async (id: string) => {
+    async (id: string, region?: string) => {
       setActionState({ id, action: "stopping" })
       try {
-        await ResourceServiceClient.stopCompute(id)
+        await ResourceServiceClient.stopCompute(id, region)
         await load()
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err))
@@ -199,7 +216,7 @@ export default function ComputeView() {
             {isPolling ? (
               <span className="text-xs text-warning animate-pulse">Auto-refreshing every 5s...</span>
             ) : (
-              <span className="text-xs text-description">Manage OCI compute instances in your compartment.</span>
+              <span className="text-xs text-description">Manage OCI compute instances by compartment and region.</span>
             )}
           </div>
         </div>
@@ -247,7 +264,7 @@ export default function ComputeView() {
         ) : instances.length === 0 ? (
           <EmptyState />
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             <h4 className="mb-1 text-xs font-semibold uppercase tracking-wider text-description">
               {filtered.length === instances.length
                 ? `${instances.length} Instance${instances.length !== 1 ? "s" : ""}`
@@ -256,25 +273,41 @@ export default function ComputeView() {
             {filtered.length === 0 ? (
               <p className="py-8 text-center text-xs text-description">No instances match your filter.</p>
             ) : (
-              filtered.map((instance) => (
-                <InstanceCard
-                  key={instance.id}
-                  instance={instance}
-                  actionState={actionState}
-                  connectingId={connectingId}
-                  sshConfig={sshConfig}
-                  sshUserOverride={sshUserOverrides[instance.id] || ""}
-                  sshKeyOverride={sshKeyOverrides[instance.id] || ""}
-                  onStart={handleStart}
-                  onStop={handleStop}
-                  onConnect={handleConnect}
-                  onChangeSshUserOverride={(instanceId, username) =>
-                    setSshUserOverrides((prev) => ({ ...prev, [instanceId]: username }))
-                  }
-                  onChangeSshKeyOverride={(instanceId, keyPath) =>
-                    setSshKeyOverrides((prev) => ({ ...prev, [instanceId]: keyPath }))
-                  }
-                />
+              grouped.map((compartmentGroup) => (
+                <div key={compartmentGroup.compartmentId} className="rounded-xl border border-border-panel p-3 sm:p-4">
+                  <h5 className="text-xs font-semibold uppercase tracking-wider text-description">
+                    Compartment: {compartmentNameById.get(compartmentGroup.compartmentId) ?? compartmentGroup.compartmentId}
+                  </h5>
+                  <div className="mt-3 flex flex-col gap-3">
+                    {compartmentGroup.regions.map((regionGroup) => (
+                      <div key={`${compartmentGroup.compartmentId}-${regionGroup.region}`} className="flex flex-col gap-2">
+                        <h6 className="text-[11px] font-semibold uppercase tracking-wider text-description">
+                          Region: {regionGroup.region}
+                        </h6>
+                        {regionGroup.instances.map((instance) => (
+                          <InstanceCard
+                            key={`${instance.id}-${instance.region ?? "default"}`}
+                            instance={instance}
+                            actionState={actionState}
+                            connectingId={connectingId}
+                            sshConfig={sshConfig}
+                            sshUserOverride={sshUserOverrides[instance.id] || ""}
+                            sshKeyOverride={sshKeyOverrides[instance.id] || ""}
+                            onStart={handleStart}
+                            onStop={handleStop}
+                            onConnect={handleConnect}
+                            onChangeSshUserOverride={(instanceId, username) =>
+                              setSshUserOverrides((prev) => ({ ...prev, [instanceId]: username }))
+                            }
+                            onChangeSshKeyOverride={(instanceId, keyPath) =>
+                              setSshKeyOverrides((prev) => ({ ...prev, [instanceId]: keyPath }))
+                            }
+                          />
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               ))
             )}
           </div>
@@ -303,8 +336,8 @@ function InstanceCard({
   sshConfig: SshConfig
   sshUserOverride: string
   sshKeyOverride: string
-  onStart: (id: string) => void
-  onStop: (id: string) => void
+  onStart: (id: string, region?: string) => void
+  onStop: (id: string, region?: string) => void
   onConnect: (instance: ComputeResource) => void
   onChangeSshUserOverride: (instanceId: string, username: string) => void
   onChangeSshKeyOverride: (instanceId: string, keyPath: string) => void
@@ -366,7 +399,7 @@ function InstanceCard({
           size="sm"
           variant="secondary"
           disabled={isActing || !isStopped}
-          onClick={() => onStart(instance.id)}
+          onClick={() => onStart(instance.id, instance.region)}
           className="flex items-center gap-1.5"
         >
           {isActing && actionState?.action === "starting" ? (
@@ -380,7 +413,7 @@ function InstanceCard({
           size="sm"
           variant="secondary"
           disabled={isActing || !isRunning}
-          onClick={() => onStop(instance.id)}
+          onClick={() => onStop(instance.id, instance.region)}
           className="flex items-center gap-1.5"
         >
           {isActing && actionState?.action === "stopping" ? (
@@ -434,6 +467,26 @@ function EmptyState() {
       </div>
     </div>
   )
+}
+
+function groupComputeByCompartmentAndRegion(instances: ComputeResource[]): { compartmentId: string; regions: { region: string; instances: ComputeResource[] }[] }[] {
+  const compartmentMap = new Map<string, Map<string, ComputeResource[]>>()
+  for (const instance of instances) {
+    const compartmentId = instance.compartmentId || "unknown-compartment"
+    const region = instance.region || "default"
+    if (!compartmentMap.has(compartmentId)) {
+      compartmentMap.set(compartmentId, new Map<string, ComputeResource[]>())
+    }
+    const regionMap = compartmentMap.get(compartmentId)!
+    if (!regionMap.has(region)) {
+      regionMap.set(region, [])
+    }
+    regionMap.get(region)!.push(instance)
+  }
+  return [...compartmentMap.entries()].map(([compartmentId, regions]) => ({
+    compartmentId,
+    regions: [...regions.entries()].map(([region, groupedInstances]) => ({ region, instances: groupedInstances })),
+  }))
 }
 
 function loadSshUserOverrides(): Record<string, string> {

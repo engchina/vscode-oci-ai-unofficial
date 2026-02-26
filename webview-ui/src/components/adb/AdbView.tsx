@@ -7,14 +7,17 @@ import {
   PlayCircle,
   Plug,
   RefreshCw,
+  Save,
   Search,
   SquareTerminal,
   StopCircle,
+  Trash2,
   Unplug,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useExtensionState } from "../../context/ExtensionStateContext"
 import { ResourceServiceClient } from "../../services/grpc-client"
-import type { AdbResource, ConnectAdbResponse, ExecuteAdbSqlResponse } from "../../services/types"
+import type { AdbResource, ConnectAdbResponse, ExecuteAdbSqlResponse, LoadAdbConnectionResponse } from "../../services/types"
 import Button from "../ui/Button"
 import CompartmentSelector from "../ui/CompartmentSelector"
 import Input from "../ui/Input"
@@ -30,6 +33,7 @@ const TRANSITIONAL_STATES = new Set([
 const POLL_INTERVAL_MS = 5000
 
 export default function AdbView() {
+  const { activeProfile, profilesConfig, tenancyOcid } = useExtensionState()
   const [databases, setDatabases] = useState<AdbResource[]>([])
   const [selectedAdbId, setSelectedAdbId] = useState("")
   const [loading, setLoading] = useState(true)
@@ -47,7 +51,8 @@ export default function AdbView() {
   const [connectionTarget, setConnectionTarget] = useState<Pick<ConnectAdbResponse, "autonomousDatabaseId" | "serviceName" | "walletPath"> | null>(null)
   const [sql, setSql] = useState("SELECT SYSDATE AS CURRENT_TIME FROM DUAL")
   const [sqlResult, setSqlResult] = useState<ExecuteAdbSqlResponse | null>(null)
-  const [adbBusyAction, setAdbBusyAction] = useState<"wallet" | "connect" | "disconnect" | "execute" | null>(null)
+  const [adbBusyAction, setAdbBusyAction] = useState<"wallet" | "connect" | "disconnect" | "execute" | "save" | "delete" | null>(null)
+  const [hasSavedProfile, setHasSavedProfile] = useState(false)
   const previousSelectedAdbIdRef = useRef("")
 
   const selectedDatabase = useMemo(
@@ -60,6 +65,21 @@ export default function AdbView() {
     if (!q) return databases
     return databases.filter(db => db.name.toLowerCase().includes(q) || db.id.toLowerCase().includes(q))
   }, [databases, query])
+  const grouped = useMemo(() => groupAdbByCompartmentAndRegion(filtered), [filtered])
+  const compartmentNameById = useMemo(() => {
+    const map = new Map<string, string>()
+    const rootId = tenancyOcid?.trim()
+    if (rootId) {
+      map.set(rootId, "Root (Tenancy)")
+    }
+    const activeProfileConfig = profilesConfig.find((p) => p.name === activeProfile)
+    for (const c of activeProfileConfig?.compartments ?? []) {
+      if (c.id?.trim()) {
+        map.set(c.id.trim(), c.name?.trim() || c.id.trim())
+      }
+    }
+    return map
+  }, [activeProfile, profilesConfig, tenancyOcid])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -109,10 +129,10 @@ export default function AdbView() {
   }, [isPolling, load])
 
   const handleStart = useCallback(
-    async (id: string) => {
+    async (id: string, region?: string) => {
       setActionState({ id, action: "starting" })
       try {
-        await ResourceServiceClient.startAdb(id)
+        await ResourceServiceClient.startAdb(id, region)
         await load()
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err))
@@ -124,10 +144,10 @@ export default function AdbView() {
   )
 
   const handleStop = useCallback(
-    async (id: string) => {
+    async (id: string, region?: string) => {
       setActionState({ id, action: "stopping" })
       try {
-        await ResourceServiceClient.stopAdb(id)
+        await ResourceServiceClient.stopAdb(id, region)
         await load()
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err))
@@ -213,6 +233,24 @@ export default function AdbView() {
     }
   }, [connectionId, disconnectConnection])
 
+  const loadSavedProfile = useCallback(async (dbId: string) => {
+    try {
+      const saved = await ResourceServiceClient.loadAdbConnection(dbId) as LoadAdbConnectionResponse | Record<string, never>
+      if (saved && "autonomousDatabaseId" in saved && saved.autonomousDatabaseId) {
+        setWalletPath(saved.walletPath || "")
+        setWalletPassword(saved.walletPassword || "")
+        setUsername(saved.username || "")
+        setPassword(saved.password || "")
+        setServiceName(saved.serviceName || "")
+        setHasSavedProfile(true)
+        return
+      }
+    } catch {
+      // Ignore load errors - just start with empty fields
+    }
+    setHasSavedProfile(false)
+  }, [])
+
   useEffect(() => {
     const previous = previousSelectedAdbIdRef.current
     if (!selectedAdbId) {
@@ -228,12 +266,18 @@ export default function AdbView() {
       setServiceName("")
       setWalletPath("")
       setWalletPassword("")
+      setUsername("")
+      setPassword("")
+      setHasSavedProfile(false)
       if (activeConnectionId) {
         void disconnectConnection(activeConnectionId)
       }
+      void loadSavedProfile(selectedAdbId)
+    } else if (!previous) {
+      void loadSavedProfile(selectedAdbId)
     }
     previousSelectedAdbIdRef.current = selectedAdbId
-  }, [connectionId, disconnectConnection, selectedAdbId])
+  }, [connectionId, disconnectConnection, loadSavedProfile, selectedAdbId])
 
   useEffect(() => {
     return () => {
@@ -262,6 +306,41 @@ export default function AdbView() {
     }
   }, [connectionId, sql])
 
+  const handleSaveConnection = useCallback(async () => {
+    if (!selectedDatabase?.id) return
+    setError(null)
+    setAdbBusyAction("save")
+    try {
+      await ResourceServiceClient.saveAdbConnection({
+        autonomousDatabaseId: selectedDatabase.id,
+        walletPath,
+        walletPassword,
+        username,
+        password,
+        serviceName,
+      })
+      setHasSavedProfile(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAdbBusyAction(null)
+    }
+  }, [password, selectedDatabase, serviceName, username, walletPassword, walletPath])
+
+  const handleDeleteConnection = useCallback(async () => {
+    if (!selectedDatabase?.id) return
+    setError(null)
+    setAdbBusyAction("delete")
+    try {
+      await ResourceServiceClient.deleteAdbConnection(selectedDatabase.id)
+      setHasSavedProfile(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAdbBusyAction(null)
+    }
+  }, [selectedDatabase])
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-start justify-between gap-3 border-b border-border-panel px-4 py-3">
@@ -274,7 +353,7 @@ export default function AdbView() {
             {isPolling ? (
               <span className="text-xs text-warning animate-pulse">Auto-refreshing every 5s...</span>
             ) : (
-              <span className="text-xs text-description">Download wallet, connect and run SQL.</span>
+              <span className="text-xs text-description">Download wallet, connect and run SQL by compartment and region.</span>
             )}
           </div>
         </div>
@@ -330,16 +409,32 @@ export default function AdbView() {
               {filtered.length === 0 ? (
                 <p className="py-8 text-center text-xs text-description">No databases match your filter.</p>
               ) : (
-                filtered.map((db) => (
-                  <DatabaseCard
-                    key={db.id}
-                    database={db}
-                    selected={db.id === selectedAdbId}
-                    actionState={actionState}
-                    onStart={handleStart}
-                    onStop={handleStop}
-                    onSelect={setSelectedAdbId}
-                  />
+                grouped.map((compartmentGroup) => (
+                  <div key={compartmentGroup.compartmentId} className="rounded-xl border border-border-panel p-3 sm:p-4">
+                    <h5 className="text-xs font-semibold uppercase tracking-wider text-description">
+                      Compartment: {compartmentNameById.get(compartmentGroup.compartmentId) ?? compartmentGroup.compartmentId}
+                    </h5>
+                    <div className="mt-3 flex flex-col gap-3">
+                      {compartmentGroup.regions.map((regionGroup) => (
+                        <div key={`${compartmentGroup.compartmentId}-${regionGroup.region}`} className="flex flex-col gap-2">
+                          <h6 className="text-[11px] font-semibold uppercase tracking-wider text-description">
+                            Region: {regionGroup.region}
+                          </h6>
+                          {regionGroup.databases.map((db) => (
+                            <DatabaseCard
+                              key={`${db.id}-${db.region ?? "default"}`}
+                              database={db}
+                              selected={db.id === selectedAdbId}
+                              actionState={actionState}
+                              onStart={handleStart}
+                              onStop={handleStop}
+                              onSelect={setSelectedAdbId}
+                            />
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 ))
               )}
             </div>
@@ -461,6 +556,38 @@ export default function AdbView() {
                   {adbBusyAction === "disconnect" ? <Loader2 size={12} className="animate-spin" /> : <Unplug size={12} />}
                   Disconnect
                 </Button>
+                <div className="ml-auto flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="gap-1.5"
+                    onClick={handleSaveConnection}
+                    disabled={
+                      adbBusyAction !== null ||
+                      !selectedAdbId ||
+                      !walletPath.trim() ||
+                      !username.trim() ||
+                      !serviceName.trim()
+                    }
+                  >
+                    {adbBusyAction === "save" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                    {hasSavedProfile ? "Saved" : "Save"}
+                  </Button>
+                  {hasSavedProfile && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="gap-1.5 text-error hover:text-error"
+                      onClick={handleDeleteConnection}
+                      disabled={adbBusyAction !== null}
+                    >
+                      {adbBusyAction === "delete" ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                      Delete
+                    </Button>
+                  )}
+                </div>
               </div>
 
               <Textarea
@@ -544,8 +671,8 @@ function DatabaseCard({
   database: AdbResource
   selected: boolean
   actionState: ActionState
-  onStart: (id: string) => void
-  onStop: (id: string) => void
+  onStart: (id: string, region?: string) => void
+  onStop: (id: string, region?: string) => void
   onSelect: (id: string) => void
 }) {
   const isActing = actionState?.id === database.id
@@ -581,7 +708,7 @@ function DatabaseCard({
           size="sm"
           variant="secondary"
           disabled={isActing || !isStopped}
-          onClick={() => onStart(database.id)}
+          onClick={() => onStart(database.id, database.region)}
           className="flex items-center gap-1.5"
         >
           {isActing && actionState?.action === "starting" ? (
@@ -595,7 +722,7 @@ function DatabaseCard({
           size="sm"
           variant="secondary"
           disabled={isActing || !isAvailable}
-          onClick={() => onStop(database.id)}
+          onClick={() => onStop(database.id, database.region)}
           className="flex items-center gap-1.5"
         >
           {isActing && actionState?.action === "stopping" ? (
@@ -636,6 +763,26 @@ function EmptyState() {
       <p className="mt-1 text-xs">Check your compartment and permissions.</p>
     </div>
   )
+}
+
+function groupAdbByCompartmentAndRegion(databases: AdbResource[]): { compartmentId: string; regions: { region: string; databases: AdbResource[] }[] }[] {
+  const compartmentMap = new Map<string, Map<string, AdbResource[]>>()
+  for (const db of databases) {
+    const compartmentId = db.compartmentId || "unknown-compartment"
+    const region = db.region || "default"
+    if (!compartmentMap.has(compartmentId)) {
+      compartmentMap.set(compartmentId, new Map<string, AdbResource[]>())
+    }
+    const regionMap = compartmentMap.get(compartmentId)!
+    if (!regionMap.has(region)) {
+      regionMap.set(region, [])
+    }
+    regionMap.get(region)!.push(db)
+  }
+  return [...compartmentMap.entries()].map(([compartmentId, regions]) => ({
+    compartmentId,
+    regions: [...regions.entries()].map(([region, groupedDatabases]) => ({ region, databases: groupedDatabases })),
+  }))
 }
 
 function formatCell(value: string | number | boolean | null | undefined): string {

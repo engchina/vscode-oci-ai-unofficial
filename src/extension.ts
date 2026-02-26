@@ -40,6 +40,7 @@ export function activate(context: vscode.ExtensionContext): void {
     controller,
     refreshCompute: () => mainWebviewProvider.refresh(),
     refreshAdb: () => mainWebviewProvider.refresh(),
+    refreshProfileDescription: () => mainWebviewProvider.refreshProfileDescription(),
   });
 
   // Ensure Generative AI Chat is open by default on every activation/reload

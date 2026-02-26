@@ -41,6 +41,7 @@ Open the **OCI Settings** panel or use `vscode-oci-ai-unofficial: Configure Prof
 | Setting | Required | Description |
 |---------|----------|-------------|
 | `ociAi.profile` | For config-file auth | OCI profile name from `~/.oci/config` (default: `DEFAULT`) |
+| `ociAi.authMode` | Optional | `auto` / `api-key` / `config-file` (default: `auto`) |
 | `ociAi.compartmentId` | Yes | Compartment OCID for Compute and ADB list/actions |
 | `ociAi.genAiLlmModelId` | Yes | LLM model name for AI chat (e.g. `meta.llama-3.1-70b-instruct`) |
 | `ociAi.region` | Optional | OCI region override (e.g. `us-phoenix-1`) |
@@ -60,6 +61,8 @@ Two modes are supported and auto-detected at runtime:
 **API Key Auth** (SecretStorage)
 - Run `vscode-oci-ai-unofficial: Store API Key in Secret Storage` or fill in the API Key card in OCI Settings.
 - When all four fields (Tenancy OCID, User OCID, Fingerprint, Private Key) are stored, API Key auth takes priority automatically.
+
+To run fully independent from `~/.oci/config`, set `ociAi.authMode` to `api-key`. In this mode, the extension will never fall back to config-file auth.
 
 ## Commands
 

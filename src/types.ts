@@ -4,6 +4,8 @@ export interface ComputeResource {
   id: string;
   name: string;
   lifecycleState: ResourceState | string;
+  compartmentId?: string;
+  region?: string;
   publicIp?: string;
   privateIp?: string;
 }
@@ -12,4 +14,6 @@ export interface AdbResource {
   id: string;
   name: string;
   lifecycleState: ResourceState | string;
+  compartmentId?: string;
+  region?: string;
 }

@@ -188,9 +188,9 @@ export default function ChatTextArea({
         clipboardFiles.length > 0
           ? clipboardFiles
           : Array.from(e.clipboardData?.items ?? [])
-              .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
-              .map((item) => item.getAsFile())
-              .filter((file): file is File => Boolean(file))
+            .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+            .map((item) => item.getAsFile())
+            .filter((file): file is File => Boolean(file))
       if (imageFiles.length === 0) return
 
       e.preventDefault()
@@ -295,20 +295,19 @@ export default function ChatTextArea({
           <p className="mt-2 px-1 text-xxs text-warning">{validationError}</p>
         )}
 
-        <p className="mt-2 px-1 text-xxs text-description">
-          Enter to send, Shift+Enter for newline. Paste image with Ctrl+V or attach up to {MAX_IMAGES} images per
-          message.
-        </p>
+        <div className="mt-2 flex min-h-6 items-center justify-between gap-2 px-1">
+          <p className="truncate text-xxs text-description" title="Enter to send, Shift+Enter for newline. Paste image with Ctrl+V or attach up to 10 images per message.">
+            Enter to send, Shift+Enter for newline. Paste image with Ctrl+V or attach up to {MAX_IMAGES} images.
+          </p>
 
-        <div className="mt-2 flex min-h-4 items-center justify-end px-1">
           {modelOptions.length > 0 && (
-            <div className="flex items-center gap-1 text-xxs text-description">
+            <div className="flex shrink-0 items-center gap-1 text-xxs text-description">
               <Cpu size={12} />
               <select
                 value={selectedModelName}
                 onChange={(e) => setSelectedModelName(e.target.value)}
                 disabled={disabled}
-                className="h-6 rounded border border-input-border bg-input-background px-1.5 text-xxs text-input-foreground outline-none focus:border-border disabled:cursor-not-allowed disabled:opacity-60"
+                className="h-6 max-w-48 rounded border border-input-border bg-input-background px-1.5 text-xxs text-input-foreground outline-none focus:border-border disabled:cursor-not-allowed disabled:opacity-60"
                 title="Select model"
               >
                 {modelOptions.map((model) => (
@@ -410,14 +409,14 @@ function normalizeMimeType(mimeType: string): string {
 
 function sniffImageMimeType(bytes: Uint8Array): string | null {
   if (bytes.length >= 8 &&
-      bytes[0] === 0x89 &&
-      bytes[1] === 0x50 &&
-      bytes[2] === 0x4e &&
-      bytes[3] === 0x47 &&
-      bytes[4] === 0x0d &&
-      bytes[5] === 0x0a &&
-      bytes[6] === 0x1a &&
-      bytes[7] === 0x0a) {
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a) {
     return "image/png"
   }
 
@@ -426,24 +425,24 @@ function sniffImageMimeType(bytes: Uint8Array): string | null {
   }
 
   if (bytes.length >= 6 &&
-      bytes[0] === 0x47 &&
-      bytes[1] === 0x49 &&
-      bytes[2] === 0x46 &&
-      bytes[3] === 0x38 &&
-      (bytes[4] === 0x37 || bytes[4] === 0x39) &&
-      bytes[5] === 0x61) {
+    bytes[0] === 0x47 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x38 &&
+    (bytes[4] === 0x37 || bytes[4] === 0x39) &&
+    bytes[5] === 0x61) {
     return "image/gif"
   }
 
   if (bytes.length >= 12 &&
-      bytes[0] === 0x52 &&
-      bytes[1] === 0x49 &&
-      bytes[2] === 0x46 &&
-      bytes[3] === 0x46 &&
-      bytes[8] === 0x57 &&
-      bytes[9] === 0x45 &&
-      bytes[10] === 0x42 &&
-      bytes[11] === 0x50) {
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50) {
     return "image/webp"
   }
 

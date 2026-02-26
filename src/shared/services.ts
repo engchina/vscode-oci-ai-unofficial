@@ -164,6 +164,26 @@ export interface ExecuteAdbSqlResponse {
   message: string;
 }
 
+/** Non-sensitive ADB connection profile stored in VSCode config */
+export interface AdbConnectionProfile {
+  autonomousDatabaseId: string;
+  walletPath: string;
+  username: string;
+  serviceName: string;
+}
+
+/** Request to save an ADB connection (includes sensitive fields) */
+export interface SaveAdbConnectionRequest extends AdbConnectionProfile {
+  walletPassword: string;
+  password: string;
+}
+
+/** Response when loading a saved ADB connection */
+export interface LoadAdbConnectionResponse extends AdbConnectionProfile {
+  walletPassword: string;
+  password: string;
+}
+
 /**
  * Service handler type definitions.
  *

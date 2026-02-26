@@ -1,0 +1,19 @@
+{
+  "version": 1.1,
+  "atDirectives": [
+    {
+      "name": "@config",
+      "description": "Tailwind CSS v4: specify the path to a Tailwind configuration file.",
+      "references": [
+        {
+          "name": "Tailwind CSS Documentation",
+          "url": "https://tailwindcss.com/docs/functions-and-directives#config"
+        }
+      ]
+    },
+    {
+      "name": "@import",
+      "description": "Import Tailwind CSS or other stylesheets."
+    }
+  ]
+}

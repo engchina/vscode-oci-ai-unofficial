@@ -87,6 +87,16 @@ export interface SettingsState extends SaveSettingsRequest {
   profilesConfig: ProfileConfig[]
 }
 
+export interface ProfileSecretsResponse {
+  tenancyOcid: string
+  userOcid: string
+  fingerprint: string
+  privateKey: string
+  privateKeyPassphrase: string
+  region: string
+  authMode: "api-key" | "config-file"
+}
+
 export interface SendMessageRequest {
   text: string
   images?: ChatImageData[]
@@ -160,6 +170,8 @@ export interface ComputeResource {
   id: string
   name: string
   lifecycleState: string
+  compartmentId?: string
+  region?: string
   publicIp?: string
   privateIp?: string
 }
@@ -168,6 +180,8 @@ export interface AdbResource {
   id: string
   name: string
   lifecycleState: string
+  compartmentId?: string
+  region?: string
 }
 
 export interface ListComputeResponse {
@@ -176,6 +190,26 @@ export interface ListComputeResponse {
 
 export interface ListAdbResponse {
   databases: AdbResource[]
+}
+
+/** Non-sensitive ADB connection profile stored in VSCode config */
+export interface AdbConnectionProfile {
+  autonomousDatabaseId: string
+  walletPath: string
+  username: string
+  serviceName: string
+}
+
+/** Request to save an ADB connection (includes sensitive fields) */
+export interface SaveAdbConnectionRequest extends AdbConnectionProfile {
+  walletPassword: string
+  password: string
+}
+
+/** Response when loading a saved ADB connection */
+export interface LoadAdbConnectionResponse extends AdbConnectionProfile {
+  walletPassword: string
+  password: string
 }
 
 export interface CodeContextPayload {

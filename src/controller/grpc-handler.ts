@@ -111,6 +111,7 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
       await c.saveSettings(msg);
       return {};
     },
+    getProfileSecrets: async (c, msg) => c.getProfileSecrets(String(msg.profile ?? "DEFAULT")),
     switchCompartment: async (c, msg) => {
       await c.switchCompartment(msg.id);
       return {};
@@ -133,21 +134,21 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
   ResourceService: {
     listCompute: async (c) => ({ instances: await c.listComputeInstances() }),
     startCompute: async (c, msg) => {
-      await c.startComputeInstance(msg.instanceId);
+      await c.startComputeInstance(msg.instanceId, typeof msg.region === "string" ? msg.region : undefined);
       return {};
     },
     stopCompute: async (c, msg) => {
-      await c.stopComputeInstance(msg.instanceId);
+      await c.stopComputeInstance(msg.instanceId, typeof msg.region === "string" ? msg.region : undefined);
       return {};
     },
     connectComputeSsh: async (c, msg) => c.connectComputeSsh(msg),
     listAdb: async (c) => ({ databases: await c.listAutonomousDatabases() }),
     startAdb: async (c, msg) => {
-      await c.startAutonomousDatabase(msg.autonomousDatabaseId);
+      await c.startAutonomousDatabase(msg.autonomousDatabaseId, typeof msg.region === "string" ? msg.region : undefined);
       return {};
     },
     stopAdb: async (c, msg) => {
-      await c.stopAutonomousDatabase(msg.autonomousDatabaseId);
+      await c.stopAutonomousDatabase(msg.autonomousDatabaseId, typeof msg.region === "string" ? msg.region : undefined);
       return {};
     },
     downloadAdbWallet: async (c, msg) => c.downloadAdbWallet(msg),
@@ -157,6 +158,18 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
       return {};
     },
     executeAdbSql: async (c, msg) => c.executeAdbSql(msg),
+    saveAdbConnection: async (c, msg) => {
+      await c.saveAdbConnection(msg);
+      return {};
+    },
+    loadAdbConnection: async (c, msg) => {
+      const result = await c.loadAdbConnection(String(msg.autonomousDatabaseId ?? ""));
+      return result ?? {};
+    },
+    deleteAdbConnection: async (c, msg) => {
+      await c.deleteAdbConnection(String(msg.autonomousDatabaseId ?? ""));
+      return {};
+    },
   },
 };
 

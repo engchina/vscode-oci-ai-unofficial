@@ -6,6 +6,7 @@ import { handleGrpcRequest, handleGrpcRequestCancel } from "../controller/grpc-h
 import type { ExtensionMessage, WebviewMessage } from "../shared/messages";
 
 type HostView = "main";
+const MAIN_VIEW_TITLE = "OCI Tools";
 
 export class OciWebviewProvider implements vscode.WebviewViewProvider {
   public static readonly MAIN_VIEW_ID = "ociAi.mainView";
@@ -24,6 +25,11 @@ export class OciWebviewProvider implements vscode.WebviewViewProvider {
     this.postMessageToWebview({ type: "grpc_response", grpc_response: { request_id: "__refresh__", message: { refresh: true } } });
   }
 
+  /** Refresh the selected profile display in the panel header */
+  public refreshProfileDescription(): void {
+    this.updateSelectedProfileDescription();
+  }
+
   public async resolveWebviewView(webviewView: vscode.WebviewView): Promise<void> {
     this.webview = webviewView;
 
@@ -38,6 +44,22 @@ export class OciWebviewProvider implements vscode.WebviewViewProvider {
         : this.getHtmlContent(webviewView.webview, this.hostView);
 
     this.setWebviewMessageListener(webviewView.webview);
+
+    // Show the selected profile summary in the panel header metadata.
+    this.updateSelectedProfileDescription();
+    vscode.workspace.onDidChangeConfiguration(
+      (e) => {
+        if (
+          e.affectsConfiguration("ociAi.profile")
+          || e.affectsConfiguration("ociAi.activeProfile")
+          || e.affectsConfiguration("ociAi.profilesConfig")
+        ) {
+          this.updateSelectedProfileDescription();
+        }
+      },
+      null,
+      this.disposables,
+    );
 
     webviewView.onDidChangeVisibility(
       () => {
@@ -56,6 +78,23 @@ export class OciWebviewProvider implements vscode.WebviewViewProvider {
       null,
       this.disposables,
     );
+  }
+
+  /** Update the panel header metadata to reflect the current selected profile */
+  private updateSelectedProfileDescription(): void {
+    if (!this.webview) return;
+    const cfg = vscode.workspace.getConfiguration("ociAi");
+    const selectedProfile = cfg.get<string>("profile", "DEFAULT").trim() || "DEFAULT";
+    const profilesConfig = cfg.get<{ name: string; compartments: { id: string; name: string }[] }[]>("profilesConfig", []);
+    const profiles = Array.isArray(profilesConfig) ? profilesConfig : [];
+    const selectedProfileConfig = profiles.find(profile => profile.name === selectedProfile);
+    // Count root tenancy as one compartment in the profile summary display.
+    const compartmentCount = (selectedProfileConfig?.compartments?.length ?? 0) + 1;
+    const profileDisplay = `${selectedProfile} (${compartmentCount} Compartments)`;
+
+    this.webview.title = `${MAIN_VIEW_TITLE} · [${profileDisplay}]`;
+    this.webview.description = undefined;
+    this.webview.badge = undefined;
   }
 
   private setWebviewMessageListener(webview: vscode.Webview): void {

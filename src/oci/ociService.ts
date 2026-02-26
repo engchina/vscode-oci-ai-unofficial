@@ -6,10 +6,9 @@ export class OciService {
   constructor(private readonly factory: OciClientFactory) { }
 
   public async listComputeInstances(): Promise<ComputeResource[]> {
-    const computeClient = await this.factory.createComputeClientAsync();
-    const virtualNetworkClient = await this.factory.createVirtualNetworkClientAsync();
     const cfg = vscode.workspace.getConfiguration("ociAi");
     const compartmentIds = [...(cfg.get<string[]>("computeCompartmentIds") || [])];
+    const regions = splitRegions(cfg.get<string>("region", ""));
 
     if (compartmentIds.length === 0) {
       const legacy = cfg.get<string>("compartmentId", "");
@@ -18,41 +17,46 @@ export class OciService {
 
     const instances: ComputeResource[] = [];
 
-    for (const compartmentId of compartmentIds) {
-      if (!compartmentId.trim()) continue;
-      let page: string | undefined;
-      do {
-        const result = await computeClient.listInstances({ compartmentId, page });
-        instances.push(
-          ...(result.items || []).map((instance) => ({
+    for (const region of regions) {
+      const computeClient = await this.factory.createComputeClientAsync(region);
+      const virtualNetworkClient = await this.factory.createVirtualNetworkClientAsync(region);
+      for (const compartmentId of compartmentIds) {
+        const normalizedCompartmentId = compartmentId.trim();
+        if (!normalizedCompartmentId) continue;
+        let page: string | undefined;
+        do {
+          const result = await computeClient.listInstances({ compartmentId: normalizedCompartmentId, page });
+          const regionInstances = (result.items || []).map((instance) => ({
             id: instance.id || "",
             name: instance.displayName || instance.id || "Unnamed Instance",
             lifecycleState: (instance.lifecycleState as string) || "UNKNOWN",
-          }))
-        );
-        page = result.opcNextPage;
-      } while (page);
+            compartmentId: normalizedCompartmentId,
+            region,
+          }));
+          instances.push(...regionInstances);
+          await Promise.all(
+            regionInstances.map((instance) =>
+              this.populateInstanceNetworkAddresses(instance, normalizedCompartmentId, computeClient, virtualNetworkClient)
+            )
+          );
+          page = result.opcNextPage;
+        } while (page);
+      }
     }
-
-    await Promise.all(
-      instances.map((instance) =>
-        this.populateInstanceNetworkAddresses(instance, undefined, computeClient, virtualNetworkClient) // we modified signature in fallback but we should just pass instance compartment Id. Wait, we don't have it tracked.
-      )
-    );
 
     return instances;
   }
 
-  public async startComputeInstance(instanceId: string): Promise<void> {
-    const client = await this.factory.createComputeClientAsync();
+  public async startComputeInstance(instanceId: string, region?: string): Promise<void> {
+    const client = await this.factory.createComputeClientAsync(region);
     await client.instanceAction({
       instanceId,
       action: "START"
     });
   }
 
-  public async stopComputeInstance(instanceId: string): Promise<void> {
-    const client = await this.factory.createComputeClientAsync();
+  public async stopComputeInstance(instanceId: string, region?: string): Promise<void> {
+    const client = await this.factory.createComputeClientAsync(region);
     await client.instanceAction({
       instanceId,
       action: "SOFTSTOP"
@@ -60,9 +64,9 @@ export class OciService {
   }
 
   public async listAutonomousDatabases(): Promise<AdbResource[]> {
-    const client = await this.factory.createDatabaseClientAsync();
     const cfg = vscode.workspace.getConfiguration("ociAi");
     const compartmentIds = [...(cfg.get<string[]>("adbCompartmentIds") || [])];
+    const regions = splitRegions(cfg.get<string>("region", ""));
 
     if (compartmentIds.length === 0) {
       const legacy = cfg.get<string>("compartmentId", "");
@@ -71,32 +75,38 @@ export class OciService {
 
     const databases: AdbResource[] = [];
 
-    for (const compartmentId of compartmentIds) {
-      if (!compartmentId.trim()) continue;
-      let page: string | undefined;
-      do {
-        const result = await client.listAutonomousDatabases({ compartmentId, page });
-        databases.push(
-          ...(result.items || []).map((adb) => ({
-            id: adb.id || "",
-            name: adb.dbName || adb.displayName || adb.id || "Unnamed ADB",
-            lifecycleState: (adb.lifecycleState as string) || "UNKNOWN"
-          }))
-        );
-        page = result.opcNextPage;
-      } while (page);
+    for (const region of regions) {
+      const client = await this.factory.createDatabaseClientAsync(region);
+      for (const compartmentId of compartmentIds) {
+        const normalizedCompartmentId = compartmentId.trim();
+        if (!normalizedCompartmentId) continue;
+        let page: string | undefined;
+        do {
+          const result = await client.listAutonomousDatabases({ compartmentId: normalizedCompartmentId, page });
+          databases.push(
+            ...(result.items || []).map((adb) => ({
+              id: adb.id || "",
+              name: adb.dbName || adb.displayName || adb.id || "Unnamed ADB",
+              lifecycleState: (adb.lifecycleState as string) || "UNKNOWN",
+              compartmentId: normalizedCompartmentId,
+              region,
+            }))
+          );
+          page = result.opcNextPage;
+        } while (page);
+      }
     }
 
     return databases;
   }
 
-  public async startAutonomousDatabase(autonomousDatabaseId: string): Promise<void> {
-    const client = await this.factory.createDatabaseClientAsync();
+  public async startAutonomousDatabase(autonomousDatabaseId: string, region?: string): Promise<void> {
+    const client = await this.factory.createDatabaseClientAsync(region);
     await client.startAutonomousDatabase({ autonomousDatabaseId });
   }
 
-  public async stopAutonomousDatabase(autonomousDatabaseId: string): Promise<void> {
-    const client = await this.factory.createDatabaseClientAsync();
+  public async stopAutonomousDatabase(autonomousDatabaseId: string, region?: string): Promise<void> {
+    const client = await this.factory.createDatabaseClientAsync(region);
     await client.stopAutonomousDatabase({ autonomousDatabaseId });
   }
 
@@ -159,4 +169,12 @@ export class OciService {
     } while (page);
     return all;
   }
+}
+
+function splitRegions(raw: string): string[] {
+  const regions = raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  return regions.length > 0 ? regions : [""];
 }

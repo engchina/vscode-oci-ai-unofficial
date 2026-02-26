@@ -1,5 +1,5 @@
 import { clsx } from "clsx"
-import { Bot, Info, LoaderCircle, Plus, Save, Settings2, Sliders, Terminal, Trash2, Users, Wrench } from "lucide-react"
+import { Bot, ChevronDown, Info, LoaderCircle, Plus, Save, Settings2, Sliders, Terminal, Trash2, Users, Wrench } from "lucide-react"
 import { useCallback, useEffect, useState, type ChangeEvent, type Dispatch, type SetStateAction } from "react"
 import { StateServiceClient } from "../../services/grpc-client"
 import type { SettingsState } from "../../services/types"
@@ -86,6 +86,18 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
         console.error("Failed to load settings:", error)
         setLoaded(true)
       })
+
+    const unsubscribe = StateServiceClient.subscribeToState({
+      onResponse: () => {
+        StateServiceClient.getSettings()
+          .then((state) => setSettings(state))
+          .catch((error) => console.error("Failed to refresh settings:", error))
+      },
+      onError: (error) => console.error("State subscription error:", error),
+      onComplete: () => { },
+    })
+
+    return () => { unsubscribe() }
   }, [])
 
   const updateField = useCallback<UpdateFieldFn>((field, value) => {
@@ -258,13 +270,39 @@ function ApiConfigTab({
   const validationErrors = validateSettings(settings)
   const profiles = settings.profilesConfig || []
 
+  const loadProfileSecrets = (profileName: string) => {
+    StateServiceClient.getProfileSecrets(profileName)
+      .then((secrets) => {
+        setSettings((prev) => ({
+          ...prev,
+          profile: profileName,
+          region: secrets.region,
+          tenancyOcid: secrets.tenancyOcid,
+          userOcid: secrets.userOcid,
+          fingerprint: secrets.fingerprint,
+          privateKey: secrets.privateKey,
+          privateKeyPassphrase: secrets.privateKeyPassphrase,
+          authMode: secrets.authMode,
+        }))
+      })
+      .catch((err) => console.error("Failed to load profile secrets:", err))
+  }
+
   const addProfile = async () => {
     const name = newProfileName.trim()
     if (!name || profiles.some(p => p.name === name)) return
     const updatedProfiles = [...profiles, { name, compartments: [] }]
-    const updatedSettings = { ...settings, profilesConfig: updatedProfiles }
-    if (!settings.profile || settings.profile === "DEFAULT") {
-      updatedSettings.profile = name
+    const updatedSettings = {
+      ...settings,
+      profilesConfig: updatedProfiles,
+      profile: name,
+      region: "",
+      tenancyOcid: "",
+      userOcid: "",
+      fingerprint: "",
+      privateKey: "",
+      privateKeyPassphrase: "",
+      authMode: "config-file" as const,
     }
     setSettings(updatedSettings)
     setNewProfileName("")
@@ -278,7 +316,8 @@ function ApiConfigTab({
   const deleteProfile = async (name: string) => {
     const updatedProfiles = profiles.filter(p => p.name !== name)
     const updatedSettings = { ...settings, profilesConfig: updatedProfiles }
-    if (settings.profile === name) {
+    const needsProfileSwitch = settings.profile === name
+    if (needsProfileSwitch) {
       updatedSettings.profile = updatedProfiles.length > 0 ? updatedProfiles[0].name : "DEFAULT"
     }
     if (settings.activeProfile === name) {
@@ -287,6 +326,9 @@ function ApiConfigTab({
     setSettings(updatedSettings)
     try {
       await StateServiceClient.saveSettings({ ...updatedSettings, suppressNotification: true })
+      if (needsProfileSwitch) {
+        loadProfileSecrets(updatedSettings.profile)
+      }
     } catch (error) {
       console.error("Failed to delete profile:", error)
     }
@@ -336,7 +378,10 @@ function ApiConfigTab({
       {/* Profile Management */}
       <Card title="Profile">
         <div className="flex flex-col gap-1">
-          <label htmlFor="profile" className="text-xs text-description font-medium">Select Profile</label>
+          <label htmlFor="profile" className="inline-flex items-center gap-1 text-xs text-description font-medium">
+            <ChevronDown size={12} className="shrink-0" />
+            Select Profile
+          </label>
           <div className="flex flex-col gap-2">
             {profiles.length > 0 ? (
               profiles.map(p => (
@@ -348,7 +393,10 @@ function ApiConfigTab({
                 )}>
                   <button
                     className="flex-1 text-left text-xs font-medium"
-                    onClick={() => updateField("profile", p.name)}
+                    onClick={() => {
+                      updateField("profile", p.name)
+                      loadProfileSecrets(p.name)
+                    }}
                   >
                     {p.name}
                     {settings.profile === p.name && (
@@ -392,6 +440,14 @@ function ApiConfigTab({
           When all four fields below are filled, API Key auth takes priority over the OCI config file.
         </p>
         <Input
+          id="region"
+          label="Regions"
+          placeholder="us-phoenix-1,us-chicago-1"
+          value={settings.region}
+          onChange={(e) => updateField("region", e.target.value)}
+        />
+        <p className="-mt-1 text-[10px] text-description">Region is saved per profile. Use commas for multiple regions.</p>
+        <Input
           id="tenancyOcid"
           label="Tenancy OCID"
           placeholder="ocid1.tenancy..."
@@ -434,13 +490,6 @@ function ApiConfigTab({
           type="password"
           value={settings.privateKeyPassphrase}
           onChange={(e) => updateField("privateKeyPassphrase", e.target.value)}
-        />
-        <Input
-          id="region"
-          label="Region"
-          placeholder="us-phoenix-1"
-          value={settings.region}
-          onChange={(e) => updateField("region", e.target.value)}
         />
       </Card>
 

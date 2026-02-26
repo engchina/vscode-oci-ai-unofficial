@@ -14,6 +14,7 @@ export function registerCommands(
     controller: Controller;
     refreshCompute: () => void;
     refreshAdb: () => void;
+    refreshProfileDescription: () => void;
   }
 ): void {
   const { authManager, controller, refreshCompute, refreshAdb } = dependencies;
@@ -23,6 +24,7 @@ export function registerCommands(
     vscode.commands.registerCommand("ociAi.refreshAdb", refreshAdb),
     vscode.commands.registerCommand("ociAi.auth.configureProfile", async () => {
       await authManager.configureProfileInteractive();
+      dependencies.refreshProfileDescription();
       await controller.broadcastState();
       refreshCompute();
       refreshAdb();
