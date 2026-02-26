@@ -55,10 +55,14 @@ export default function DbSystemsView() {
     const [hasSavedProfile, setHasSavedProfile] = useState(false)
     const previousSelectedDbIdRef = useRef("")
 
+    const [connectionStrings, setConnectionStrings] = useState<{ name: string, value: string }[]>([])
+    const [loadingStrings, setLoadingStrings] = useState(false)
+
     // SSH configs
     const [sshConfig, setSshConfig] = useState<SshConfig>(loadSshConfig)
     const [sshUserOverrides, setSshUserOverrides] = useState<Record<string, string>>({})
     const [sshKeyOverrides, setSshKeyOverrides] = useState<Record<string, string>>({})
+    const [sshSelectedIp, setSshSelectedIp] = useState<Record<string, string>>({})
 
     const selectedDatabase = useMemo(
         () => dbSystems.find((db) => db.id === selectedDbId) ?? null,
@@ -165,7 +169,7 @@ export default function DbSystemsView() {
 
     const handleSshConnect = useCallback(
         async (sys: DbSystemResource) => {
-            const host = sys.nodeIps && sys.nodeIps.length > 0 ? sys.nodeIps[0] : ""
+            const host = sshSelectedIp[sys.id] || sys.publicIp || sys.privateIp || ""
             const defaultUsername = sshConfig.username.trim() || DEFAULT_SSH_USERNAME
             const username = sshUserOverrides[sys.id]?.trim() || defaultUsername
             if (!host) {
@@ -264,6 +268,19 @@ export default function DbSystemsView() {
         setHasSavedProfile(false)
     }, [])
 
+    const fetchConnectionStrings = useCallback(async (dbId: string, compartmentId: string, region?: string) => {
+        setLoadingStrings(true)
+        setConnectionStrings([])
+        try {
+            const res = await ResourceServiceClient.getDbSystemConnectionStrings({ dbSystemId: dbId, compartmentId, region })
+            setConnectionStrings(res.connectionStrings || [])
+        } catch {
+            // ignore
+        } finally {
+            setLoadingStrings(false)
+        }
+    }, [])
+
     useEffect(() => {
         const previous = previousSelectedDbIdRef.current
         if (!selectedDbId) {
@@ -277,7 +294,8 @@ export default function DbSystemsView() {
             setSqlResult(null)
 
             const sys = dbSystems.find(d => d.id === selectedDbId)
-            const ipHint = sys && sys.nodeIps && sys.nodeIps.length > 0 ? `${sys.nodeIps[0]}:1521/` : ""
+            const defaultIp = sys?.publicIp || sys?.privateIp || ""
+            const ipHint = defaultIp ? `${defaultIp}:1521/${sys?.name || ""}` : ""
             setServiceName(ipHint)
             setUsername("PDBADMIN")
             setPassword("")
@@ -287,11 +305,18 @@ export default function DbSystemsView() {
                 void disconnectConnection(activeConnectionId)
             }
             void loadSavedProfile(selectedDbId)
+            if (sys && sys.compartmentId) {
+                void fetchConnectionStrings(selectedDbId, sys.compartmentId, sys.region)
+            }
         } else if (!previous) {
             const sys = dbSystems.find(d => d.id === selectedDbId)
-            const ipHint = sys && sys.nodeIps && sys.nodeIps.length > 0 && !serviceName ? `${sys.nodeIps[0]}:1521/` : serviceName
+            const defaultIp = sys?.publicIp || sys?.privateIp || ""
+            const ipHint = defaultIp && !serviceName ? `${defaultIp}:1521/${sys?.name || ""}` : serviceName
             if (!serviceName) setServiceName(ipHint)
             void loadSavedProfile(selectedDbId)
+            if (sys && sys.compartmentId) {
+                void fetchConnectionStrings(selectedDbId, sys.compartmentId, sys.region)
+            }
         }
         previousSelectedDbIdRef.current = selectedDbId
     }, [connectionId, disconnectConnection, loadSavedProfile, selectedDbId, dbSystems, serviceName])
@@ -445,10 +470,12 @@ export default function DbSystemsView() {
                                                             sshConfig={sshConfig}
                                                             sshUserOverride={sshUserOverrides[db.id] || ""}
                                                             sshKeyOverride={sshKeyOverrides[db.id] || ""}
+                                                            selectedIp={sshSelectedIp[db.id] || db.publicIp || db.privateIp || ""}
                                                             onStart={handleStart}
                                                             onStop={handleStop}
                                                             onSelect={setSelectedDbId}
                                                             onConnectSsh={handleSshConnect}
+                                                            onChangeSshSelectedIp={(id, ip) => setSshSelectedIp((prev) => ({ ...prev, [id]: ip }))}
                                                             onChangeSshUserOverride={(id, username) => setSshUserOverrides((prev) => ({ ...prev, [id]: username }))}
                                                             onChangeSshKeyOverride={(id, keyPath) => setSshKeyOverrides((prev) => ({ ...prev, [id]: keyPath }))}
                                                         />
@@ -493,7 +520,33 @@ export default function DbSystemsView() {
                                     value={serviceName}
                                     onChange={e => setServiceName(e.target.value)}
                                     placeholder="e.g. 10.0.0.2:1521/DBS1.subnet.vcn.oraclevcn.com"
+                                    list={`db-strings-${selectedDbId}`}
                                 />
+                                {connectionStrings.length > 0 && (
+                                    <datalist id={`db-strings-${selectedDbId}`}>
+                                        {connectionStrings.map(cs => (
+                                            <option key={cs.name} value={cs.value}>{cs.name}</option>
+                                        ))}
+                                    </datalist>
+                                )}
+                                <div className="col-span-1 sm:col-span-2 flex flex-col gap-1 -mt-1">
+                                    {loadingStrings && <span className="text-[10px] text-description animate-pulse">Fetching connection strings...</span>}
+                                    {!loadingStrings && connectionStrings.length > 0 && (
+                                        <div className="flex flex-wrap gap-1">
+                                            {connectionStrings.map(cs => (
+                                                <button
+                                                    key={cs.name}
+                                                    type="button"
+                                                    onClick={() => setServiceName(cs.value)}
+                                                    className="rounded border border-border-panel bg-input-background hover:bg-list-background-hover px-1.5 py-0.5 text-[10px] text-description transition-colors"
+                                                    title={cs.value}
+                                                >
+                                                    {cs.name}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="grid gap-2 sm:grid-cols-2">
@@ -652,10 +705,12 @@ function DatabaseCard({
     sshConfig,
     sshUserOverride,
     sshKeyOverride,
+    selectedIp,
     onStart,
     onStop,
     onSelect,
     onConnectSsh,
+    onChangeSshSelectedIp,
     onChangeSshUserOverride,
     onChangeSshKeyOverride,
 }: {
@@ -666,10 +721,12 @@ function DatabaseCard({
     sshConfig: SshConfig
     sshUserOverride: string
     sshKeyOverride: string
+    selectedIp: string
     onStart: (id: string, region?: string) => void
     onStop: (id: string, region?: string) => void
     onSelect: (id: string) => void
     onConnectSsh: (sys: DbSystemResource) => void
+    onChangeSshSelectedIp: (id: string, ip: string) => void
     onChangeSshUserOverride: (id: string, u: string) => void
     onChangeSshKeyOverride: (id: string, k: string) => void
 }) {
@@ -678,7 +735,7 @@ function DatabaseCard({
     const isTerminal = dbSystem.lifecycleState === "TERMINATED" || dbSystem.lifecycleState === "FAILED"
     const isConnecting = connectingId === dbSystem.id
 
-    const host = dbSystem.nodeIps && dbSystem.nodeIps.length > 0 ? dbSystem.nodeIps[0] : ""
+    const host = selectedIp
     const defaultUsername = sshConfig.username.trim() || DEFAULT_SSH_USERNAME
 
     return (
@@ -695,7 +752,34 @@ function DatabaseCard({
                     <span className="truncate text-sm font-medium">{dbSystem.name}</span>
                     <span className="truncate text-xs text-description">{dbSystem.id}</span>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                        <span className="text-[11px] text-description">Node IPs: {(dbSystem.nodeIps || []).join(", ") || "None"}</span>
+                        <span className="text-[11px] text-description font-semibold">IP:</span>
+                        {dbSystem.publicIp && (
+                            <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-description hover:text-foreground">
+                                <input
+                                    type="radio"
+                                    name={`ip-${dbSystem.id}`}
+                                    checked={selectedIp === dbSystem.publicIp}
+                                    onChange={() => onChangeSshSelectedIp(dbSystem.id, dbSystem.publicIp!)}
+                                    className="accent-button-background h-3 w-3"
+                                />
+                                <span>{dbSystem.publicIp} (Public)</span>
+                            </label>
+                        )}
+                        {dbSystem.privateIp && (
+                            <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-description hover:text-foreground">
+                                <input
+                                    type="radio"
+                                    name={`ip-${dbSystem.id}`}
+                                    checked={selectedIp === dbSystem.privateIp}
+                                    onChange={() => onChangeSshSelectedIp(dbSystem.id, dbSystem.privateIp!)}
+                                    className="accent-button-background h-3 w-3"
+                                />
+                                <span>{dbSystem.privateIp} (Private)</span>
+                            </label>
+                        )}
+                        {!dbSystem.publicIp && !dbSystem.privateIp && (
+                            <span className="text-[11px] text-description">None</span>
+                        )}
                     </div>
 
                     <div className="mt-2 flex max-w-[320px] items-center gap-2">

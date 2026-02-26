@@ -16,7 +16,9 @@ export interface DbSystemResource {
   lifecycleState: ResourceState | string;
   compartmentId?: string;
   region?: string;
-  nodeIps?: string[];
+  publicIp?: string;
+  privateIp?: string;
+  connectString?: string;
 }
 
 export interface AdbResource {

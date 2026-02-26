@@ -169,6 +169,7 @@ export default function AdbView() {
       const response = await ResourceServiceClient.downloadAdbWallet({
         autonomousDatabaseId: selectedDatabase.id,
         walletPassword,
+        region: selectedDatabase.region,
       })
       setWalletPath(response.walletPath)
       setServiceNames(response.serviceNames ?? [])

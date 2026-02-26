@@ -32,6 +32,8 @@ import type {
   ListDbSystemsResponse,
   LoadDbSystemConnectionResponse,
   SaveDbSystemConnectionRequest,
+  GetDbSystemConnectionStringsRequest,
+  GetDbSystemConnectionStringsResponse,
 } from "./types"
 import { type Callbacks, ProtoBusClient } from "./grpc-client-base"
 
@@ -196,6 +198,10 @@ export class ResourceServiceClient extends ProtoBusClient {
 
   static deleteDbSystemConnection(dbSystemId: string): Promise<void> {
     return this.makeUnaryRequest<void>("deleteDbSystemConnection", { dbSystemId })
+  }
+
+  static getDbSystemConnectionStrings(request: GetDbSystemConnectionStringsRequest): Promise<GetDbSystemConnectionStringsResponse> {
+    return this.makeUnaryRequest<GetDbSystemConnectionStringsResponse>("getDbSystemConnectionStrings", request)
   }
 
   static listVcns(): Promise<ListVcnResponse> {

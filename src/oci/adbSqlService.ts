@@ -42,6 +42,9 @@ export class AdbSqlService {
   public async downloadWallet(request: DownloadAdbWalletRequest): Promise<DownloadAdbWalletResponse> {
     const autonomousDatabaseId = request.autonomousDatabaseId.trim();
     const walletPassword = request.walletPassword;
+    const requestRegion = String(request.region ?? "").trim();
+    const inferredRegion = inferRegionFromAutonomousDatabaseId(autonomousDatabaseId);
+    const resolvedRegion = requestRegion || inferredRegion;
     if (!autonomousDatabaseId) {
       throw new Error("autonomousDatabaseId is required.");
     }
@@ -49,7 +52,7 @@ export class AdbSqlService {
       throw new Error("Wallet password must be at least 8 characters.");
     }
 
-    const client = await this.factory.createDatabaseClientAsync();
+    const client = await this.factory.createDatabaseClientAsync(resolvedRegion || undefined);
     const baseDir = path.join(this.walletRoot, sanitizePathSegment(autonomousDatabaseId));
     const walletDir = normalizeWalletPath(path.join(baseDir, "wallet"));
     const walletZipPath = path.join(baseDir, "wallet.zip");
@@ -282,6 +285,10 @@ function loadOracleDb(): any {
 }
 
 async function writeToFile(source: unknown, destinationPath: string): Promise<void> {
+  if (typeof source === "string" || Buffer.isBuffer(source)) {
+    await fs.promises.writeFile(destinationPath, source);
+    return;
+  }
   const nodeReadable =
     source instanceof Readable ? source : Readable.fromWeb(source as any);
   const writeStream = fs.createWriteStream(destinationPath);
@@ -356,6 +363,12 @@ function extractServiceAlias(connectString: string): string {
     return "";
   }
   return trimmed.slice(slashIdx + 1).trim();
+}
+
+function inferRegionFromAutonomousDatabaseId(autonomousDatabaseId: string): string {
+  // OCID pattern for ADB commonly contains ".oc1.<region>." (e.g. ".oc1.ap-osaka-1.")
+  const match = autonomousDatabaseId.match(/\.oc1\.([a-z0-9-]+)\./i);
+  return match?.[1]?.trim() ?? "";
 }
 
 function enrichConnectError(error: unknown, autonomousDatabaseId: string, serviceName: string): Error {

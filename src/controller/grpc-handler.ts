@@ -54,7 +54,14 @@ async function handleUnaryRequest(
     await postMessageToWebview({
       type: "grpc_response",
       grpc_response: {
-        error: error instanceof Error ? error.message : String(error),
+        error:
+          error instanceof Error
+            ? error.message
+            : error && typeof error === "object" && "message" in error
+              ? String((error as any).message)
+              : typeof error === "object"
+                ? JSON.stringify(error)
+                : String(error),
         request_id: request.request_id,
         is_streaming: false,
       },
@@ -85,7 +92,14 @@ async function handleStreamingRequest(
     await postMessageToWebview({
       type: "grpc_response",
       grpc_response: {
-        error: error instanceof Error ? error.message : String(error),
+        error:
+          error instanceof Error
+            ? error.message
+            : error && typeof error === "object" && "message" in error
+              ? String((error as any).message)
+              : typeof error === "object"
+                ? JSON.stringify(error)
+                : String(error),
         request_id: request.request_id,
         is_streaming: false,
       },

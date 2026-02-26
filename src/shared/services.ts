@@ -114,6 +114,7 @@ export interface StreamTokenResponse {
 export interface DownloadAdbWalletRequest {
   autonomousDatabaseId: string;
   walletPassword: string;
+  region?: string;
 }
 
 export interface DownloadAdbWalletResponse {
@@ -216,6 +217,21 @@ export interface LoadDbSystemConnectionResponse {
   username: string;
   password?: string;
   serviceName: string;
+}
+
+export interface DbSystemConnectionString {
+  name: string;
+  value: string;
+}
+
+export interface GetDbSystemConnectionStringsRequest {
+  dbSystemId: string;
+  compartmentId: string;
+  region?: string;
+}
+
+export interface GetDbSystemConnectionStringsResponse {
+  connectionStrings: DbSystemConnectionString[];
 }
 
 

@@ -139,7 +139,6 @@ export class OciService {
             lifecycleState: (sys.lifecycleState as string) || "UNKNOWN",
             compartmentId: normalized,
             region,
-            nodeIps: [],
           }));
 
           dbSystems.push(...regionSystems);
@@ -184,6 +183,60 @@ export class OciService {
         await client.dbNodeAction({ dbNodeId: node.id, action: "STOP" });
       }
     }
+  }
+
+  public async getDbSystemConnectionStrings(dbSystemId: string, compartmentId: string, region?: string): Promise<{ name: string; value: string }[]> {
+    const client = await this.factory.createDatabaseClientAsync(region);
+
+    let page: string | undefined;
+    const dbHomes: string[] = [];
+    do {
+      const response = await client.listDbHomes({
+        compartmentId,
+        dbSystemId,
+        page,
+      });
+      for (const home of response.items || []) {
+        if (home.id) {
+          dbHomes.push(home.id);
+        }
+      }
+      page = response.opcNextPage;
+    } while (page);
+
+    const connectionMap = new Map<string, string>();
+
+    for (const dbHomeId of dbHomes) {
+      let dbPage: string | undefined;
+      do {
+        const response = await client.listDatabases({
+          compartmentId,
+          dbHomeId,
+          page: dbPage,
+        });
+        for (const db of response.items || []) {
+          const strings = db.connectionStrings;
+          if (strings) {
+            if (strings.cdbDefault) {
+              connectionMap.set("cdbDefault", strings.cdbDefault);
+            }
+            if (strings.cdbIpDefault) {
+              connectionMap.set("cdbIpDefault", strings.cdbIpDefault);
+            }
+            for (const [key, val] of Object.entries(strings.allConnectionStrings || {})) {
+              if (val) {
+                connectionMap.set(key, val);
+              }
+            }
+          }
+        }
+        dbPage = response.opcNextPage;
+      } while (dbPage);
+    }
+
+    return Array.from(connectionMap.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 
   public async listVcns(): Promise<VcnResource[]> {
@@ -340,22 +393,21 @@ export class OciService {
     vcnClient: Awaited<ReturnType<OciClientFactory["createVirtualNetworkClientAsync"]>>
   ): Promise<void> {
     if (!dbSystem.id) return;
+
     try {
       const nodesResult = await dbClient.listDbNodes({
         compartmentId,
         dbSystemId: dbSystem.id,
       });
-      const ips: string[] = [];
       for (const node of nodesResult.items || []) {
         if (node.vnicId) {
           try {
             const vnic = (await vcnClient.getVnic({ vnicId: node.vnicId })).vnic;
-            if (vnic?.privateIp) ips.push(vnic.privateIp);
-            if (vnic?.publicIp) ips.push(vnic.publicIp);
+            if (!dbSystem.privateIp && vnic?.privateIp) dbSystem.privateIp = vnic.privateIp;
+            if (!dbSystem.publicIp && vnic?.publicIp) dbSystem.publicIp = vnic.publicIp;
           } catch { }
         }
       }
-      dbSystem.nodeIps = ips.filter((v, i, a) => a.indexOf(v) === i); // Unique IPs
     } catch { }
   }
 

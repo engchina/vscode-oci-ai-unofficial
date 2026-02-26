@@ -604,6 +604,15 @@ export class Controller {
     return this.adbSqlService.disconnect(connectionId);
   }
 
+  public async getDbSystemConnectionStrings(request: import("../shared/services").GetDbSystemConnectionStringsRequest): Promise<import("../shared/services").GetDbSystemConnectionStringsResponse> {
+    const connectionStrings = await this.ociService.getDbSystemConnectionStrings(
+      request.dbSystemId,
+      request.compartmentId,
+      request.region
+    );
+    return { connectionStrings };
+  }
+
   public async executeDbSystemSql(request: import("../shared/services").ExecuteDbSystemSqlRequest): Promise<import("../shared/services").ExecuteAdbSqlResponse> {
     return this.adbSqlService.executeDbSystemSql(request);
   }
