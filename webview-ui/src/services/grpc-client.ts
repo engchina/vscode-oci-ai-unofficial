@@ -34,6 +34,7 @@ import type {
   SaveDbSystemConnectionRequest,
   GetDbSystemConnectionStringsRequest,
   GetDbSystemConnectionStringsResponse,
+  OracleDbDiagnosticsResponse,
 } from "./types"
 import { type Callbacks, ProtoBusClient } from "./grpc-client-base"
 
@@ -202,6 +203,10 @@ export class ResourceServiceClient extends ProtoBusClient {
 
   static getDbSystemConnectionStrings(request: GetDbSystemConnectionStringsRequest): Promise<GetDbSystemConnectionStringsResponse> {
     return this.makeUnaryRequest<GetDbSystemConnectionStringsResponse>("getDbSystemConnectionStrings", request)
+  }
+
+  static getOracleDbDiagnostics(): Promise<OracleDbDiagnosticsResponse> {
+    return this.makeUnaryRequest<OracleDbDiagnosticsResponse>("getOracleDbDiagnostics", {})
   }
 
   static listVcns(): Promise<ListVcnResponse> {

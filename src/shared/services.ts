@@ -228,10 +228,27 @@ export interface GetDbSystemConnectionStringsRequest {
   dbSystemId: string;
   compartmentId: string;
   region?: string;
+  publicIp?: string;
 }
 
 export interface GetDbSystemConnectionStringsResponse {
   connectionStrings: DbSystemConnectionString[];
+}
+
+export interface OracleDbDiagnosticsResponse {
+  requestedMode: "auto" | "thin" | "thick";
+  effectiveMode: "thin" | "thick";
+  thin: boolean;
+  oracleClientVersionString?: string;
+  configuredLibDir?: string;
+  recommendedOracleClientLibDir: string;
+  initError?: string;
+  platform: string;
+  arch: string;
+  nodeVersion: string;
+  isWsl: boolean;
+  wslDistro?: string;
+  timestamp: string;
 }
 
 

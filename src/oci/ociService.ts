@@ -185,8 +185,14 @@ export class OciService {
     }
   }
 
-  public async getDbSystemConnectionStrings(dbSystemId: string, compartmentId: string, region?: string): Promise<{ name: string; value: string }[]> {
+  public async getDbSystemConnectionStrings(
+    dbSystemId: string,
+    compartmentId: string,
+    region?: string,
+    publicIp?: string
+  ): Promise<{ name: string; value: string }[]> {
     const client = await this.factory.createDatabaseClientAsync(region);
+    const normalizedPublicIp = String(publicIp ?? "").trim();
 
     let page: string | undefined;
     const dbHomes: string[] = [];
@@ -205,6 +211,7 @@ export class OciService {
     } while (page);
 
     const connectionMap = new Map<string, string>();
+    const seenValues = new Set<string>();
 
     for (const dbHomeId of dbHomes) {
       let dbPage: string | undefined;
@@ -215,19 +222,65 @@ export class OciService {
           page: dbPage,
         });
         for (const db of response.items || []) {
+          const dbLabel = sanitizeConnectionLabel(db.dbName || db.id || "database");
           const strings = db.connectionStrings;
           if (strings) {
             if (strings.cdbDefault) {
-              connectionMap.set("cdbDefault", strings.cdbDefault);
+              addConnectionValue(connectionMap, seenValues, `${dbLabel}.cdbDefault`, strings.cdbDefault, normalizedPublicIp);
             }
             if (strings.cdbIpDefault) {
-              connectionMap.set("cdbIpDefault", strings.cdbIpDefault);
+              addConnectionValue(connectionMap, seenValues, `${dbLabel}.cdbIpDefault`, strings.cdbIpDefault, normalizedPublicIp);
             }
             for (const [key, val] of Object.entries(strings.allConnectionStrings || {})) {
               if (val) {
-                connectionMap.set(key, val);
+                addConnectionValue(
+                  connectionMap,
+                  seenValues,
+                  `${dbLabel}.all.${sanitizeConnectionLabel(key)}`,
+                  val,
+                  normalizedPublicIp
+                );
               }
             }
+          }
+
+          if (db.id) {
+            let pdbPage: string | undefined;
+            do {
+              try {
+                const pdbs = await client.listPluggableDatabases({
+                  compartmentId,
+                  databaseId: db.id,
+                  page: pdbPage,
+                });
+                for (const pdb of pdbs.items || []) {
+                  const pdbLabel = sanitizeConnectionLabel(pdb.pdbName || pdb.id || dbLabel);
+                  const pdbStrings = pdb.connectionStrings;
+                  if (!pdbStrings) continue;
+
+                  if (pdbStrings.pdbDefault) {
+                    addConnectionValue(connectionMap, seenValues, `${pdbLabel}.pdbDefault`, pdbStrings.pdbDefault, normalizedPublicIp);
+                  }
+                  if (pdbStrings.pdbIpDefault) {
+                    addConnectionValue(connectionMap, seenValues, `${pdbLabel}.pdbIpDefault`, pdbStrings.pdbIpDefault, normalizedPublicIp);
+                  }
+                  for (const [key, val] of Object.entries(pdbStrings.allConnectionStrings || {})) {
+                    if (val) {
+                      addConnectionValue(
+                        connectionMap,
+                        seenValues,
+                        `${pdbLabel}.all.${sanitizeConnectionLabel(key)}`,
+                        val,
+                        normalizedPublicIp
+                      );
+                    }
+                  }
+                }
+                pdbPage = pdbs.opcNextPage;
+              } catch {
+                pdbPage = undefined;
+              }
+            } while (pdbPage);
           }
         }
         dbPage = response.opcNextPage;
@@ -437,4 +490,59 @@ function splitRegions(raw: string): string[] {
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
   return regions.length > 0 ? regions : [""];
+}
+
+function sanitizeConnectionLabel(value: string): string {
+  return value.trim().replace(/[^a-zA-Z0-9_.-]+/g, "_");
+}
+
+function addConnectionValue(
+  target: Map<string, string>,
+  seenValues: Set<string>,
+  name: string,
+  value: string,
+  publicIp?: string
+): void {
+  const normalized = String(value ?? "").trim();
+  if (!normalized || seenValues.has(normalized)) {
+    return;
+  }
+
+  target.set(name, normalized);
+  seenValues.add(normalized);
+
+  const normalizedPublicIp = String(publicIp ?? "").trim();
+  if (!normalizedPublicIp) {
+    return;
+  }
+
+  const serviceName = extractServiceName(normalized);
+  if (!serviceName) {
+    return;
+  }
+
+  const publicIpConnectString = `${normalizedPublicIp}:1521/${serviceName}`;
+  if (seenValues.has(publicIpConnectString)) {
+    return;
+  }
+  target.set(`${name}.publicIp`, publicIpConnectString);
+  seenValues.add(publicIpConnectString);
+}
+
+function extractServiceName(connectString: string): string {
+  const raw = String(connectString ?? "").trim();
+  if (!raw) return "";
+
+  const descriptorMatch = raw.match(/SERVICE_NAME\s*=\s*([^) \t\r\n]+)/i);
+  if (descriptorMatch?.[1]) {
+    return descriptorMatch[1].trim().replace(/[)\s]+$/g, "");
+  }
+
+  const normalized = raw.replace(/^[a-z]+:\/\//i, "");
+  const slashIdx = normalized.lastIndexOf("/");
+  if (slashIdx < 0 || slashIdx >= normalized.length - 1) {
+    return "";
+  }
+  const suffix = normalized.slice(slashIdx + 1).split(/[?\s]/)[0] || "";
+  return suffix.trim();
 }

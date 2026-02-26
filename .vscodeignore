@@ -1,6 +1,10 @@
 .vscode/**
+.claude/**
 src/**
 node_modules/**
+!node_modules/oracledb
+!node_modules/oracledb/**
+scripts/**
 esbuild.js
 tsconfig.json
 .gitignore
@@ -8,6 +12,7 @@ cline/**
 webview-ui/src/**
 webview-ui/node_modules/**
 webview-ui/.vite-port
+webview-ui/tsconfig.tsbuildinfo
 webview-ui/tsconfig.json
 webview-ui/vite.config.ts
 webview-ui/tailwind.config.mjs

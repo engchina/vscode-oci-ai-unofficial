@@ -18,8 +18,15 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useExtensionState } from "../../context/ExtensionStateContext"
 import { ResourceServiceClient } from "../../services/grpc-client"
-import type { DbSystemResource, ConnectDbSystemResponse, ExecuteAdbSqlResponse, LoadDbSystemConnectionResponse } from "../../services/types"
+import type {
+    DbSystemResource,
+    ConnectDbSystemResponse,
+    ExecuteAdbSqlResponse,
+    LoadDbSystemConnectionResponse,
+    OracleDbDiagnosticsResponse,
+} from "../../services/types"
 import { DEFAULT_SSH_USERNAME, loadSshConfig, saveSshConfig, type SshConfig } from "../../sshConfig"
+import OracleDiagnosticsPanel from "../common/OracleDiagnosticsPanel"
 import Button from "../ui/Button"
 import CompartmentSelector from "../ui/CompartmentSelector"
 import Input from "../ui/Input"
@@ -57,6 +64,8 @@ export default function DbSystemsView() {
 
     const [connectionStrings, setConnectionStrings] = useState<{ name: string, value: string }[]>([])
     const [loadingStrings, setLoadingStrings] = useState(false)
+    const [diagnostics, setDiagnostics] = useState<OracleDbDiagnosticsResponse | null>(null)
+    const [loadingDiagnostics, setLoadingDiagnostics] = useState(false)
 
     // SSH configs
     const [sshConfig, setSshConfig] = useState<SshConfig>(loadSshConfig)
@@ -268,11 +277,11 @@ export default function DbSystemsView() {
         setHasSavedProfile(false)
     }, [])
 
-    const fetchConnectionStrings = useCallback(async (dbId: string, compartmentId: string, region?: string) => {
+    const fetchConnectionStrings = useCallback(async (dbId: string, compartmentId: string, region?: string, publicIp?: string) => {
         setLoadingStrings(true)
         setConnectionStrings([])
         try {
-            const res = await ResourceServiceClient.getDbSystemConnectionStrings({ dbSystemId: dbId, compartmentId, region })
+            const res = await ResourceServiceClient.getDbSystemConnectionStrings({ dbSystemId: dbId, compartmentId, region, publicIp })
             setConnectionStrings(res.connectionStrings || [])
         } catch {
             // ignore
@@ -294,9 +303,7 @@ export default function DbSystemsView() {
             setSqlResult(null)
 
             const sys = dbSystems.find(d => d.id === selectedDbId)
-            const defaultIp = sys?.publicIp || sys?.privateIp || ""
-            const ipHint = defaultIp ? `${defaultIp}:1521/${sys?.name || ""}` : ""
-            setServiceName(ipHint)
+            setServiceName("")
             setUsername("PDBADMIN")
             setPassword("")
             setHasSavedProfile(false)
@@ -306,20 +313,17 @@ export default function DbSystemsView() {
             }
             void loadSavedProfile(selectedDbId)
             if (sys && sys.compartmentId) {
-                void fetchConnectionStrings(selectedDbId, sys.compartmentId, sys.region)
+                void fetchConnectionStrings(selectedDbId, sys.compartmentId, sys.region, sys.publicIp || undefined)
             }
         } else if (!previous) {
             const sys = dbSystems.find(d => d.id === selectedDbId)
-            const defaultIp = sys?.publicIp || sys?.privateIp || ""
-            const ipHint = defaultIp && !serviceName ? `${defaultIp}:1521/${sys?.name || ""}` : serviceName
-            if (!serviceName) setServiceName(ipHint)
             void loadSavedProfile(selectedDbId)
             if (sys && sys.compartmentId) {
-                void fetchConnectionStrings(selectedDbId, sys.compartmentId, sys.region)
+                void fetchConnectionStrings(selectedDbId, sys.compartmentId, sys.region, sys.publicIp || undefined)
             }
         }
         previousSelectedDbIdRef.current = selectedDbId
-    }, [connectionId, disconnectConnection, loadSavedProfile, selectedDbId, dbSystems, serviceName])
+    }, [connectionId, disconnectConnection, loadSavedProfile, selectedDbId, dbSystems, fetchConnectionStrings])
 
     useEffect(() => {
         return () => {
@@ -380,6 +384,19 @@ export default function DbSystemsView() {
             setDbBusyAction(null)
         }
     }, [selectedDatabase])
+
+    const handleDiagnostics = useCallback(async () => {
+        setError(null)
+        setLoadingDiagnostics(true)
+        try {
+            const response = await ResourceServiceClient.getOracleDbDiagnostics()
+            setDiagnostics(response)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : String(err))
+        } finally {
+            setLoadingDiagnostics(false)
+        }
+    }, [])
 
     return (
         <div className="flex h-full min-h-0 flex-col">
@@ -513,13 +530,14 @@ export default function DbSystemsView() {
                                     <div><span className="font-semibold text-foreground">Service/Connect String:</span> <code>{connectionTarget.serviceName}</code></div>
                                 </div>
                             )}
+                            <OracleDiagnosticsPanel diagnostics={diagnostics} />
 
                             <div className="grid gap-2 sm:grid-cols-2">
                                 <Input
                                     label="Connect String / Service Name"
                                     value={serviceName}
                                     onChange={e => setServiceName(e.target.value)}
-                                    placeholder="e.g. 10.0.0.2:1521/DBS1.subnet.vcn.oraclevcn.com"
+                                    placeholder="e.g. 129.146.x.x:1521/<service_name>.<db_domain>"
                                     list={`db-strings-${selectedDbId}`}
                                 />
                                 {connectionStrings.length > 0 && (
@@ -593,6 +611,17 @@ export default function DbSystemsView() {
                                 >
                                     {dbBusyAction === "disconnect" ? <Loader2 size={12} className="animate-spin" /> : <Unplug size={12} />}
                                     Disconnect
+                                </Button>
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="secondary"
+                                    className="gap-1.5"
+                                    onClick={handleDiagnostics}
+                                    disabled={loadingDiagnostics}
+                                >
+                                    {loadingDiagnostics ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+                                    Connection Diagnostic
                                 </Button>
                                 <div className="ml-auto flex gap-2">
                                     <Button

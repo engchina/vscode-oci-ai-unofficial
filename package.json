@@ -199,6 +199,21 @@
           "default": "",
           "description": "Optional custom OCI config file path. Defaults to ~/.oci/config"
         },
+        "ociAi.oracleDbDriverMode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "thin",
+            "thick"
+          ],
+          "default": "auto",
+          "description": "node-oracledb driver mode for SQL connections: auto (try Thick then fallback to Thin), thin (always Thin), thick (require Oracle Instant Client)"
+        },
+        "ociAi.oracleClientLibDir": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Oracle Instant Client directory for Thick mode, e.g. /opt/oracle/instantclient_23_6"
+        },
         "ociAi.genAiModelId": {
           "type": "string",
           "default": "",
@@ -370,7 +385,8 @@
   "scripts": {
     "postinstall": "npm run build",
     "build:webview": "cd webview-ui && npm install && npm run build",
-    "build:extension": "node esbuild.js",
+    "prepare:oracledb": "node scripts/prepare-oracledb.js",
+    "build:extension": "node esbuild.js && npm run prepare:oracledb",
     "build": "npm run build:webview && npm run build:extension",
     "dev:webview": "cd webview-ui && npm run dev",
     "watch": "node esbuild.js --watch",

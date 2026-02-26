@@ -17,7 +17,14 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useExtensionState } from "../../context/ExtensionStateContext"
 import { ResourceServiceClient } from "../../services/grpc-client"
-import type { AdbResource, ConnectAdbResponse, ExecuteAdbSqlResponse, LoadAdbConnectionResponse } from "../../services/types"
+import type {
+  AdbResource,
+  ConnectAdbResponse,
+  ExecuteAdbSqlResponse,
+  LoadAdbConnectionResponse,
+  OracleDbDiagnosticsResponse,
+} from "../../services/types"
+import OracleDiagnosticsPanel from "../common/OracleDiagnosticsPanel"
 import Button from "../ui/Button"
 import CompartmentSelector from "../ui/CompartmentSelector"
 import Input from "../ui/Input"
@@ -53,6 +60,8 @@ export default function AdbView() {
   const [sqlResult, setSqlResult] = useState<ExecuteAdbSqlResponse | null>(null)
   const [adbBusyAction, setAdbBusyAction] = useState<"wallet" | "connect" | "disconnect" | "execute" | "save" | "delete" | null>(null)
   const [hasSavedProfile, setHasSavedProfile] = useState(false)
+  const [diagnostics, setDiagnostics] = useState<OracleDbDiagnosticsResponse | null>(null)
+  const [loadingDiagnostics, setLoadingDiagnostics] = useState(false)
   const previousSelectedAdbIdRef = useRef("")
 
   const selectedDatabase = useMemo(
@@ -270,6 +279,7 @@ export default function AdbView() {
       setUsername("")
       setPassword("")
       setHasSavedProfile(false)
+      setDiagnostics(null)
       if (activeConnectionId) {
         void disconnectConnection(activeConnectionId)
       }
@@ -341,6 +351,19 @@ export default function AdbView() {
       setAdbBusyAction(null)
     }
   }, [selectedDatabase])
+
+  const handleDiagnostics = useCallback(async () => {
+    setError(null)
+    setLoadingDiagnostics(true)
+    try {
+      const response = await ResourceServiceClient.getOracleDbDiagnostics()
+      setDiagnostics(response)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLoadingDiagnostics(false)
+    }
+  }, [])
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -466,6 +489,7 @@ export default function AdbView() {
                   <div className="break-all"><span className="font-semibold text-foreground">Wallet:</span> <code>{connectionTarget.walletPath}</code></div>
                 </div>
               )}
+              <OracleDiagnosticsPanel diagnostics={diagnostics} />
 
               <div className="grid gap-2 sm:grid-cols-2">
                 <Input
@@ -556,6 +580,17 @@ export default function AdbView() {
                 >
                   {adbBusyAction === "disconnect" ? <Loader2 size={12} className="animate-spin" /> : <Unplug size={12} />}
                   Disconnect
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="gap-1.5"
+                  onClick={handleDiagnostics}
+                  disabled={loadingDiagnostics}
+                >
+                  {loadingDiagnostics ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+                  Connection Diagnostic
                 </Button>
                 <div className="ml-auto flex gap-2">
                   <Button

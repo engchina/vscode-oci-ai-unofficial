@@ -9,7 +9,7 @@ const buildOptions = {
   format: "cjs",
   platform: "node",
   sourcemap: true,
-  external: ["vscode"],
+  external: ["vscode", "oracledb"],
   logLevel: "info",
   target: "node18"
 };

@@ -200,10 +200,12 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
       return {};
     },
     executeDbSystemSql: async (c, msg) => c.executeDbSystemSql(msg),
+    getOracleDbDiagnostics: async (c) => c.getOracleDbDiagnostics(),
     saveDbSystemConnection: async (c, msg) => {
       await c.saveDbSystemConnection(msg);
       return {};
     },
+    getDbSystemConnectionStrings: async (c, msg) => c.getDbSystemConnectionStrings(msg),
     loadDbSystemConnection: async (c, msg) => {
       const result = await c.loadDbSystemConnection(String(msg.dbSystemId ?? ""));
       return result ?? {};

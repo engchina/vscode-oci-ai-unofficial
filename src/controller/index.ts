@@ -608,13 +608,18 @@ export class Controller {
     const connectionStrings = await this.ociService.getDbSystemConnectionStrings(
       request.dbSystemId,
       request.compartmentId,
-      request.region
+      request.region,
+      request.publicIp
     );
     return { connectionStrings };
   }
 
   public async executeDbSystemSql(request: import("../shared/services").ExecuteDbSystemSqlRequest): Promise<import("../shared/services").ExecuteAdbSqlResponse> {
     return this.adbSqlService.executeDbSystemSql(request);
+  }
+
+  public async getOracleDbDiagnostics(): Promise<import("../shared/services").OracleDbDiagnosticsResponse> {
+    return this.adbSqlService.getOracleDbDiagnostics();
   }
 
   public async saveDbSystemConnection(request: import("../shared/services").SaveDbSystemConnectionRequest): Promise<void> {

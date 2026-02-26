@@ -5,6 +5,7 @@ import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 import type * as database from "oci-database";
 import { OciClientFactory } from "./clientFactory";
+import { getOracleDbDiagnostics, getOracleDbRuntimeStatus, loadOracleDb } from "./oracleDbRuntime";
 import type {
   ConnectAdbRequest,
   ConnectAdbResponse,
@@ -15,6 +16,7 @@ import type {
   ConnectDbSystemRequest,
   ConnectDbSystemResponse,
   ExecuteDbSystemSqlRequest,
+  OracleDbDiagnosticsResponse,
 } from "../shared/services";
 
 type DbConnection = {
@@ -195,6 +197,10 @@ export class AdbSqlService {
     });
   }
 
+  public getOracleDbDiagnostics(): OracleDbDiagnosticsResponse {
+    return getOracleDbDiagnostics();
+  }
+
   public async executeSql(request: ExecuteAdbSqlRequest): Promise<ExecuteAdbSqlResponse> {
     const connectionId = request.connectionId.trim();
     const sql = request.sql.trim();
@@ -277,11 +283,6 @@ export class AdbSqlService {
   public async dispose(): Promise<void> {
     await this.disconnectAll();
   }
-}
-
-function loadOracleDb(): any {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  return require("oracledb");
 }
 
 async function writeToFile(source: unknown, destinationPath: string): Promise<void> {
@@ -377,6 +378,19 @@ function enrichConnectError(error: unknown, autonomousDatabaseId: string, servic
     return new Error(
       `ORA-01017 for database ${autonomousDatabaseId} (service: ${serviceName}). ` +
       "Please verify Username/Password and that Wallet Path + Service Name belong to the same selected database."
+    );
+  }
+  if (detail.includes("NJS-533") || detail.includes("ORA-12660")) {
+    const runtime = getOracleDbRuntimeStatus();
+    const mode = runtime?.mode ?? "thin";
+    const initHint = runtime?.initError ? ` Thick init detail: ${runtime.initError}.` : "";
+    return new Error(
+      `${detail}\n` +
+      `Connection to ${autonomousDatabaseId} (service: ${serviceName}) requires Oracle Net encryption support via node-oracledb Thick mode. ` +
+      `Current driver mode: ${mode}.${initHint} ` +
+      "Fix: install Oracle Instant Client and set `ociAi.oracleDbDriverMode` to `thick` (or `auto`) " +
+      "with optional `ociAi.oracleClientLibDir`. " +
+      "Fallback (no Instant Client): SSH to DB System and connect with sqlplus."
     );
   }
   return error instanceof Error ? error : new Error(detail);
