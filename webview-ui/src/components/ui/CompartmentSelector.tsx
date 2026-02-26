@@ -1,8 +1,9 @@
 import { clsx } from "clsx"
 import { Check, ChevronDown, Lock, MonitorStop } from "lucide-react"
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo, useCallback, type MouseEvent as ReactMouseEvent } from "react"
 import { useExtensionState } from "../../context/ExtensionStateContext"
 import { StateServiceClient } from "../../services/grpc-client"
+import type { SettingsState } from "../../services/types"
 
 interface CompartmentSelectorProps {
     featureKey: "compute" | "adb" | "chat"
@@ -20,36 +21,78 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
     } = useExtensionState()
 
     const [isOpen, setIsOpen] = useState(false)
+    const [optimisticSelection, setOptimisticSelection] = useState<string[] | null>(null)
+    const [isSaving, setIsSaving] = useState(false)
     const dropdownRef = useRef<HTMLDivElement>(null)
+    const settingsCacheRef = useRef<SettingsState | null>(null)
 
     // Determine current active profile config
-    const activeProfileConfig = profilesConfig.find(p => p.name === activeProfile)
+    const activeProfileConfig = useMemo(
+        () => profilesConfig.find(p => p.name === activeProfile),
+        [profilesConfig, activeProfile],
+    )
     const profileCompartments = activeProfileConfig?.compartments || []
 
     // Build available compartments: root (tenancy) first, then profile compartments
-    const rootCompartment = tenancyOcid?.trim()
+    const rootCompartment = useMemo(() => tenancyOcid?.trim()
         ? { id: tenancyOcid.trim(), name: "Root (Tenancy)", isRoot: true }
-        : null
-    const availableCompartments = [
-        ...(rootCompartment ? [rootCompartment] : []),
-        ...profileCompartments.map(c => ({ ...c, isRoot: false })),
-    ]
+        : null, [tenancyOcid])
+
+    const availableCompartments = useMemo(
+        () => [
+            ...(rootCompartment ? [rootCompartment] : []),
+            ...profileCompartments.map(c => ({ ...c, isRoot: false })),
+        ],
+        [rootCompartment, profileCompartments],
+    )
 
     // Determine currently selected items for this feature
-    let currentSelection: string[] = []
-    if (featureKey === "compute") currentSelection = computeCompartmentIds
-    else if (featureKey === "adb") currentSelection = adbCompartmentIds
-    else if (featureKey === "chat") {
-        // Default chat to root compartment if nothing selected
-        if (chatCompartmentId) {
-            currentSelection = [chatCompartmentId]
-        } else if (rootCompartment) {
-            currentSelection = [rootCompartment.id]
+    const persistedSelection = useMemo(() => {
+        let selection: string[] = []
+        if (featureKey === "compute") selection = computeCompartmentIds
+        else if (featureKey === "adb") selection = adbCompartmentIds
+        else if (featureKey === "chat") {
+            // Default chat to root compartment if nothing selected
+            if (chatCompartmentId) {
+                selection = [chatCompartmentId]
+            } else if (rootCompartment) {
+                selection = [rootCompartment.id]
+            }
         }
-    }
 
-    // Filter selection to only what's available
-    currentSelection = currentSelection.filter(id => availableCompartments.some(c => c.id === id))
+        const availableIds = new Set(availableCompartments.map(c => c.id))
+        return selection.filter(id => availableIds.has(id))
+    }, [
+        featureKey,
+        computeCompartmentIds,
+        adbCompartmentIds,
+        chatCompartmentId,
+        rootCompartment,
+        availableCompartments,
+    ])
+
+    const currentSelection = optimisticSelection ?? persistedSelection
+
+    // Only clear optimistic selection when persisted state actually catches up
+    useEffect(() => {
+        if (optimisticSelection !== null) {
+            // Check if persisted selection matches optimistic selection perfectly
+            const matches = optimisticSelection.length === persistedSelection.length &&
+                optimisticSelection.every(id => persistedSelection.includes(id))
+            if (matches) {
+                setOptimisticSelection(null)
+            }
+        }
+    }, [persistedSelection, optimisticSelection])
+
+    // Preload settings into cache when dropdown is opened to avoid delay on first click
+    useEffect(() => {
+        if (isOpen && !settingsCacheRef.current) {
+            StateServiceClient.getSettings().then(state => {
+                settingsCacheRef.current = state
+            }).catch(console.error)
+        }
+    }, [isOpen])
 
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
@@ -61,7 +104,7 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
         return () => document.removeEventListener("mousedown", handleClickOutside)
     }, [])
 
-    const handleToggle = async (id: string, e: React.MouseEvent) => {
+    const handleToggle = useCallback(async (id: string, e: ReactMouseEvent<HTMLButtonElement>) => {
         e.stopPropagation()
         let newSelection: string[]
         if (multiple) {
@@ -75,8 +118,12 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
             setIsOpen(false)
         }
 
-        // Save
-        const state = await StateServiceClient.getSettings()
+        // Optimistic update so checkbox feels instant.
+        setOptimisticSelection(newSelection)
+        setIsSaving(true)
+
+        // Save (reuse cached settings to avoid full round-trip on every click)
+        const state = settingsCacheRef.current ?? await StateServiceClient.getSettings()
 
         if (featureKey === "compute") {
             state.computeCompartmentIds = newSelection
@@ -86,8 +133,14 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
             state.chatCompartmentId = newSelection[0] || ""
         }
 
-        await StateServiceClient.saveSettings({ ...state, suppressNotification: true })
-    }
+        settingsCacheRef.current = state
+
+        try {
+            await StateServiceClient.saveSettings({ ...state, suppressNotification: true })
+        } finally {
+            setIsSaving(false)
+        }
+    }, [currentSelection, featureKey, multiple])
 
     const selectionText = currentSelection.length === 0
         ? "No Compartment Selected"
@@ -122,6 +175,7 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
                             <button
                                 key={comp.id}
                                 onClick={(e) => handleToggle(comp.id, e)}
+                                disabled={isSaving}
                                 className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-list-background-hover transition-colors"
                             >
                                 <div className={clsx(

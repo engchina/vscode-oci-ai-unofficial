@@ -1,6 +1,6 @@
 import { clsx } from "clsx"
 import { ChevronDown, Lock, Plus, Save, Trash2, Users } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { StateServiceClient } from "../../services/grpc-client"
 import type { SettingsState, SavedCompartment } from "../../services/types"
 import Button from "../ui/Button"
@@ -41,33 +41,57 @@ export default function ProfilesCompartmentsView() {
     const [settings, setSettings] = useState<SettingsState>(EMPTY_SETTINGS)
     const [loaded, setLoaded] = useState(false)
     const [saving, setSaving] = useState(false)
+    const fetchIdRef = useRef(0)
+    const refreshTimerRef = useRef<number | null>(null)
+
+    const refreshSettings = useCallback(async () => {
+        const fetchId = ++fetchIdRef.current
+        try {
+            const state = await StateServiceClient.getSettings()
+            if (fetchId === fetchIdRef.current) {
+                setSettings(state)
+                setLoaded(true)
+            }
+        } catch (error) {
+            console.error("Failed to load settings:", error)
+            if (fetchId === fetchIdRef.current) {
+                setLoaded(true)
+            }
+        }
+    }, [])
+
+    const scheduleRefreshSettings = useCallback(() => {
+        if (refreshTimerRef.current !== null) {
+            window.clearTimeout(refreshTimerRef.current)
+        }
+        refreshTimerRef.current = window.setTimeout(() => {
+            refreshTimerRef.current = null
+            void refreshSettings()
+        }, 200)
+    }, [refreshSettings])
 
     // Load settings and subscribe to state broadcasts for refresh
     useEffect(() => {
-        StateServiceClient.getSettings()
-            .then((state) => {
-                setSettings(state)
-                setLoaded(true)
-            })
-            .catch((error) => {
-                console.error("Failed to load settings:", error)
-                setLoaded(true)
-            })
+        void refreshSettings()
 
         // Subscribe to state broadcasts so we refresh when profiles change from other tabs
         const unsubscribe = StateServiceClient.subscribeToState({
             onResponse: () => {
-                // Re-fetch full settings when state changes
-                StateServiceClient.getSettings()
-                    .then((state) => setSettings(state))
-                    .catch((error) => console.error("Failed to refresh settings:", error))
+                // Re-fetch full settings when state changes (coalesced)
+                scheduleRefreshSettings()
             },
             onError: (error) => console.error("State subscription error:", error),
             onComplete: () => { },
         })
 
-        return () => { unsubscribe() }
-    }, [])
+        return () => {
+            unsubscribe()
+            if (refreshTimerRef.current !== null) {
+                window.clearTimeout(refreshTimerRef.current)
+                refreshTimerRef.current = null
+            }
+        }
+    }, [refreshSettings, scheduleRefreshSettings])
 
     const updateField = useCallback(<K extends keyof SettingsState>(field: K, value: SettingsState[K]) => {
         setSettings((prev) => ({ ...prev, [field]: value }))

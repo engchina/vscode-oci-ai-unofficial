@@ -1,6 +1,6 @@
 import { clsx } from "clsx"
 import { Bot, ChevronDown, Info, LoaderCircle, Plus, Save, Settings2, Sliders, Terminal, Trash2, Users, Wrench } from "lucide-react"
-import { useCallback, useEffect, useState, type ChangeEvent, type Dispatch, type SetStateAction } from "react"
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction } from "react"
 import { StateServiceClient } from "../../services/grpc-client"
 import type { SettingsState } from "../../services/types"
 import ProfilesCompartmentsView from "../profiles/ProfilesCompartmentsView"
@@ -70,35 +70,59 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
   const [saving, setSaving] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [activeTab, setActiveTab] = useState<SettingsTab>("api-config")
+  const fetchIdRef = useRef(0)
+  const refreshTimerRef = useRef<number | null>(null)
   const activeTabLabel = TABS.find((tab) => tab.id === activeTab)?.label ?? "None"
   const toggleTab = useCallback((tab: SettingsTab) => {
     setActiveTab(tab)
   }, [])
 
-  // Load current settings.
-  useEffect(() => {
-    StateServiceClient.getSettings()
-      .then((state) => {
+  const refreshSettings = useCallback(async () => {
+    const fetchId = ++fetchIdRef.current
+    try {
+      const state = await StateServiceClient.getSettings()
+      if (fetchId === fetchIdRef.current) {
         setSettings(state)
         setLoaded(true)
-      })
-      .catch((error) => {
-        console.error("Failed to load settings:", error)
+      }
+    } catch (error) {
+      console.error("Failed to load settings:", error)
+      if (fetchId === fetchIdRef.current) {
         setLoaded(true)
-      })
+      }
+    }
+  }, [])
+
+  const scheduleRefreshSettings = useCallback(() => {
+    if (refreshTimerRef.current !== null) {
+      window.clearTimeout(refreshTimerRef.current)
+    }
+    refreshTimerRef.current = window.setTimeout(() => {
+      refreshTimerRef.current = null
+      void refreshSettings()
+    }, 200)
+  }, [refreshSettings])
+
+  // Load current settings.
+  useEffect(() => {
+    void refreshSettings()
 
     const unsubscribe = StateServiceClient.subscribeToState({
       onResponse: () => {
-        StateServiceClient.getSettings()
-          .then((state) => setSettings(state))
-          .catch((error) => console.error("Failed to refresh settings:", error))
+        scheduleRefreshSettings()
       },
       onError: (error) => console.error("State subscription error:", error),
       onComplete: () => { },
     })
 
-    return () => { unsubscribe() }
-  }, [])
+    return () => {
+      unsubscribe()
+      if (refreshTimerRef.current !== null) {
+        window.clearTimeout(refreshTimerRef.current)
+        refreshTimerRef.current = null
+      }
+    }
+  }, [refreshSettings, scheduleRefreshSettings])
 
   const updateField = useCallback<UpdateFieldFn>((field, value) => {
     setSettings((prev) => ({ ...prev, [field]: value }))
