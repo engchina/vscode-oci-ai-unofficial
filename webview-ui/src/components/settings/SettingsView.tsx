@@ -165,20 +165,17 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-start justify-between gap-3 border-b border-border-panel px-4 py-3">
-        <div className="flex min-w-0 items-start gap-2.5">
-          <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border-panel bg-list-background-hover">
-            <Settings2 size={14} />
-          </div>
+      <div className="flex items-center justify-between gap-3 border-b border-[var(--vscode-panel-border)] px-3 py-2 bg-[var(--vscode-editor-background)]">
+        <div className="flex min-w-0 items-center gap-2">
+          <Settings2 size={14} className="text-[var(--vscode-icon-foreground)]" />
           <div className="flex min-w-0 flex-col">
-            <span className="text-sm font-semibold">OCI Settings</span>
-            <span className="text-xs text-description">Manage OCI profile, model, and extension preferences.</span>
-            <span className="mt-1 text-[11px] uppercase tracking-wider text-description">Current section: {activeTabLabel}</span>
+            <span className="text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)]">OCI Settings</span>
+            <span className="mt-0.5 text-[10px] text-description uppercase tracking-wider">{activeTabLabel}</span>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {saving && (
-            <span className="inline-flex items-center gap-1 text-xs text-description">
+            <span className="inline-flex items-center gap-1 text-[11px] text-description">
               <LoaderCircle size={12} className="animate-spin" />
               Saving...
             </span>
@@ -192,7 +189,7 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
       </div>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <div className="flex w-14 shrink-0 flex-col gap-1 border-r border-border-panel bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_70%,transparent)] p-2">
+        <div className="flex w-48 shrink-0 flex-col gap-0.5 border-r border-[var(--vscode-panel-border)] bg-[var(--vscode-sideBar-background)] py-2">
           {TABS.map((tab) => (
             <button
               key={tab.id}
@@ -200,13 +197,14 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
               title={tab.label}
               aria-label={tab.label}
               className={clsx(
-                "flex h-9 w-full items-center justify-center rounded-md transition-colors",
+                "flex h-8 w-full items-center justify-start gap-2 px-3 transition-colors outline-none",
                 activeTab === tab.id
-                  ? "bg-list-background-hover text-foreground"
-                  : "text-description hover:bg-list-background-hover hover:text-foreground",
+                  ? "bg-[var(--vscode-list-activeSelectionBackground)] text-[var(--vscode-list-activeSelectionForeground)]"
+                  : "text-[var(--vscode-foreground)] hover:bg-[var(--vscode-list-hoverBackground)] hover:text-[var(--vscode-list-hoverForeground)]",
               )}
             >
-              {tab.icon}
+              <div className="shrink-0 opacity-80">{tab.icon}</div>
+              <span className="text-[12px] truncate">{tab.label}</span>
             </button>
           ))}
         </div>
@@ -369,10 +367,10 @@ function ApiConfigTab({
       <p className="-mt-2 text-xs text-description">These values are used for OCI API calls and model inference.</p>
 
       {validationErrors.length > 0 && (
-        <div className="flex flex-col gap-1 rounded-lg border border-warning/30 bg-[color-mix(in_srgb,var(--vscode-editor-background)_88%,yellow_12%)] px-3 py-2.5">
-          <span className="text-xs font-medium text-warning">Configuration incomplete:</span>
+        <div className="flex flex-col gap-1 rounded-[2px] border border-warning/30 bg-[color-mix(in_srgb,var(--vscode-editor-background)_88%,yellow_12%)] px-3 py-2.5">
+          <span className="text-[11px] font-medium text-warning">Configuration incomplete:</span>
           {validationErrors.map((err) => (
-            <span key={err} className="text-xs text-warning">• {err}</span>
+            <span key={err} className="text-[11px] text-warning">• {err}</span>
           ))}
         </div>
       )}
@@ -412,10 +410,10 @@ function ApiConfigTab({
             {profiles.length > 0 ? (
               profiles.map(p => (
                 <div key={p.name} className={clsx(
-                  "flex items-center justify-between gap-2 rounded-md border px-2 py-1.5 transition-colors",
+                  "flex items-center justify-between gap-2 rounded-[2px] border px-2 py-1.5 transition-colors",
                   settings.profile === p.name
-                    ? "border-button-primary-background bg-[color-mix(in_srgb,var(--vscode-editor-background)_85%,var(--vscode-button-background)_15%)]"
-                    : "border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_96%,black_4%)]"
+                    ? "border-[var(--vscode-focusBorder)] bg-[var(--vscode-list-activeSelectionBackground)] text-[var(--vscode-list-activeSelectionForeground)]"
+                    : "border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] hover:bg-[var(--vscode-list-hoverBackground)]"
                 )}>
                   <button
                     className="flex-1 text-left text-xs font-medium"
@@ -648,8 +646,8 @@ function FeaturesTab({
       </Card>
 
       <div>
-        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-description">Agent</h4>
-        <div className="flex flex-col gap-2.5 rounded-xl border border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,black_8%)] p-3 sm:p-4">
+        <h4 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[var(--vscode-sideBarTitle-foreground)]">Agent</h4>
+        <div className="flex flex-col gap-2.5 rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-3">
           <Toggle
             label="Native Tool Call"
             description="Use native function calling when available"
@@ -678,8 +676,8 @@ function FeaturesTab({
       </div>
 
       <div>
-        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-description">Editor</h4>
-        <div className="flex flex-col gap-2.5 rounded-xl border border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,black_8%)] p-3 sm:p-4">
+        <h4 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[var(--vscode-sideBarTitle-foreground)]">Editor</h4>
+        <div className="flex flex-col gap-2.5 rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-3">
           <Toggle
             label="Checkpoints"
             description="Save progress at key points for easy rollback"
@@ -809,7 +807,7 @@ function GeneralTab({ settings }: { settings: SettingsState }) {
       </h3>
       <p className="-mt-2 text-xs text-description">Global extension preferences and behavior controls.</p>
 
-      <div className="rounded-xl border border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,black_8%)] p-3 sm:p-4">
+      <div className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-3">
         <div className="flex flex-col gap-2 text-xs text-description">
           <span>Native Tool Call: {settings.nativeToolCall ? "On" : "Off"}</span>
           <span>Parallel Tool Calling: {settings.parallelToolCalling ? "On" : "Off"}</span>
@@ -831,7 +829,7 @@ function AboutTab() {
       </h3>
       <p className="-mt-2 text-xs text-description">Basic information about this extension package.</p>
 
-      <div className="rounded-xl border border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,black_8%)] p-3 sm:p-4">
+      <div className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-3">
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap gap-1">
             <span className="text-xs text-description">Extension: </span>

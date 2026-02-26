@@ -10,22 +10,22 @@ export interface AccordionItemProps {
 
 export function AccordionItem({ title, children, isOpen, onToggle }: AccordionItemProps) {
     return (
-        <div className={`flex flex-col border-b border-[var(--vscode-panel-border)] overflow-hidden ${isOpen ? 'flex-1' : ''}`}>
+        <div className={`flex flex-col border-t border-[var(--vscode-panel-border)] overflow-hidden ${isOpen ? 'flex-1' : ''}`}>
             <button
-                className="flex w-full items-center justify-between bg-[var(--vscode-sideBarSectionHeader-background)] px-2 py-1.5 text-xs font-bold text-[var(--vscode-sideBarTitle-foreground)] hover:bg-[var(--vscode-list-hoverBackground)] focus:outline-none"
+                className="group flex w-full items-center bg-[var(--vscode-sideBarSectionHeader-background)] px-1 py-1 min-h-[22px] text-[11px] font-bold text-[var(--vscode-sideBarTitle-foreground)] leading-tight focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)] focus-visible:outline-offset-[-1px] cursor-pointer"
                 onClick={onToggle}
             >
-                <div className="flex items-center gap-1">
-                    {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                    <span className="uppercase tracking-wider">{title}</span>
+                <div className="flex items-center text-[var(--vscode-icon-foreground)] opacity-80 group-hover:opacity-100">
+                    {isOpen ? <ChevronDown size={14} strokeWidth={2.5} /> : <ChevronRight size={14} strokeWidth={2.5} />}
                 </div>
+                <span className="uppercase ml-0.5 truncate">{title}</span>
             </button>
             <div
-                className={`flex-1 overflow-hidden transition-all duration-200 ease-in-out ${isOpen ? "opacity-100" : "opacity-0"
+                className={`flex-1 overflow-hidden transition-all duration-200 ease-in-out flex-col ${isOpen ? "opacity-100" : "opacity-0"
                     }`}
                 style={{ display: isOpen ? "flex" : "none" }}
             >
-                <div className="flex-1 w-full overflow-y-auto bg-[var(--vscode-sideBar-background)]">{children}</div>
+                <div className="flex flex-col flex-1 w-full h-full overflow-hidden bg-[var(--vscode-sideBar-background)]">{children}</div>
             </div>
         </div>
     )

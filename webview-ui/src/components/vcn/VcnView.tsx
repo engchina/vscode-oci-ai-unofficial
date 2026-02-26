@@ -84,45 +84,45 @@ export default function VcnView() {
     return (
         <div className="flex h-full min-h-0 flex-col">
             {/* Header */}
-            <div className="flex items-start justify-between gap-3 border-b border-border-panel px-4 py-3">
-                <div className="flex min-w-0 items-start gap-2.5">
-                    <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border-panel bg-list-background-hover">
-                        <Network size={14} />
-                    </div>
+            <div className="flex items-center justify-between gap-3 border-b border-[var(--vscode-panel-border)] px-3 py-2 bg-[var(--vscode-editor-background)]">
+                <div className="flex min-w-0 items-center gap-2">
+                    <Network size={14} className="text-[var(--vscode-icon-foreground)]" />
                     <div className="flex min-w-0 flex-col">
-                        <span className="text-sm font-semibold">Virtual Cloud Networks</span>
-                        <span className="text-xs text-description">Manage OCI VCNs and Security Lists.</span>
+                        <span className="text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)]">Virtual Cloud Networks</span>
                     </div>
                 </div>
-                <button
-                    onClick={load}
-                    disabled={loading}
-                    title="Refresh"
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-description transition-colors hover:bg-list-background-hover hover:text-foreground disabled:opacity-50"
-                >
-                    <RefreshCw size={14} className={clsx(loading && "animate-spin")} />
-                </button>
+                <div className="flex items-center gap-1">
+                    <Button
+                        variant="icon"
+                        size="icon"
+                        onClick={load}
+                        disabled={loading}
+                        title="Refresh"
+                    >
+                        <RefreshCw size={14} className={clsx(loading && "animate-spin")} />
+                    </Button>
+                </div>
             </div>
 
             {/* Controls */}
-            <div className="border-b border-border-panel px-3 pt-3 pb-2 flex flex-col gap-2">
+            <div className="border-b border-[var(--vscode-panel-border)] px-3 pt-3 pb-2 flex flex-col gap-2 bg-[var(--vscode-editor-background)]">
                 <CompartmentSelector featureKey="vcn" multiple />
                 {vcns.length > 0 && (
-                    <div className="flex items-center gap-2 rounded-lg border border-input-border bg-input-background px-2.5 py-1.5">
-                        <Search size={12} className="shrink-0 text-description" />
+                    <div className="flex items-center gap-2 rounded-[2px] border border-input-border bg-input-background px-2 py-1 focus-within:outline focus-within:outline-1 focus-within:outline-[var(--vscode-focusBorder)] focus-within:-outline-offset-1">
+                        <Search size={12} className="shrink-0 text-[var(--vscode-icon-foreground)]" />
                         <input
                             type="text"
                             value={query}
                             onChange={e => setQuery(e.target.value)}
                             placeholder="Filter VCNs..."
-                            className="flex-1 bg-transparent text-xs text-input-foreground outline-none placeholder:text-input-placeholder"
+                            className="flex-1 bg-transparent text-[13px] text-input-foreground outline-none placeholder:text-input-placeholder"
                         />
                     </div>
                 )}
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-4">
+            <div className="flex-1 overflow-y-auto px-3 py-3">
                 {error && (
                     <div className="mb-4 flex items-start gap-2 rounded-lg border border-error/30 bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,red_8%)] px-3 py-2.5 text-xs text-error">
                         <AlertCircle size={13} className="mt-0.5 shrink-0" />
@@ -131,9 +131,9 @@ export default function VcnView() {
                 )}
 
                 {loading && vcns.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center gap-3 py-16 text-description">
-                        <Loader2 size={24} className="animate-spin" />
-                        <span className="text-xs">Loading VCNs...</span>
+                    <div className="flex items-center justify-center gap-2 p-4 text-[12px] text-description">
+                        <Loader2 size={14} className="animate-spin" />
+                        <span>Loading VCNs...</span>
                     </div>
                 ) : vcns.length === 0 ? (
                     <EmptyState />
@@ -145,18 +145,18 @@ export default function VcnView() {
                                 : `${filtered.length} of ${vcns.length} VCNs`}
                         </h4>
                         {filtered.length === 0 ? (
-                            <p className="py-8 text-center text-xs text-description">No VCNs match your filter.</p>
+                            <p className="py-8 text-center text-[12px] text-description">No VCNs match your filter.</p>
                         ) : (
                             grouped.map((compartmentGroup) => (
-                                <div key={compartmentGroup.compartmentId} className="rounded-xl border border-border-panel p-3 sm:p-4">
-                                    <h5 className="text-xs font-semibold uppercase tracking-wider text-description">
-                                        Compartment: {compartmentNameById.get(compartmentGroup.compartmentId) ?? compartmentGroup.compartmentId}
+                                <div key={compartmentGroup.compartmentId} className="mb-4">
+                                    <h5 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[var(--vscode-sideBarTitle-foreground)]">
+                                        {compartmentNameById.get(compartmentGroup.compartmentId) ?? compartmentGroup.compartmentId}
                                     </h5>
-                                    <div className="mt-3 flex flex-col gap-3">
+                                    <div className="flex flex-col gap-3">
                                         {compartmentGroup.regions.map((regionGroup) => (
                                             <div key={`${compartmentGroup.compartmentId}-${regionGroup.region}`} className="flex flex-col gap-2">
-                                                <h6 className="text-[11px] font-semibold uppercase tracking-wider text-description">
-                                                    Region: {regionGroup.region}
+                                                <h6 className="text-[10px] font-semibold uppercase tracking-wider text-description border-b border-[var(--vscode-panel-border)] pb-1">
+                                                    {regionGroup.region}
                                                 </h6>
                                                 {regionGroup.vcns.map((vcn) => (
                                                     <VcnCard
@@ -186,11 +186,11 @@ function VcnCard({
     onSelect: () => void
 }) {
     return (
-        <div className="flex flex-col gap-3 rounded-xl border border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,black_8%)] p-3 sm:p-4">
+        <div className="flex flex-col gap-3 rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] hover:bg-[var(--vscode-list-hoverBackground)] transition-colors p-2.5">
             <div className="flex items-start justify-between gap-2">
-                <div className="flex min-w-0 flex-col gap-0.5">
-                    <span className="truncate text-sm font-medium">{vcn.name}</span>
-                    <span className="truncate text-xs text-description">{vcn.id}</span>
+                <div className="flex min-w-0 flex-col">
+                    <span className="truncate text-[13px] font-medium text-[var(--vscode-foreground)]">{vcn.name}</span>
+                    <span className="truncate text-[11px] text-description">{vcn.id}</span>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
                         {vcn.cidrBlocks.map((cidr, i) => (
                             <span key={i} className="text-[11px] text-description">CIDR: {cidr}</span>

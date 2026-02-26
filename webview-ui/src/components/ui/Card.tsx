@@ -8,8 +8,8 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
 
 export default function Card({ title, className, children, ...props }: CardProps) {
   return (
-    <div className={clsx("rounded-xl border border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,black_8%)] p-4", className)} {...props}>
-      {title && <h3 className="mb-3 text-sm font-semibold">{title}</h3>}
+    <div className={clsx("rounded border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-3 relative", className)} {...props}>
+      {title && <h3 className="mb-2 text-[13px] font-semibold text-foreground uppercase tracking-wider">{title}</h3>}
       <div className="flex flex-col gap-3">{children}</div>
     </div>
   )

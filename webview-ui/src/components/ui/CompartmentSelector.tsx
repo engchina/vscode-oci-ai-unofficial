@@ -160,7 +160,7 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
 
     if (availableCompartments.length === 0) {
         return (
-            <div className="flex items-center gap-2 mb-4 px-3 py-2 text-xs border border-border-panel bg-input-background text-description rounded-md">
+            <div className="flex items-center gap-2 mb-4 px-3 py-2 text-[12px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] text-description rounded-[2px]">
                 <MonitorStop size={14} />
                 <span>Profile "{activeProfile}" has no compartments mapped in Settings.</span>
             </div>
@@ -171,14 +171,14 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
         <div className="relative mb-4 z-10" ref={dropdownRef}>
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="w-full flex items-center justify-between gap-2 px-3 py-2 text-xs border border-border-panel bg-input-background text-foreground rounded-md hover:bg-list-background-hover transition-colors"
+                className="w-full flex items-center justify-between gap-2 px-2 py-1.5 text-[12px] border border-[var(--vscode-dropdown-border,var(--vscode-input-border))] bg-[var(--vscode-dropdown-background,var(--vscode-input-background))] text-[var(--vscode-dropdown-foreground,var(--vscode-input-foreground))] rounded-[2px] hover:bg-[var(--vscode-list-hoverBackground)] transition-colors focus:outline focus:outline-1 focus:outline-[var(--vscode-focusBorder)] focus:-outline-offset-1"
             >
                 <span className="truncate">{selectionText}</span>
-                <ChevronDown size={14} className="text-description shrink-0" />
+                <ChevronDown size={14} className="text-[var(--vscode-icon-foreground)] shrink-0" />
             </button>
 
             {isOpen && (
-                <div className="absolute top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto border border-border-panel bg-[var(--vscode-dropdown-background,var(--vscode-editor-background))] rounded-md shadow-lg py-1">
+                <div className="absolute top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto border border-[var(--vscode-dropdown-border,var(--vscode-input-border))] bg-[var(--vscode-dropdown-background,var(--vscode-input-background))] rounded-[2px] shadow-lg py-1 z-50">
                     {availableCompartments.map(comp => {
                         const isSelected = currentSelection.includes(comp.id)
                         return (

@@ -44,7 +44,7 @@ function AppContent() {
         isOpen={openSection === "settings"}
         onToggle={() => toggleSection("settings")}
       >
-        <div className="p-4 flex flex-col h-full">
+        <div className="flex flex-col h-full w-full px-0">
           <SettingsView showDone={false} />
         </div>
       </AccordionItem>

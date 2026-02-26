@@ -206,8 +206,8 @@ export default function ChatTextArea({
   const canSend = !disabled && (value.trim().length > 0 || images.length > 0)
 
   return (
-    <div className="border-t border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_93%,black_7%)] px-4 pb-3 pt-3">
-      <div className="rounded-xl border border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_90%,black_10%)] p-2.5">
+    <div className="border-t border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-3 pb-3 pt-3">
+      <div className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_97%,var(--vscode-foreground)_3%)] p-2 focus-within:outline focus-within:outline-1 focus-within:outline-[var(--vscode-focusBorder)] focus-within:-outline-offset-1">
         <input
           ref={fileInputRef}
           type="file"
@@ -259,7 +259,7 @@ export default function ChatTextArea({
             disabled={disabled}
             minRows={2}
             maxRows={8}
-            className="w-full resize-none rounded-lg border border-input-border bg-input-background px-3 py-2 pr-24 text-sm text-input-foreground outline-none placeholder:text-input-placeholder focus:border-border disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full resize-none bg-transparent px-1 py-1 pr-20 text-[13px] text-input-foreground outline-none placeholder:text-input-placeholder disabled:cursor-not-allowed disabled:opacity-50"
           />
           <div className="absolute bottom-1.5 right-1.5 inline-flex items-center gap-1">
             <button

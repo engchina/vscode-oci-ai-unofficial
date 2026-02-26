@@ -70,33 +70,38 @@ export default function SecurityListView({
 
     return (
         <div className="flex h-full min-h-0 flex-col">
-            <div className="flex items-center gap-3 border-b border-border-panel px-4 py-3">
-                <button
-                    onClick={onBack}
-                    className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-list-background-hover hover:text-foreground"
-                >
-                    <ChevronLeft size={16} />
-                </button>
-                <div className="flex min-w-0 flex-col">
-                    <span className="text-sm font-semibold truncate">Security Lists for {vcn.name}</span>
+            <div className="flex items-center justify-between gap-3 border-b border-[var(--vscode-panel-border)] px-3 py-2 bg-[var(--vscode-editor-background)]">
+                <div className="flex min-w-0 items-center gap-2">
+                    <button
+                        onClick={onBack}
+                        className="flex h-6 w-6 items-center justify-center rounded-[2px] hover:bg-[var(--vscode-toolbar-hoverBackground)] hover:text-[var(--vscode-toolbar-hoverOutline)]"
+                        title="Back to VCNs"
+                    >
+                        <ChevronLeft size={14} />
+                    </button>
+                    <div className="flex min-w-0 flex-col">
+                        <span className="text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)] truncate">Security Lists: {vcn.name}</span>
+                    </div>
                 </div>
-                <div className="ml-auto flex items-center gap-2">
-                    <Button variant="secondary" size="sm" onClick={() => setIsCreating(true)} className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1">
+                    <Button variant="secondary" size="sm" onClick={() => setIsCreating(true)} className="flex items-center gap-1.5 h-6">
                         <Plus size={14} /> Create
                     </Button>
-                    <button
+                    <Button
+                        variant="icon"
+                        size="icon"
                         onClick={load}
                         disabled={loading}
-                        className="flex h-7 w-7 items-center justify-center rounded-md text-description hover:bg-list-background-hover hover:text-foreground disabled:opacity-50"
+                        title="Refresh"
                     >
                         <RefreshCw size={14} className={clsx(loading && "animate-spin")} />
-                    </button>
+                    </Button>
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto px-3 py-3">
                 {error && (
-                    <div className="mb-4 flex items-start gap-2 rounded-lg border border-error/30 bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,red_8%)] px-3 py-2.5 text-xs text-error">
+                    <div className="mb-4 flex items-start gap-2 rounded-[2px] border border-error/30 bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,red_8%)] px-3 py-2.5 text-[11px] text-error">
                         <AlertCircle size={13} className="mt-0.5 shrink-0" />
                         <span>{error}</span>
                     </div>
@@ -107,37 +112,37 @@ export default function SecurityListView({
                         <Loader2 size={24} className="animate-spin text-description" />
                     </div>
                 ) : securityLists.length === 0 ? (
-                    <div className="text-center py-8 text-description text-sm">
+                    <div className="text-center py-8 text-description text-[12px]">
                         No security lists found for this VCN.
                     </div>
                 ) : (
                     <div className="flex flex-col gap-3">
                         {securityLists.map(sl => (
-                            <div key={sl.id} className="rounded-xl border border-border-panel p-4 bg-input-background">
-                                <div className="flex items-start justify-between">
-                                    <div>
-                                        <div className="font-semibold text-sm flex items-center gap-2">
-                                            <Shield size={14} className="text-description" />
-                                            {sl.name}
+                            <div key={sl.id} className="rounded-[2px] border border-[var(--vscode-panel-border)] p-3 bg-[var(--vscode-editor-background)] hover:bg-[var(--vscode-list-hoverBackground)] transition-colors">
+                                <div className="flex items-start justify-between gap-2">
+                                    <div className="flex min-w-0 flex-col">
+                                        <div className="font-semibold text-[13px] flex items-center gap-2 text-[var(--vscode-foreground)] w-full">
+                                            <Shield size={14} className="text-[var(--vscode-icon-foreground)] shrink-0" />
+                                            <span className="truncate">{sl.name}</span>
                                         </div>
-                                        <div className="text-xs text-description mt-1 truncate max-w-sm" title={sl.id}>{sl.id}</div>
+                                        <div className="text-[11px] text-description mt-0.5 truncate" title={sl.id}>{sl.id}</div>
                                     </div>
-                                    <div className="flex gap-2">
+                                    <div className="flex gap-1 shrink-0">
                                         <Button variant="secondary" size="sm" onClick={() => setEditingList(sl)}>
-                                            <Edit size={14} />
+                                            <Edit size={12} />
                                         </Button>
                                         <Button variant="secondary" size="sm" onClick={() => handleDelete(sl.id)}>
-                                            <Trash2 size={14} className="text-error" />
+                                            <Trash2 size={12} className="text-error" />
                                         </Button>
                                     </div>
                                 </div>
 
-                                <div className="mt-4 grid grid-cols-2 gap-4">
+                                <div className="mt-3 grid grid-cols-2 gap-4 border-t border-[var(--vscode-panel-border)] pt-2">
                                     <div>
-                                        <h5 className="text-xs font-semibold mb-2">Ingress Rules ({sl.ingressSecurityRules?.length || 0})</h5>
+                                        <h5 className="text-[11px] font-semibold text-[var(--vscode-foreground)] mb-1">Ingress Rules ({sl.ingressSecurityRules?.length || 0})</h5>
                                     </div>
                                     <div>
-                                        <h5 className="text-xs font-semibold mb-2">Egress Rules ({sl.egressSecurityRules?.length || 0})</h5>
+                                        <h5 className="text-[11px] font-semibold text-[var(--vscode-foreground)] mb-1">Egress Rules ({sl.egressSecurityRules?.length || 0})</h5>
                                     </div>
                                 </div>
                             </div>

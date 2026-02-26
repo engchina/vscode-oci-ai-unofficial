@@ -80,7 +80,7 @@ datalist option {
 
 :focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: 1px;
+  outline-offset: -1px;
 }
 
 a {

@@ -7,18 +7,18 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 
 export default function Input({ label, className, id, ...props }: InputProps) {
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1.5 w-full">
       {label && (
-        <label htmlFor={id} className="text-xs font-medium text-description">
+        <label htmlFor={id} className="text-[13px] leading-none text-foreground">
           {label}
         </label>
       )}
       <input
         id={id}
         className={clsx(
-          "w-full rounded-md border border-input-border bg-input-background px-3 py-2 text-sm text-input-foreground",
+          "w-full rounded-[2px] border border-input-border bg-input-background px-2 py-1 h-[26px] text-[13px] text-input-foreground",
           "placeholder:text-input-placeholder",
-          "outline-none focus:border-border",
+          "outline-none focus:border-border focus:outline focus:outline-1 focus:outline-[var(--vscode-focusBorder)] focus:-outline-offset-1",
           className,
         )}
         {...props}
