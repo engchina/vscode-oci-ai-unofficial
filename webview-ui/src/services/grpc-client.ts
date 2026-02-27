@@ -5,6 +5,7 @@ import type {
   CodeContextPayload,
   ConnectAdbRequest,
   ConnectAdbResponse,
+  DeleteProfileRequest,
   DownloadAdbWalletRequest,
   DownloadAdbWalletResponse,
   ExecuteAdbSqlRequest,
@@ -60,6 +61,11 @@ export class StateServiceClient extends ProtoBusClient {
 
   static saveSettings(request: SaveSettingsRequest): Promise<void> {
     return this.makeUnaryRequest<void>("saveSettings", request)
+  }
+
+  static deleteProfile(profile: string): Promise<void> {
+    const request: DeleteProfileRequest = { profile }
+    return this.makeUnaryRequest<void>("deleteProfile", request)
   }
 
   static updateFeatureCompartmentSelection(

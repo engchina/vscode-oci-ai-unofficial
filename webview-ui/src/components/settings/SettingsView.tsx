@@ -55,9 +55,18 @@ const EMPTY_SETTINGS: SettingsState = {
   chatTemperature: 0,
   chatTopP: 1,
 
-  authMode: "config-file",
+  authMode: "api-key",
   savedCompartments: [],
   profilesConfig: [],
+}
+
+function getMissingApiKeyFields(s: Pick<SettingsState, "tenancyOcid" | "userOcid" | "fingerprint" | "privateKey">): string[] {
+  const missing: string[] = []
+  if (!s.tenancyOcid.trim()) missing.push("Tenancy OCID")
+  if (!s.userOcid.trim()) missing.push("User OCID")
+  if (!s.fingerprint.trim()) missing.push("Fingerprint")
+  if (!s.privateKey.trim()) missing.push("Private Key")
+  return missing
 }
 
 export default function SettingsView({ onDone, showDone = true }: SettingsViewProps) {
@@ -66,19 +75,62 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
   const [saving, setSaving] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [activeTab, setActiveTab] = useState<SettingsTab>("api-config")
+  const [editingProfileName, setEditingProfileName] = useState<string | null>(null)
   const fetchIdRef = useRef(0)
+  const editingProfileRef = useRef<string | null>(null)
   const refreshTimerRef = useRef<number | null>(null)
   const activeTabLabel = TABS.find((tab) => tab.id === activeTab)?.label ?? "None"
   const toggleTab = useCallback((tab: SettingsTab) => {
     setActiveTab(tab)
   }, [])
 
+  const updateEditingProfile = useCallback((profileName: string | null) => {
+    editingProfileRef.current = profileName
+    setEditingProfileName(profileName)
+  }, [])
+
+  const resolveEditingProfile = useCallback((state: SettingsState, preferred?: string | null) => {
+    const profiles = state.profilesConfig || []
+    if (preferred && profiles.some((profile) => profile.name === preferred)) {
+      return preferred
+    }
+    if (state.profile.trim() && profiles.some((profile) => profile.name === state.profile)) {
+      return state.profile.trim()
+    }
+    return profiles[0]?.name?.trim() || state.profile.trim() || "DEFAULT"
+  }, [])
+
+  const applyEditingProfileSecrets = useCallback(async (state: SettingsState, profileName: string) => {
+    if (!profileName || profileName === state.profile.trim()) {
+      return state
+    }
+    try {
+      const secrets = await StateServiceClient.getProfileSecrets(profileName)
+      return {
+        ...state,
+        region: secrets.region,
+        tenancyOcid: secrets.tenancyOcid,
+        userOcid: secrets.userOcid,
+        fingerprint: secrets.fingerprint,
+        privateKey: secrets.privateKey,
+        privateKeyPassphrase: secrets.privateKeyPassphrase,
+        authMode: secrets.authMode,
+      }
+    } catch (error) {
+      console.error("Failed to load profile secrets:", error)
+      return state
+    }
+  }, [])
+
   const refreshSettings = useCallback(async () => {
     const fetchId = ++fetchIdRef.current
     try {
       const state = await StateServiceClient.getSettings()
+      const nextEditingProfile = resolveEditingProfile(state, editingProfileRef.current)
+      const hydratedState = await applyEditingProfileSecrets(state, nextEditingProfile)
       if (fetchId === fetchIdRef.current) {
-        setSettings(state)
+        setSettings(hydratedState)
+        updateEditingProfile(nextEditingProfile)
         setLoaded(true)
       }
     } catch (error) {
@@ -87,7 +139,7 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
         setLoaded(true)
       }
     }
-  }, [])
+  }, [applyEditingProfileSecrets, resolveEditingProfile, updateEditingProfile])
 
   const scheduleRefreshSettings = useCallback(() => {
     if (refreshTimerRef.current !== null) {
@@ -127,13 +179,16 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
   const handleSave = useCallback(async () => {
     setSaving(true)
     try {
-      await StateServiceClient.saveSettings(settings)
+      await StateServiceClient.saveSettings({
+        ...settings,
+        editingProfile: resolveEditingProfile(settings, editingProfileRef.current),
+      })
     } catch (error) {
       console.error("Failed to save settings:", error)
     } finally {
       setSaving(false)
     }
-  }, [settings])
+  }, [resolveEditingProfile, settings])
 
   const handleFileUpload = useCallback(
     async (e: ChangeEvent<HTMLInputElement>) => {
@@ -207,6 +262,8 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
           <div className="flex w-full flex-col gap-4">
             {activeTab === "api-config" && (
               <ApiConfigTab
+                editingProfile={editingProfileName}
+                setEditingProfile={updateEditingProfile}
                 settings={settings}
                 setSettings={setSettings}
                 updateField={updateField}
@@ -244,12 +301,18 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
   )
 }
 
-function validateSettings(s: SettingsState): string[] {
+function validateSettings(s: SettingsState, editingProfile: string): string[] {
   const errors: string[] = []
   if (splitModelNames(s.genAiLlmModelId).length === 0) {
     errors.push("LLM Model Name is required for AI chat")
   }
-  if (s.authMode === "config-file" && !s.profile.trim()) errors.push("Profile Name is required for config file auth")
+  if (!editingProfile.trim()) {
+    errors.push("Profile Name is required for API key auth")
+  }
+  const missingApiKeyFields = getMissingApiKeyFields(s)
+  if (missingApiKeyFields.length > 0) {
+    errors.push(`Missing API key fields: ${missingApiKeyFields.join(", ")}`)
+  }
   return errors
 }
 
@@ -261,6 +324,8 @@ function splitModelNames(raw: string): string[] {
 }
 
 function ApiConfigTab({
+  editingProfile,
+  setEditingProfile,
   settings,
   setSettings,
   updateField,
@@ -268,6 +333,8 @@ function ApiConfigTab({
   handleFileUpload,
   saving,
 }: {
+  editingProfile: string | null
+  setEditingProfile: (profileName: string | null) => void
   settings: SettingsState
   setSettings: React.Dispatch<React.SetStateAction<SettingsState>>
   updateField: UpdateFieldFn
@@ -278,15 +345,19 @@ function ApiConfigTab({
   const [newProfileName, setNewProfileName] = useState("")
   const [addingProfile, setAddingProfile] = useState(false)
   const [deletingProfile, setDeletingProfile] = useState<string | null>(null)
-  const validationErrors = validateSettings(settings)
   const profiles = settings.profilesConfig || []
+  const runtimeProfile = settings.profile.trim() || "DEFAULT"
+  const effectiveSelectedProfile = editingProfile && profiles.some((profile) => profile.name === editingProfile)
+    ? editingProfile
+    : profiles.find((profile) => profile.name === runtimeProfile)?.name || profiles[0]?.name || runtimeProfile
+  const validationErrors = validateSettings(settings, effectiveSelectedProfile)
 
   const loadProfileSecrets = (profileName: string) => {
+    setEditingProfile(profileName)
     StateServiceClient.getProfileSecrets(profileName)
       .then((secrets) => {
         setSettings((prev) => ({
           ...prev,
-          profile: profileName,
           region: secrets.region,
           tenancyOcid: secrets.tenancyOcid,
           userOcid: secrets.userOcid,
@@ -305,8 +376,8 @@ function ApiConfigTab({
     setAddingProfile(true)
     const updatedProfiles = [...profiles, { name, compartments: [] }]
     // Only add profile to the list, don't switch to it yet.
-    // User should manually select it to edit. This avoids OCI auth errors
-    // for profiles that don't exist in ~/.oci/config yet.
+    // User should manually select it to edit.
+    // New profiles may not have API key credentials in SecretStorage yet.
     const updatedSettings = {
       ...settings,
       profilesConfig: updatedProfiles,
@@ -314,7 +385,11 @@ function ApiConfigTab({
     setSettings(updatedSettings)
     setNewProfileName("")
     try {
-      await StateServiceClient.saveSettings({ ...updatedSettings, suppressNotification: true })
+      await StateServiceClient.saveSettings({
+        ...updatedSettings,
+        editingProfile: effectiveSelectedProfile,
+        suppressNotification: true,
+      })
     } catch (error) {
       console.error("Failed to save profile:", error)
     } finally {
@@ -325,19 +400,22 @@ function ApiConfigTab({
   const deleteProfile = async (name: string) => {
     setDeletingProfile(name)
     const updatedProfiles = profiles.filter(p => p.name !== name)
+    const nextProfile = updatedProfiles.length > 0 ? updatedProfiles[0].name : "DEFAULT"
     const updatedSettings = { ...settings, profilesConfig: updatedProfiles }
-    const needsProfileSwitch = settings.profile === name
-    if (needsProfileSwitch) {
-      updatedSettings.profile = updatedProfiles.length > 0 ? updatedProfiles[0].name : "DEFAULT"
+    const needsRuntimeProfileSwitch = runtimeProfile === name
+    const needsEditingProfileSwitch = effectiveSelectedProfile === name
+    if (needsRuntimeProfileSwitch) {
+      updatedSettings.profile = nextProfile
     }
     if (settings.activeProfile === name) {
-      updatedSettings.activeProfile = updatedProfiles.length > 0 ? updatedProfiles[0].name : "DEFAULT"
+      updatedSettings.activeProfile = nextProfile
     }
     setSettings(updatedSettings)
     try {
-      await StateServiceClient.saveSettings({ ...updatedSettings, suppressNotification: true })
-      if (needsProfileSwitch) {
-        loadProfileSecrets(updatedSettings.profile)
+      await StateServiceClient.deleteProfile(name)
+      if (needsEditingProfileSwitch) {
+        setEditingProfile(nextProfile)
+        loadProfileSecrets(nextProfile)
       }
     } catch (error) {
       console.error("Failed to delete profile:", error)
@@ -366,26 +444,28 @@ function ApiConfigTab({
       <div className="flex items-center justify-between gap-2">
         <h4 className="text-xs font-semibold uppercase tracking-wider text-description">OCI Access</h4>
         <span
-          className={clsx(
-            "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider",
-            settings.authMode === "api-key"
-              ? "border-success/30 bg-[color-mix(in_srgb,var(--vscode-editor-background)_80%,green_20%)] text-success"
-              : "border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_90%,black_10%)] text-description",
-          )}
-          title={
-            settings.authMode === "api-key"
-              ? "Using API Key from SecretStorage"
-              : "Using OCI config file (~/.oci/config)"
-          }
+          className="rounded-full border border-success/30 bg-[color-mix(in_srgb,var(--vscode-editor-background)_80%,green_20%)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-success"
+          title="Using API Key from SecretStorage"
         >
-          {settings.authMode === "api-key" ? "API Key Auth" : "Config File Auth"}
+          API Key Auth
         </span>
       </div>
       <p className="-mt-1 text-xs text-description">
-        {settings.authMode === "api-key"
-          ? "All required API Key fields are set. Requests will use SecretStorage credentials."
-          : "Fill in Tenancy OCID, User OCID, Fingerprint, and Private Key below to switch to API Key auth."}
+        All OCI requests use API Key credentials from SecretStorage. The OCI config file is not used.
       </p>
+      <div className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_94%,black_6%)] px-3 py-2">
+        <p className="text-[11px] text-description">
+          Runtime auth profile: <span className="font-medium text-[var(--vscode-foreground)]">{runtimeProfile}</span>
+        </p>
+        <p className="mt-1 text-[11px] text-description">
+          Editing profile on this page: <span className="font-medium text-[var(--vscode-foreground)]">{effectiveSelectedProfile}</span>
+        </p>
+        {runtimeProfile !== effectiveSelectedProfile && (
+          <p className="mt-1 text-[11px] text-warning">
+            Saving here updates SecretStorage and region for "{effectiveSelectedProfile}" only. OCI requests still use "{runtimeProfile}" until you run "Switch Profile".
+          </p>
+        )}
+      </div>
 
       {/* Profile Management */}
       <Card title="Profile">
@@ -399,19 +479,16 @@ function ApiConfigTab({
               profiles.map(p => (
                 <div key={p.name} className={clsx(
                   "flex items-center justify-between gap-2 rounded-[2px] border px-2 py-1.5 transition-colors",
-                  settings.profile === p.name
+                  effectiveSelectedProfile === p.name
                     ? "border-[var(--vscode-focusBorder)] bg-[var(--vscode-list-activeSelectionBackground)] text-[var(--vscode-list-activeSelectionForeground)]"
                     : "border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] hover:bg-[var(--vscode-list-hoverBackground)]"
                 )}>
                   <button
                     className="flex-1 text-left text-xs font-medium"
-                    onClick={() => {
-                      updateField("profile", p.name)
-                      loadProfileSecrets(p.name)
-                    }}
+                    onClick={() => loadProfileSecrets(p.name)}
                   >
                     {p.name}
-                    {settings.profile === p.name && (
+                    {effectiveSelectedProfile === p.name && (
                       <span className="ml-2 text-[10px] text-description">(Selected)</span>
                     )}
                   </button>
@@ -450,7 +527,7 @@ function ApiConfigTab({
 
       <Card title="API Key (SecretStorage)">
         <p className="-mt-1 text-xs text-description">
-          When all four fields below are filled, API Key auth takes priority over the OCI config file.
+          Fill all four required fields below. Requests will fail until SecretStorage has a complete API key for this profile.
         </p>
         <Input
           id="region"

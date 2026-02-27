@@ -29,7 +29,7 @@ const EMPTY_SETTINGS: SettingsState = {
     chatMaxTokens: 16000,
     chatTemperature: 0,
     chatTopP: 1,
-    authMode: "config-file",
+    authMode: "api-key",
     savedCompartments: [],
     vcnCompartmentIds: [],
     profilesConfig: [],

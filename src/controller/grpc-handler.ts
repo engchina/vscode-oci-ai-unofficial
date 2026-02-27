@@ -132,6 +132,10 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
       await c.saveSettings(msg);
       return {};
     },
+    deleteProfile: async (c, msg) => {
+      await c.deleteProfile(String(msg.profile ?? ""));
+      return {};
+    },
     updateFeatureCompartmentSelection: async (c, msg) => {
       await c.updateFeatureCompartmentSelection(
         String(msg.featureKey ?? "") as "compute" | "adb" | "dbSystem" | "vcn" | "chat" | "objectStorage",

@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 
 const SECRET_FIELDS = ["tenancyOcid", "userOcid", "fingerprint", "privateKey", "privateKeyPassphrase"] as const;
-const AUTH_MODES = ["auto", "api-key", "config-file"] as const;
+const AUTH_MODES = ["api-key"] as const;
 
 function secretKey(profile: string, field: typeof SECRET_FIELDS[number]): string {
   return `ociAi.${profile}.${field}`;
@@ -27,10 +27,7 @@ export class AuthManager {
   constructor(private readonly context: vscode.ExtensionContext) { }
 
   public getAuthMode(): AuthMode {
-    const mode = String(
-      vscode.workspace.getConfiguration("ociAi").get<string>("authMode", "auto")
-    ).trim() as AuthMode;
-    return (AUTH_MODES as readonly string[]).includes(mode) ? mode : "auto";
+    return "api-key";
   }
 
   public getProfile(): string {
@@ -54,14 +51,6 @@ export class AuthManager {
       .get<string>("compartmentId", "")
       .trim();
     return compartmentId.length > 0 ? compartmentId : undefined;
-  }
-
-  public getConfigFilePath(): string | undefined {
-    const configFilePath = vscode.workspace
-      .getConfiguration("ociAi")
-      .get<string>("configFilePath", "")
-      .trim();
-    return configFilePath.length > 0 ? configFilePath : undefined;
   }
 
   public async configureProfileInteractive(): Promise<void> {
@@ -113,7 +102,7 @@ export class AuthManager {
   public async configureApiKeyInteractive(): Promise<void> {
     const tenancyOcid = await vscode.window.showInputBox({
       title: "Tenancy OCID",
-      prompt: "Optional. Stored in SecretStorage for future auth modes",
+      prompt: "Stored in SecretStorage for API key auth",
       ignoreFocusOut: true
     });
     if (tenancyOcid === undefined) {
@@ -122,7 +111,7 @@ export class AuthManager {
 
     const userOcid = await vscode.window.showInputBox({
       title: "User OCID",
-      prompt: "Optional. Stored in SecretStorage",
+      prompt: "Stored in SecretStorage for API key auth",
       ignoreFocusOut: true
     });
     if (userOcid === undefined) {
@@ -131,7 +120,7 @@ export class AuthManager {
 
     const fingerprint = await vscode.window.showInputBox({
       title: "API Key Fingerprint",
-      prompt: "Optional. Stored in SecretStorage",
+      prompt: "Stored in SecretStorage for API key auth",
       ignoreFocusOut: true
     });
     if (fingerprint === undefined) {
@@ -140,7 +129,7 @@ export class AuthManager {
 
     const privateKey = await vscode.window.showInputBox({
       title: "Private Key Content",
-      prompt: "Paste private key content if you do not want to use config file key_path",
+      prompt: "Paste the private key content stored in SecretStorage",
       password: true,
       ignoreFocusOut: true
     });
@@ -209,6 +198,18 @@ export class AuthManager {
     await cfg.update("region", trimmedRegion, vscode.ConfigurationTarget.Global);
   }
 
+  public async deleteRegionForProfile(profile: string): Promise<void> {
+    const trimmedProfile = profile.trim() || "DEFAULT";
+    const cfg = vscode.workspace.getConfiguration("ociAi");
+    const current = getProfileRegionMap();
+    if (!(trimmedProfile in current)) {
+      return;
+    }
+    const next = { ...current };
+    delete next[trimmedProfile];
+    await cfg.update("profileRegionMap", next, vscode.ConfigurationTarget.Global);
+  }
+
   public async updateApiKeySecrets(input: ApiKeySecrets, profile?: string): Promise<void> {
     const p = profile ?? this.getProfile();
     await this.context.secrets.store(secretKey(p, "tenancyOcid"), input.tenancyOcid.trim());
@@ -216,5 +217,16 @@ export class AuthManager {
     await this.context.secrets.store(secretKey(p, "fingerprint"), input.fingerprint.trim());
     await this.context.secrets.store(secretKey(p, "privateKey"), input.privateKey.trim());
     await this.context.secrets.store(secretKey(p, "privateKeyPassphrase"), input.privateKeyPassphrase.trim());
+  }
+
+  public async deleteApiKeySecrets(profile: string): Promise<void> {
+    const p = profile.trim() || "DEFAULT";
+    await Promise.all(SECRET_FIELDS.map((field) => this.context.secrets.delete(secretKey(p, field))));
+  }
+
+  public async deleteProfileData(profile: string): Promise<void> {
+    const trimmedProfile = profile.trim() || "DEFAULT";
+    await this.deleteApiKeySecrets(trimmedProfile);
+    await this.deleteRegionForProfile(trimmedProfile);
   }
 }

@@ -48,6 +48,7 @@ export interface AppState {
 export interface SaveSettingsRequest {
   activeProfile: string
   profile: string
+  editingProfile?: string
   region: string
   compartmentId: string
   computeCompartmentIds: string[]
@@ -75,6 +76,10 @@ export interface SaveSettingsRequest {
   suppressNotification?: boolean
 }
 
+export interface DeleteProfileRequest {
+  profile: string
+}
+
 export interface SavedCompartment {
   name: string
   id: string
@@ -82,7 +87,7 @@ export interface SavedCompartment {
 
 export interface SettingsState extends SaveSettingsRequest {
   /** Indicates which authentication method is currently active */
-  authMode: "api-key" | "config-file"
+  authMode: "api-key"
   /** Named compartments saved for quick switching */
   savedCompartments: SavedCompartment[]
   profilesConfig: ProfileConfig[]
@@ -95,7 +100,7 @@ export interface ProfileSecretsResponse {
   privateKey: string
   privateKeyPassphrase: string
   region: string
-  authMode: "api-key" | "config-file"
+  authMode: "api-key"
 }
 
 export interface SendMessageRequest {

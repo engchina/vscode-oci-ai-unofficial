@@ -172,17 +172,15 @@
         "ociAi.profile": {
           "type": "string",
           "default": "DEFAULT",
-          "description": "Legacy OCI profile name from ~/.oci/config"
+          "description": "Active profile name used to look up API key credentials in SecretStorage"
         },
         "ociAi.authMode": {
           "type": "string",
           "enum": [
-            "auto",
-            "api-key",
-            "config-file"
+            "api-key"
           ],
-          "default": "auto",
-          "description": "Authentication mode: auto (prefer API key then fallback), api-key (no fallback), or config-file"
+          "default": "api-key",
+          "description": "Authentication mode. This extension uses API key credentials from SecretStorage only."
         },
         "ociAi.region": {
           "type": "string",
@@ -197,7 +195,7 @@
         "ociAi.configFilePath": {
           "type": "string",
           "default": "",
-          "description": "Optional custom OCI config file path. Defaults to ~/.oci/config"
+          "description": "Deprecated. OCI config files are no longer used for authentication."
         },
         "ociAi.oracleDbDriverMode": {
           "type": "string",

@@ -52,6 +52,15 @@ const DEFAULT_CHAT_TEMPERATURE = 0;
 const DEFAULT_CHAT_TOP_P = 1;
 const MAX_IMAGES_PER_MESSAGE = 10;
 
+function getMissingApiKeyFields(secrets: ApiKeySecrets): string[] {
+  const missing: string[] = [];
+  if (!secrets.tenancyOcid.trim()) missing.push("Tenancy OCID");
+  if (!secrets.userOcid.trim()) missing.push("User OCID");
+  if (!secrets.fingerprint.trim()) missing.push("Fingerprint");
+  if (!secrets.privateKey.trim()) missing.push("Private Key");
+  return missing;
+}
+
 type ActiveChatRequest = {
   abortController: AbortController;
   cancelled: boolean;
@@ -92,6 +101,10 @@ export class Controller {
     const warnings: string[] = [];
     if (!compartmentId) warnings.push("Compartment ID not set (OCI Settings → Compartment ID).");
     if (!hasModelName) warnings.push("LLM Model Name not set (OCI Settings → LLM Model Name).");
+    const missingApiKeyFields = getMissingApiKeyFields(secrets);
+    if (missingApiKeyFields.length > 0) {
+      warnings.push(`API Key Auth incomplete for profile "${profile}": ${missingApiKeyFields.join(", ")}.`);
+    }
 
     return {
       activeProfile: cfg.get<string>("activeProfile", "DEFAULT"),
@@ -120,10 +133,6 @@ export class Controller {
     const cfg = vscode.workspace.getConfiguration("ociAi");
     const profile = cfg.get<string>("profile", "DEFAULT");
     const secrets = await this.authManager.getApiKeySecrets(profile);
-    const authMode: "api-key" | "config-file" =
-      secrets.tenancyOcid && secrets.userOcid && secrets.fingerprint && secrets.privateKey
-        ? "api-key"
-        : "config-file";
     const savedCompartments = cfg.get<SavedCompartment[]>("savedCompartments", []);
     const profilesConfig = cfg.get<any[]>("profilesConfig", []);
     return {
@@ -147,29 +156,26 @@ export class Controller {
       chatTemperature: cfg.get<number>("chatTemperature", DEFAULT_CHAT_TEMPERATURE),
       chatTopP: cfg.get<number>("chatTopP", DEFAULT_CHAT_TOP_P),
       ...secrets,
-      authMode,
+      authMode: "api-key",
       savedCompartments: Array.isArray(savedCompartments) ? savedCompartments : [],
       profilesConfig: Array.isArray(profilesConfig) ? profilesConfig : [],
     };
   }
 
   /** Get API key secrets for a specific profile */
-  public async getProfileSecrets(profile: string): Promise<ApiKeySecrets & { authMode: "api-key" | "config-file"; region: string }> {
+  public async getProfileSecrets(profile: string): Promise<ApiKeySecrets & { authMode: "api-key"; region: string }> {
     const secrets = await this.authManager.getApiKeySecrets(profile);
     const region = await this.authManager.getRegionForProfile(profile);
-    const authMode: "api-key" | "config-file" =
-      secrets.tenancyOcid && secrets.userOcid && secrets.fingerprint && secrets.privateKey
-        ? "api-key"
-        : "config-file";
-    return { ...secrets, authMode, region };
+    return { ...secrets, authMode: "api-key", region };
   }
 
   /** Save settings */
   public async saveSettings(payload: SaveSettingsRequest & { profilesConfig?: any[] }): Promise<void> {
     const cfg = vscode.workspace.getConfiguration("ociAi");
-    const targetProfile = String(payload.profile ?? "").trim() || "DEFAULT";
+    const runtimeProfile = String(payload.profile ?? "").trim() || "DEFAULT";
+    const targetProfile = String(payload.editingProfile ?? runtimeProfile).trim() || runtimeProfile;
     await cfg.update("activeProfile", String(payload.activeProfile ?? "").trim() || "DEFAULT", vscode.ConfigurationTarget.Global);
-    await cfg.update("profile", targetProfile, vscode.ConfigurationTarget.Global);
+    await cfg.update("profile", runtimeProfile, vscode.ConfigurationTarget.Global);
     await this.authManager.updateRegionForProfile(targetProfile, String(payload.region ?? ""));
     await this.authManager.updateCompartmentId(String(payload.compartmentId ?? ""));
     await cfg.update("computeCompartmentIds", Array.isArray(payload.computeCompartmentIds) ? payload.computeCompartmentIds : [], vscode.ConfigurationTarget.Global);
@@ -220,6 +226,44 @@ export class Controller {
       vscode.window.showInformationMessage("OCI settings saved.");
     }
     // Push updated state to subscribers
+    await this.broadcastState();
+  }
+
+  public async deleteProfile(profileName: string): Promise<void> {
+    const trimmedProfile = String(profileName ?? "").trim();
+    if (!trimmedProfile) {
+      return;
+    }
+
+    const cfg = vscode.workspace.getConfiguration("ociAi");
+    const existingProfiles = cfg.get<{ name: string; compartments: { id: string; name: string }[] }[]>("profilesConfig", []);
+    const profiles = Array.isArray(existingProfiles) ? existingProfiles : [];
+    const updatedProfiles = profiles.filter((profile) => profile?.name !== trimmedProfile);
+    const fallbackProfile = updatedProfiles[0]?.name?.trim() || "DEFAULT";
+
+    const currentProfile = String(cfg.get<string>("profile", "DEFAULT") ?? "").trim() || "DEFAULT";
+    const currentActiveProfile = String(cfg.get<string>("activeProfile", "DEFAULT") ?? "").trim() || "DEFAULT";
+    const nextProfile = currentProfile === trimmedProfile ? fallbackProfile : currentProfile;
+    const nextActiveProfile = currentActiveProfile === trimmedProfile ? fallbackProfile : currentActiveProfile;
+
+    await cfg.update("profilesConfig", updatedProfiles, vscode.ConfigurationTarget.Global);
+
+    if (nextProfile !== currentProfile) {
+      await cfg.update("profile", nextProfile, vscode.ConfigurationTarget.Global);
+    }
+
+    if (currentProfile === trimmedProfile) {
+      const nextRegion = nextProfile === trimmedProfile
+        ? ""
+        : await this.authManager.getRegionForProfile(nextProfile);
+      await cfg.update("region", nextRegion, vscode.ConfigurationTarget.Global);
+    }
+
+    if (nextActiveProfile !== currentActiveProfile) {
+      await cfg.update("activeProfile", nextActiveProfile, vscode.ConfigurationTarget.Global);
+    }
+
+    await this.authManager.deleteProfileData(trimmedProfile);
     await this.broadcastState();
   }
 

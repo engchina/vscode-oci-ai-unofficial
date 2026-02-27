@@ -48,6 +48,8 @@ export interface AppState {
 export interface SaveSettingsRequest {
   activeProfile: string;
   profile: string; // legacy support
+  /** Profile whose per-profile secrets/region are currently being edited. */
+  editingProfile?: string;
   region: string;
   compartmentId: string; // legacy support
   computeCompartmentIds: string[];
@@ -77,6 +79,10 @@ export interface SaveSettingsRequest {
   suppressNotification?: boolean;
 }
 
+export interface DeleteProfileRequest {
+  profile: string;
+}
+
 /** A saved compartment entry */
 export interface SavedCompartment {
   name: string;
@@ -86,7 +92,7 @@ export interface SavedCompartment {
 /** Settings state including secrets for display */
 export interface SettingsState extends SaveSettingsRequest {
   /** Indicates which authentication method is currently active */
-  authMode: "api-key" | "config-file";
+  authMode: "api-key";
   /** Named compartments saved for quick switching (legacy) */
   savedCompartments: SavedCompartment[];
   /** Named profiles and their compartments */

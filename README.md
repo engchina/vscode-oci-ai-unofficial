@@ -14,7 +14,7 @@ A VS Code extension for OCI operations and AI-assisted development workflows.
 - **Auto-refresh** — Resources in transitional states (STARTING, STOPPING, etc.) refresh every 5 s automatically
 - **Search / Filter** — Filter compute or ADB lists by name or OCID in real time
 - **Multi-Compartment Switching** — Save named compartments and switch between them via QuickPick or Settings UI
-- **API Key Auth** — Store OCI credentials in VS Code SecretStorage; falls back to `~/.oci/config` automatically
+- **API Key Auth Only** — Store OCI credentials in VS Code SecretStorage; OCI config files are not used
 - **Configuration Validation** — Missing compartment ID or model name shows a warning banner in the chat view
 - **Chat History Persistence** — Conversation history survives VS Code restarts (last 100 messages per workspace)
 
@@ -40,29 +40,24 @@ Open the **OCI Settings** panel or use `vscode-oci-ai-unofficial: Configure Prof
 
 | Setting | Required | Description |
 |---------|----------|-------------|
-| `ociAi.profile` | For config-file auth | OCI profile name from `~/.oci/config` (default: `DEFAULT`) |
-| `ociAi.authMode` | Optional | `auto` / `api-key` / `config-file` (default: `auto`) |
+| `ociAi.profile` | Required | Profile name used to scope SecretStorage credentials (default: `DEFAULT`) |
+| `ociAi.authMode` | Fixed | `api-key` |
 | `ociAi.compartmentId` | Yes | Compartment OCID for Compute and ADB list/actions |
 | `ociAi.genAiLlmModelId` | Yes | LLM model name for AI chat (e.g. `meta.llama-3.1-70b-instruct`) |
 | `ociAi.region` | Optional | OCI region override (e.g. `us-phoenix-1`) |
 | `ociAi.genAiRegion` | Optional | Dedicated region for OCI Generative AI; falls back to `ociAi.region` |
 | `ociAi.genAiEmbeddingModelId` | Optional | Embedding model name |
-| `ociAi.configFilePath` | Optional | Custom OCI config path; defaults to `~/.oci/config` |
+| `ociAi.configFilePath` | Deprecated | Ignored |
 | `ociAi.systemPrompt` | Optional | System instructions prepended to every chat session |
 | `ociAi.savedCompartments` | Optional | Named compartment list for quick switching (managed via Settings UI) |
 
 ## Authentication
 
-Two modes are supported and auto-detected at runtime:
-
-**Config File Auth** (default)
-- Reads `~/.oci/config` using the configured profile.
-
-**API Key Auth** (SecretStorage)
+**API Key Auth** (SecretStorage only)
 - Run `vscode-oci-ai-unofficial: Store API Key in Secret Storage` or fill in the API Key card in OCI Settings.
-- When all four fields (Tenancy OCID, User OCID, Fingerprint, Private Key) are stored, API Key auth takes priority automatically.
+- All four fields are required: Tenancy OCID, User OCID, Fingerprint, and Private Key.
 
-To run fully independent from `~/.oci/config`, set `ociAi.authMode` to `api-key`. In this mode, the extension will never fall back to config-file auth.
+This extension uses API Key auth only. It does not fall back to `~/.oci/config`.
 
 ## Commands
 
