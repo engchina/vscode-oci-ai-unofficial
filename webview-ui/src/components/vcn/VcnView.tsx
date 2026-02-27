@@ -1,5 +1,5 @@
 import { clsx } from "clsx"
-import { AlertCircle, Loader2, RefreshCw, Search, Network, Shield } from "lucide-react"
+import { AlertCircle, Loader2, RefreshCw, Search, Network, Shield, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useExtensionState } from "../../context/ExtensionStateContext"
 import { ResourceServiceClient } from "../../services/grpc-client"
@@ -138,6 +138,16 @@ export default function VcnView() {
                             placeholder="Filter VCNs..."
                             className="flex-1 bg-transparent text-[13px] text-input-foreground outline-none placeholder:text-input-placeholder"
                         />
+                        {query && (
+                            <button
+                                type="button"
+                                onClick={() => setQuery("")}
+                                className="flex h-5 w-5 items-center justify-center rounded-[2px] text-description hover:bg-[var(--vscode-toolbar-hoverBackground)] hover:text-[var(--vscode-foreground)]"
+                                title="Clear filter"
+                            >
+                                <X size={12} />
+                            </button>
+                        )}
                     </div>
                 )}
             </div>
@@ -227,6 +237,7 @@ function VcnCard({
                     variant="secondary"
                     onClick={onSelect}
                     className="flex items-center gap-1.5"
+                    title="Open security lists for this VCN"
                 >
                     <Shield size={12} />
                     Manage Security Lists

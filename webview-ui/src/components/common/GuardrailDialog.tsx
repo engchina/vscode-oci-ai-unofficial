@@ -1,7 +1,5 @@
 import { AlertTriangle, ShieldAlert } from "lucide-react"
-import { useEffect, useState } from "react"
 import Button from "../ui/Button"
-import Input from "../ui/Input"
 
 interface GuardrailDialogProps {
   open: boolean
@@ -10,7 +8,6 @@ interface GuardrailDialogProps {
   confirmLabel: string
   details?: string[]
   tone?: "warning" | "danger"
-  requireText?: string
   busy?: boolean
   onCancel: () => void
   onConfirm: () => void | Promise<void>
@@ -23,27 +20,13 @@ export default function GuardrailDialog({
   confirmLabel,
   details = [],
   tone = "warning",
-  requireText,
   busy = false,
   onCancel,
   onConfirm,
 }: GuardrailDialogProps) {
-  const [typedValue, setTypedValue] = useState("")
-
-  useEffect(() => {
-    if (open) {
-      setTypedValue("")
-    }
-  }, [open, requireText])
-
   if (!open) {
     return null
   }
-
-  const needsTypedConfirmation = Boolean(requireText?.trim())
-  const normalizedRequiredText = requireText?.trim() ?? ""
-  const isConfirmDisabled =
-    busy || (needsTypedConfirmation && typedValue.trim() !== normalizedRequiredText)
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 px-4">
@@ -68,23 +51,13 @@ export default function GuardrailDialog({
               ))}
             </div>
           )}
-
-          {needsTypedConfirmation && (
-            <Input
-              value={typedValue}
-              onChange={(event) => setTypedValue(event.target.value)}
-              label={`Type ${normalizedRequiredText} to continue`}
-              placeholder={normalizedRequiredText}
-              autoFocus
-            />
-          )}
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-[var(--vscode-panel-border)] px-4 py-3">
           <Button variant="secondary" onClick={onCancel} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={() => void onConfirm()} disabled={isConfirmDisabled}>
+          <Button onClick={() => void onConfirm()} disabled={busy}>
             {confirmLabel}
           </Button>
         </div>

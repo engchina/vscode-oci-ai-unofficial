@@ -1,6 +1,7 @@
 import { clsx } from "clsx"
 import {
   AlertCircle,
+  CheckCircle2,
   Database,
   Download,
   Loader2,
@@ -13,6 +14,7 @@ import {
   StopCircle,
   Trash2,
   Unplug,
+  X,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useExtensionState } from "../../context/ExtensionStateContext"
@@ -38,8 +40,13 @@ type GuardrailState = {
   description: string
   confirmLabel: string
   details: string[]
-  requireText?: string
   onConfirm: () => Promise<void>
+} | null
+type RecentActionState = {
+  resourceId: string
+  resourceName: string
+  message: string
+  timestamp: number
 } | null
 
 const TRANSITIONAL_STATES = new Set([
@@ -74,6 +81,11 @@ export default function AdbView() {
   const [loadingDiagnostics, setLoadingDiagnostics] = useState(false)
   const previousSelectedAdbIdRef = useRef("")
   const [guardrail, setGuardrail] = useState<GuardrailState>(null)
+  const [recentAction, setRecentAction] = useState<RecentActionState>(null)
+  const [highlightedDatabaseId, setHighlightedDatabaseId] = useState<string | null>(null)
+  const actionTimerRef = useRef<number | null>(null)
+  const highlightTimerRef = useRef<number | null>(null)
+  const databaseItemRefs = useRef(new Map<string, HTMLDivElement>())
 
   const selectedDatabase = useMemo(
     () => databases.find((db) => db.id === selectedAdbId) ?? null,
@@ -136,6 +148,46 @@ export default function AdbView() {
   }, [load])
 
   useEffect(() => {
+    if (actionTimerRef.current !== null) {
+      window.clearTimeout(actionTimerRef.current)
+      actionTimerRef.current = null
+    }
+    if (!recentAction) {
+      return
+    }
+    actionTimerRef.current = window.setTimeout(() => {
+      actionTimerRef.current = null
+      setRecentAction(null)
+    }, 3200)
+    return () => {
+      if (actionTimerRef.current !== null) {
+        window.clearTimeout(actionTimerRef.current)
+        actionTimerRef.current = null
+      }
+    }
+  }, [recentAction])
+
+  useEffect(() => {
+    if (highlightTimerRef.current !== null) {
+      window.clearTimeout(highlightTimerRef.current)
+      highlightTimerRef.current = null
+    }
+    if (!highlightedDatabaseId) {
+      return
+    }
+    highlightTimerRef.current = window.setTimeout(() => {
+      highlightTimerRef.current = null
+      setHighlightedDatabaseId(null)
+    }, 2200)
+    return () => {
+      if (highlightTimerRef.current !== null) {
+        window.clearTimeout(highlightTimerRef.current)
+        highlightTimerRef.current = null
+      }
+    }
+  }, [highlightedDatabaseId])
+
+  useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       const msg = event.data
       if (
@@ -158,12 +210,34 @@ export default function AdbView() {
     return () => clearInterval(timer)
   }, [isPolling, load])
 
+  useEffect(() => {
+    if (!highlightedDatabaseId || !filtered.some((item) => item.id === highlightedDatabaseId)) {
+      return
+    }
+    const frameId = window.requestAnimationFrame(() => {
+      databaseItemRefs.current.get(highlightedDatabaseId)?.scrollIntoView({
+        block: "nearest",
+        behavior: "smooth",
+      })
+    })
+    return () => window.cancelAnimationFrame(frameId)
+  }, [filtered, highlightedDatabaseId])
+
   const handleStart = useCallback(
     async (id: string, region?: string) => {
       setActionState({ id, action: "starting" })
       try {
         await ResourceServiceClient.startAdb(id, region)
         await load()
+        const database = databases.find((item) => item.id === id)
+        setSelectedAdbId(id)
+        setHighlightedDatabaseId(id)
+        setRecentAction({
+          resourceId: id,
+          resourceName: database?.name ?? id,
+          message: "Start requested for",
+          timestamp: Date.now(),
+        })
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err))
       } finally {
@@ -179,6 +253,15 @@ export default function AdbView() {
       try {
         await ResourceServiceClient.stopAdb(id, region)
         await load()
+        const database = databases.find((item) => item.id === id)
+        setSelectedAdbId(id)
+        setHighlightedDatabaseId(id)
+        setRecentAction({
+          resourceId: id,
+          resourceName: database?.name ?? id,
+          message: "Stop requested for",
+          timestamp: Date.now(),
+        })
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err))
       } finally {
@@ -205,6 +288,15 @@ export default function AdbView() {
       setServiceNames(response.serviceNames ?? [])
       if ((response.serviceNames ?? []).length > 0) {
         setServiceName(response.serviceNames[0])
+      }
+      if (selectedDatabase) {
+        setHighlightedDatabaseId(selectedDatabase.id)
+        setRecentAction({
+          resourceId: selectedDatabase.id,
+          resourceName: selectedDatabase.name,
+          message: "Downloaded wallet for",
+          timestamp: Date.now(),
+        })
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -236,6 +328,13 @@ export default function AdbView() {
         serviceName: response.serviceName,
         walletPath: response.walletPath,
       })
+      setHighlightedDatabaseId(selectedDatabase.id)
+      setRecentAction({
+        resourceId: selectedDatabase.id,
+        resourceName: selectedDatabase.name,
+        message: "Connected to",
+        timestamp: Date.now(),
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -254,6 +353,15 @@ export default function AdbView() {
     setAdbBusyAction("disconnect")
     try {
       await disconnectConnection(connectionId)
+      if (selectedDatabase) {
+        setHighlightedDatabaseId(selectedDatabase.id)
+        setRecentAction({
+          resourceId: selectedDatabase.id,
+          resourceName: selectedDatabase.name,
+          message: "Disconnected from",
+          timestamp: Date.now(),
+        })
+      }
       setConnectionId("")
       setConnectionTarget(null)
       setSqlResult(null)
@@ -352,6 +460,15 @@ export default function AdbView() {
         serviceName,
       })
       setHasSavedProfile(true)
+      if (selectedDatabase) {
+        setHighlightedDatabaseId(selectedDatabase.id)
+        setRecentAction({
+          resourceId: selectedDatabase.id,
+          resourceName: selectedDatabase.name,
+          message: "Saved connection profile for",
+          timestamp: Date.now(),
+        })
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -366,6 +483,13 @@ export default function AdbView() {
     try {
       await ResourceServiceClient.deleteAdbConnection(selectedDatabase.id)
       setHasSavedProfile(false)
+      setHighlightedDatabaseId(selectedDatabase.id)
+      setRecentAction({
+        resourceId: selectedDatabase.id,
+        resourceName: selectedDatabase.name,
+        message: "Deleted saved profile for",
+        timestamp: Date.now(),
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -395,6 +519,12 @@ export default function AdbView() {
     } finally {
       setLoadingDiagnostics(false)
     }
+  }, [])
+
+  const revealDatabase = useCallback((databaseId: string) => {
+    setQuery("")
+    setSelectedAdbId(databaseId)
+    setHighlightedDatabaseId(databaseId)
   }, [])
 
   return (
@@ -432,6 +562,16 @@ export default function AdbView() {
               placeholder="Filter databases..."
               className="flex-1 bg-transparent text-[13px] text-input-foreground outline-none placeholder:text-input-placeholder"
             />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                className="flex h-5 w-5 items-center justify-center rounded-[2px] text-description hover:bg-[var(--vscode-toolbar-hoverBackground)] hover:text-[var(--vscode-foreground)]"
+                title="Clear filter"
+              >
+                <X size={12} />
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -441,6 +581,25 @@ export default function AdbView() {
           <div className="mb-4 flex items-start gap-2 rounded-lg border border-error/30 bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,red_8%)] px-3 py-2.5 text-xs text-error">
             <AlertCircle size={13} className="mt-0.5 shrink-0" />
             <span>{error}</span>
+          </div>
+        )}
+
+        {recentAction && (
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-[2px] border border-[color-mix(in_srgb,var(--vscode-button-background)_32%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_84%,var(--vscode-button-background)_16%)] px-3 py-2 text-[11px]">
+            <div className="flex min-w-0 items-center gap-2">
+              <CheckCircle2 size={14} className="shrink-0 text-[var(--vscode-testing-iconPassed)]" />
+              <div className="min-w-0 text-description">
+                {recentAction.message} <span className="text-[var(--vscode-foreground)]">{recentAction.resourceName}</span> {formatRecentActionAge(recentAction.timestamp)}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button variant="secondary" size="sm" onClick={() => revealDatabase(recentAction.resourceId)} title="Show this database in the list">
+                Show Database
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setRecentAction(null)} title="Dismiss">
+                Dismiss
+              </Button>
+            </div>
           </div>
         )}
 
@@ -478,6 +637,14 @@ export default function AdbView() {
                               key={`${db.id}-${db.region ?? "default"}`}
                               database={db}
                               selected={db.id === selectedAdbId}
+                              highlighted={highlightedDatabaseId === db.id}
+                              onRegisterRef={(node) => {
+                                if (node) {
+                                  databaseItemRefs.current.set(db.id, node)
+                                } else {
+                                  databaseItemRefs.current.delete(db.id)
+                                }
+                              }}
                               actionState={actionState}
                               onStart={handleStart}
                               onStop={handleStop}
@@ -730,7 +897,6 @@ export default function AdbView() {
         confirmLabel={guardrail?.confirmLabel ?? "Confirm"}
         details={guardrail?.details ?? []}
         tone={guardrail?.tone}
-        requireText={guardrail?.requireText}
         busy={actionState !== null}
         onCancel={() => {
           if (!actionState) {
@@ -746,6 +912,8 @@ export default function AdbView() {
 function DatabaseCard({
   database,
   selected,
+  highlighted,
+  onRegisterRef,
   actionState,
   onStart,
   onStop,
@@ -754,6 +922,8 @@ function DatabaseCard({
 }: {
   database: AdbResource
   selected: boolean
+  highlighted: boolean
+  onRegisterRef: (node: HTMLDivElement | null) => void
   actionState: ActionState
   onStart: (id: string, region?: string) => void
   onStop: (id: string, region?: string) => void
@@ -766,10 +936,15 @@ function DatabaseCard({
 
   return (
     <div
+      ref={onRegisterRef}
       className={clsx(
         "flex flex-col gap-2 rounded-[2px] border p-2.5 transition-colors cursor-pointer",
-        selected
+        selected && highlighted
+          ? "border-[var(--vscode-focusBorder)] bg-[color-mix(in_srgb,var(--vscode-list-hoverBackground)_82%,var(--vscode-button-background)_18%)]"
+          : selected
           ? "border-[var(--vscode-focusBorder)] bg-[var(--vscode-list-hoverBackground)]"
+          : highlighted
+            ? "border-[color-mix(in_srgb,var(--vscode-button-background)_45%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,var(--vscode-button-background)_18%)]"
           : "border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] hover:bg-[var(--vscode-list-hoverBackground)]",
       )}
       onClick={() => !selected && onSelect(database.id)}
@@ -825,7 +1000,6 @@ function DatabaseCard({
             title: "Stop Autonomous Database",
             description: "Stopping this database interrupts client access until it is started again.",
             confirmLabel: "Stop Database",
-            requireText: database.name,
             details: [
               `Database: ${database.name}`,
               `Region: ${database.region || "default"}`,
@@ -846,6 +1020,14 @@ function DatabaseCard({
       </div>
     </div>
   )
+}
+
+function formatRecentActionAge(timestamp: number): string {
+  const ageMs = Math.max(0, Date.now() - timestamp)
+  if (ageMs < 5000) {
+    return "just now"
+  }
+  return `${Math.round(ageMs / 1000)}s ago`
 }
 
 function LifecycleBadge({ state }: { state: string }) {

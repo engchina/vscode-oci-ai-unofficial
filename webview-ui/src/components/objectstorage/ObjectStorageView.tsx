@@ -2,6 +2,7 @@ import { clsx } from "clsx"
 import {
   AlertCircle,
   ArrowDownToLine,
+  CheckCircle2,
   ChevronLeft,
   Copy,
   Folder,
@@ -12,6 +13,7 @@ import {
   RefreshCw,
   Search,
   Upload,
+  X,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useExtensionState } from "../../context/ExtensionStateContext"
@@ -32,7 +34,6 @@ type GuardrailState =
     description: string
     confirmLabel: string
     details: string[]
-    requireText?: string
     onConfirm: () => Promise<void>
   }
   | null
@@ -41,6 +42,14 @@ type BucketStatOverride = {
   approximateCount: number
   approximateSize: number
 }
+
+type RecentActionState =
+  | {
+    kind: "upload" | "download"
+    objectName: string
+    timestamp: number
+  }
+  | null
 
 export default function ObjectStorageView() {
   const { activeProfile, profilesConfig, tenancyOcid, objectStorageCompartmentIds } = useExtensionState()
@@ -51,6 +60,10 @@ export default function ObjectStorageView() {
   const [objects, setObjects] = useState<ObjectStorageObjectResource[]>([])
   const [loadingBuckets, setLoadingBuckets] = useState(true)
   const [loadingObjects, setLoadingObjects] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [downloadingObjectName, setDownloadingObjectName] = useState<string | null>(null)
+  const [recentlyUploadedObjectName, setRecentlyUploadedObjectName] = useState<string | null>(null)
+  const [recentAction, setRecentAction] = useState<RecentActionState>(null)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState("")
   const [busy, setBusy] = useState(false)
@@ -58,10 +71,60 @@ export default function ObjectStorageView() {
   const [latestPar, setLatestPar] = useState<CreateObjectStorageParResponse | null>(null)
   const [bucketStatOverrides, setBucketStatOverrides] = useState<Record<string, BucketStatOverride>>({})
   const bucketStatOverridesRef = useRef<Record<string, BucketStatOverride>>({})
+  const uploadHighlightTimerRef = useRef<number | null>(null)
+  const uploadScrollFrameRef = useRef<number | null>(null)
+  const recentActionTimerRef = useRef<number | null>(null)
+  const objectItemRefs = useRef(new Map<string, HTMLDivElement>())
 
   useEffect(() => {
     bucketStatOverridesRef.current = bucketStatOverrides
   }, [bucketStatOverrides])
+
+  useEffect(() => {
+    if (uploadHighlightTimerRef.current !== null) {
+      window.clearTimeout(uploadHighlightTimerRef.current)
+      uploadHighlightTimerRef.current = null
+    }
+
+    if (!recentlyUploadedObjectName) {
+      return
+    }
+
+    uploadHighlightTimerRef.current = window.setTimeout(() => {
+      uploadHighlightTimerRef.current = null
+      setRecentlyUploadedObjectName(null)
+    }, 2200)
+
+    return () => {
+      if (uploadHighlightTimerRef.current !== null) {
+        window.clearTimeout(uploadHighlightTimerRef.current)
+        uploadHighlightTimerRef.current = null
+      }
+    }
+  }, [recentlyUploadedObjectName])
+
+  useEffect(() => {
+    if (recentActionTimerRef.current !== null) {
+      window.clearTimeout(recentActionTimerRef.current)
+      recentActionTimerRef.current = null
+    }
+
+    if (!recentAction) {
+      return
+    }
+
+    recentActionTimerRef.current = window.setTimeout(() => {
+      recentActionTimerRef.current = null
+      setRecentAction(null)
+    }, 3200)
+
+    return () => {
+      if (recentActionTimerRef.current !== null) {
+        window.clearTimeout(recentActionTimerRef.current)
+        recentActionTimerRef.current = null
+      }
+    }
+  }, [recentAction])
 
   const activeProfileConfig = useMemo(
     () => profilesConfig.find((profile) => profile.name === activeProfile),
@@ -87,14 +150,18 @@ export default function ObjectStorageView() {
     [objectStorageCompartmentIds],
   )
 
-  const loadBuckets = useCallback(async () => {
-    setLoadingBuckets(true)
+  const loadBuckets = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) {
+      setLoadingBuckets(true)
+    }
     setError(null)
     if (selectedCompartmentIds.length === 0) {
       setBuckets([])
       setSelectedBucket(null)
       setBucketStatOverrides({})
-      setLoadingBuckets(false)
+      if (!silent) {
+        setLoadingBuckets(false)
+      }
       return
     }
     try {
@@ -118,17 +185,21 @@ export default function ObjectStorageView() {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
-      setLoadingBuckets(false)
+      if (!silent) {
+        setLoadingBuckets(false)
+      }
     }
   }, [selectedCompartmentIds])
 
-  const loadObjects = useCallback(async () => {
+  const loadObjects = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!selectedBucket) {
       setFolderPrefixes([])
       setObjects([])
       return
     }
-    setLoadingObjects(true)
+    if (!silent) {
+      setLoadingObjects(true)
+    }
     setError(null)
     try {
       const response = await ResourceServiceClient.listObjectStorageObjects({
@@ -142,7 +213,9 @@ export default function ObjectStorageView() {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
-      setLoadingObjects(false)
+      if (!silent) {
+        setLoadingObjects(false)
+      }
     }
   }, [prefix, selectedBucket])
 
@@ -153,6 +226,9 @@ export default function ObjectStorageView() {
   useEffect(() => {
     setPrefix("")
     setLatestPar(null)
+    setRecentlyUploadedObjectName(null)
+    setRecentAction(null)
+    objectItemRefs.current.clear()
   }, [selectedBucket?.name, selectedBucket?.namespaceName, selectedBucket?.region])
 
   useEffect(() => {
@@ -171,8 +247,40 @@ export default function ObjectStorageView() {
     return objects.filter((item) => item.name.toLowerCase().includes(normalizedQuery))
   }, [objects, query])
 
+  useEffect(() => {
+    if (uploadScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(uploadScrollFrameRef.current)
+      uploadScrollFrameRef.current = null
+    }
+
+    if (!recentlyUploadedObjectName || !filteredObjects.some((item) => item.name === recentlyUploadedObjectName)) {
+      return
+    }
+
+    uploadScrollFrameRef.current = window.requestAnimationFrame(() => {
+      uploadScrollFrameRef.current = null
+      objectItemRefs.current.get(recentlyUploadedObjectName)?.scrollIntoView({
+        block: "nearest",
+        behavior: "smooth",
+      })
+    })
+
+    return () => {
+      if (uploadScrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(uploadScrollFrameRef.current)
+        uploadScrollFrameRef.current = null
+      }
+    }
+  }, [filteredObjects, recentlyUploadedObjectName])
+
   const groupedBuckets = useMemo(() => groupBucketsByCompartmentAndRegion(buckets), [buckets])
   const breadcrumbSegments = useMemo(() => buildBreadcrumbs(prefix), [prefix])
+  const actionBusy = busy || uploading || downloadingObjectName !== null
+  const uploadedObjectHiddenByFilter = Boolean(
+    recentlyUploadedObjectName &&
+    query.trim() &&
+    !filteredObjects.some((item) => item.name === recentlyUploadedObjectName),
+  )
 
   const applyBucketStats = useCallback((
     bucketKey: Pick<ObjectStorageBucketResource, "name" | "namespaceName" | "region">,
@@ -225,61 +333,76 @@ export default function ObjectStorageView() {
     }
   }, [guardrail])
 
-  const handleUpload = useCallback(() => {
+  const handleUpload = useCallback(async () => {
     if (!selectedBucket) return
-    openGuardrail({
-      tone: "warning",
-      title: "Upload Object",
-      description: "This will upload a local file into the selected bucket and prefix.",
-      confirmLabel: "Upload",
-      details: [
-        `Bucket: ${selectedBucket.name}`,
-        `Prefix: ${prefix || "/"}`,
-        `Region: ${selectedBucket.region}`,
-      ],
-      onConfirm: async () => {
-        const response = await ResourceServiceClient.uploadObjectStorageObject({
-          namespaceName: selectedBucket.namespaceName,
-          bucketName: selectedBucket.name,
-          region: selectedBucket.region,
-          prefix,
-        })
-        if (!response.cancelled) {
-          const existingObject = objects.find((item) => item.name === response.objectName)
-          applyBucketStats(
-            selectedBucket,
-            (selectedBucket.approximateCount ?? 0) + (existingObject ? 0 : 1),
-            (selectedBucket.approximateSize ?? 0) + (response.objectSize ?? 0) - (existingObject?.size ?? 0),
-          )
-          await Promise.all([loadBuckets(), loadObjects()])
-        }
-        setLatestPar(null)
-      },
-    })
-  }, [applyBucketStats, loadBuckets, loadObjects, objects, openGuardrail, prefix, selectedBucket])
+    setUploading(true)
+    setError(null)
+    try {
+      const response = await ResourceServiceClient.uploadObjectStorageObject({
+        namespaceName: selectedBucket.namespaceName,
+        bucketName: selectedBucket.name,
+        region: selectedBucket.region,
+        prefix,
+      })
+      if (response.cancelled) {
+        return
+      }
 
-  const handleDownload = useCallback((objectName: string) => {
+      const existingObject = objects.find((item) => item.name === response.objectName)
+      const nowIso = new Date().toISOString()
+
+      applyBucketStats(
+        selectedBucket,
+        (selectedBucket.approximateCount ?? 0) + (existingObject ? 0 : 1),
+        (selectedBucket.approximateSize ?? 0) + (response.objectSize ?? 0) - (existingObject?.size ?? 0),
+      )
+
+      setObjects((current) => upsertObject(current, {
+        name: response.objectName,
+        size: response.objectSize,
+        storageTier: existingObject?.storageTier || "Standard",
+        timeCreated: existingObject?.timeCreated ?? nowIso,
+        timeModified: nowIso,
+      }))
+      setRecentlyUploadedObjectName(response.objectName)
+      setRecentAction({
+        kind: "upload",
+        objectName: response.objectName,
+        timestamp: Date.now(),
+      })
+      setLatestPar(null)
+
+      void loadBuckets({ silent: true })
+      void loadObjects({ silent: true })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setUploading(false)
+    }
+  }, [applyBucketStats, loadBuckets, loadObjects, objects, prefix, selectedBucket])
+
+  const handleDownload = useCallback(async (objectName: string) => {
     if (!selectedBucket) return
-    openGuardrail({
-      tone: "warning",
-      title: "Download Object",
-      description: "This will download the selected object to a local path you choose.",
-      confirmLabel: "Download",
-      details: [
-        `Bucket: ${selectedBucket.name}`,
-        `Object: ${objectName}`,
-        `Region: ${selectedBucket.region}`,
-      ],
-      onConfirm: async () => {
-        await ResourceServiceClient.downloadObjectStorageObject({
-          namespaceName: selectedBucket.namespaceName,
-          bucketName: selectedBucket.name,
-          objectName,
-          region: selectedBucket.region,
-        })
-      },
-    })
-  }, [openGuardrail, selectedBucket])
+    setDownloadingObjectName(objectName)
+    setError(null)
+    try {
+      await ResourceServiceClient.downloadObjectStorageObject({
+        namespaceName: selectedBucket.namespaceName,
+        bucketName: selectedBucket.name,
+        objectName,
+        region: selectedBucket.region,
+      })
+      setRecentAction({
+        kind: "download",
+        objectName,
+        timestamp: Date.now(),
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setDownloadingObjectName(null)
+    }
+  }, [selectedBucket])
 
   const handleCreatePar = useCallback((objectName: string) => {
     if (!selectedBucket) return
@@ -294,7 +417,6 @@ export default function ObjectStorageView() {
         "Access: ObjectRead",
         "Expires: 24 hours",
       ],
-      requireText: pathTail(objectName),
       onConfirm: async () => {
         const response = await ResourceServiceClient.createObjectStoragePar({
           namespaceName: selectedBucket.namespaceName,
@@ -321,6 +443,11 @@ export default function ObjectStorageView() {
       setError(err instanceof Error ? err.message : String(err))
     }
   }, [latestPar])
+
+  const revealObject = useCallback((objectName: string) => {
+    setQuery("")
+    setRecentlyUploadedObjectName(objectName)
+  }, [])
 
   if (!selectedBucket) {
     return (
@@ -379,11 +506,27 @@ export default function ObjectStorageView() {
             placeholder="Filter folders and objects..."
             className="flex-1 bg-transparent text-[13px] text-input-foreground outline-none placeholder:text-input-placeholder"
           />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              className="flex h-5 w-5 items-center justify-center rounded-[2px] text-description hover:bg-[var(--vscode-toolbar-hoverBackground)] hover:text-[var(--vscode-foreground)]"
+              title="Clear filter"
+            >
+              <X size={12} />
+            </button>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={handleUpload} disabled={busy}>
-            <Upload size={12} className="mr-1.5" />
-            Upload
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => void handleUpload()}
+            disabled={actionBusy}
+            title={uploading ? "Uploading file to Object Storage" : "Choose a local file to upload"}
+          >
+            {uploading ? <Loader2 size={12} className="mr-1.5 animate-spin" /> : <Upload size={12} className="mr-1.5" />}
+            {uploading ? "Uploading..." : "Upload"}
           </Button>
           <div className="min-w-0 flex-1 rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-sideBar-background)] px-2 py-1">
             <div className="flex flex-wrap items-center gap-1 text-[11px] text-description">
@@ -427,6 +570,47 @@ export default function ObjectStorageView() {
           </div>
         )}
 
+        {uploadedObjectHiddenByFilter && recentlyUploadedObjectName && (
+          <div className="mb-3 flex items-center justify-between gap-3 rounded-[2px] border border-[color-mix(in_srgb,var(--vscode-button-background)_35%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_86%,var(--vscode-button-background)_14%)] px-3 py-2">
+            <div className="min-w-0 text-[11px] text-description">
+              Uploaded <span className="text-[var(--vscode-foreground)]">{pathTail(recentlyUploadedObjectName)}</span>, but it is hidden by the current filter.
+            </div>
+            <Button variant="secondary" size="sm" onClick={() => setQuery("")}>
+              Clear Filter
+            </Button>
+          </div>
+        )}
+
+        {recentAction && (
+          <div className="mb-3 flex items-center justify-between gap-3 rounded-[2px] border border-[color-mix(in_srgb,var(--vscode-button-background)_32%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_84%,var(--vscode-button-background)_16%)] px-3 py-2 text-[11px]">
+            <div className="flex min-w-0 items-center gap-2">
+              <CheckCircle2 size={14} className="shrink-0 text-[var(--vscode-testing-iconPassed)]" />
+              <div className="min-w-0 text-description">
+                {recentAction.kind === "upload" ? "Uploaded" : "Saved locally"}
+                {" "}
+                <span className="text-[var(--vscode-foreground)]">{pathTail(recentAction.objectName)}</span>
+                {" "}
+                {formatRecentActionAge(recentAction.timestamp)}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {recentAction.kind === "upload" && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => revealObject(recentAction.objectName)}
+                  title="Show and highlight this object in the list"
+                >
+                  Show Object
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" onClick={() => setRecentAction(null)} title="Dismiss">
+                Dismiss
+              </Button>
+            </div>
+          </div>
+        )}
+
         {loadingObjects ? (
           <LoadingState label="Loading objects..." />
         ) : filteredFolders.length === 0 && filteredObjects.length === 0 ? (
@@ -453,7 +637,18 @@ export default function ObjectStorageView() {
             {filteredObjects.map((object) => (
               <div
                 key={object.name}
-                className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-3 py-2"
+                ref={(node) => {
+                  if (node) {
+                    objectItemRefs.current.set(object.name, node)
+                  } else {
+                    objectItemRefs.current.delete(object.name)
+                  }
+                }}
+                className={clsx(
+                  "rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-3 py-2 transition-colors duration-700",
+                  object.name === recentlyUploadedObjectName &&
+                  "border-[color-mix(in_srgb,var(--vscode-button-background)_45%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,var(--vscode-button-background)_18%)]",
+                )}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -466,10 +661,26 @@ export default function ObjectStorageView() {
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
-                    <Button variant="secondary" size="sm" onClick={() => handleDownload(object.name)} disabled={busy}>
-                      <HardDriveDownload size={12} />
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => void handleDownload(object.name)}
+                      disabled={actionBusy}
+                      title={downloadingObjectName === object.name ? "Saving object locally" : "Save this object to a local path"}
+                    >
+                      {downloadingObjectName === object.name ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <HardDriveDownload size={12} />
+                      )}
                     </Button>
-                    <Button variant="secondary" size="sm" onClick={() => handleCreatePar(object.name)} disabled={busy}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleCreatePar(object.name)}
+                      disabled={actionBusy}
+                      title="Create a 24-hour pre-authenticated download link"
+                    >
                       <KeyRound size={12} />
                     </Button>
                   </div>
@@ -487,7 +698,6 @@ export default function ObjectStorageView() {
         confirmLabel={guardrail?.confirmLabel ?? "Confirm"}
         details={guardrail?.details ?? []}
         tone={guardrail?.tone}
-        requireText={guardrail?.requireText}
         busy={busy}
         onCancel={() => {
           if (!busy) {
@@ -737,6 +947,22 @@ function formatDateTime(value?: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleString()
+}
+
+function formatRecentActionAge(timestamp: number): string {
+  const ageMs = Math.max(0, Date.now() - timestamp)
+  if (ageMs < 5000) {
+    return "just now"
+  }
+  return `${Math.round(ageMs / 1000)}s ago`
+}
+
+function upsertObject(
+  objects: ObjectStorageObjectResource[],
+  nextObject: ObjectStorageObjectResource,
+): ObjectStorageObjectResource[] {
+  const withoutCurrent = objects.filter((item) => item.name !== nextObject.name)
+  return [...withoutCurrent, nextObject].sort((left, right) => left.name.localeCompare(right.name))
 }
 
 const breadcrumbButtonClass =

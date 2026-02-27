@@ -1,6 +1,6 @@
 import { clsx } from "clsx"
-import { AlertCircle, ChevronLeft, Loader2, Plus, RefreshCw, Shield, Trash2, Edit } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { AlertCircle, CheckCircle2, ChevronLeft, Edit, Loader2, Plus, RefreshCw, Search, Shield, Trash2, X } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ResourceServiceClient } from "../../services/grpc-client"
 import type { SecurityListResource, SecurityRule, VcnResource } from "../../services/types"
 import GuardrailDialog from "../common/GuardrailDialog"
@@ -10,8 +10,14 @@ type GuardrailState = {
     title: string
     description: string
     details: string[]
-    requireText?: string
     onConfirm: () => Promise<void>
+} | null
+
+type RecentActionState = {
+    kind: "created" | "updated" | "deleted"
+    securityListId?: string
+    securityListName: string
+    timestamp: number
 } | null
 
 export default function SecurityListView({
@@ -24,20 +30,53 @@ export default function SecurityListView({
     const [securityLists, setSecurityLists] = useState<SecurityListResource[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
+    const [query, setQuery] = useState("")
 
     const [editingList, setEditingList] = useState<SecurityListResource | null>(null)
     const [isCreating, setIsCreating] = useState(false)
     const [deletingId, setDeletingId] = useState<string | null>(null)
     const [guardrail, setGuardrail] = useState<GuardrailState>(null)
+    const [recentAction, setRecentAction] = useState<RecentActionState>(null)
+    const [highlightedSecurityListId, setHighlightedSecurityListId] = useState<string | null>(null)
+    const actionTimerRef = useRef<number | null>(null)
+    const highlightTimerRef = useRef<number | null>(null)
+    const securityListItemRefs = useRef(new Map<string, HTMLDivElement>())
 
-    const load = useCallback(async () => {
+    const filteredSecurityLists = useMemo(() => {
+        const normalizedQuery = query.trim().toLowerCase()
+        if (!normalizedQuery) {
+            return securityLists
+        }
+        return securityLists.filter((securityList) => {
+            const haystack = [
+                securityList.name,
+                securityList.id,
+                ...securityList.ingressSecurityRules.map(buildSecurityRuleSearchText),
+                ...securityList.egressSecurityRules.map(buildSecurityRuleSearchText),
+            ]
+                .join(" ")
+                .toLowerCase()
+            return haystack.includes(normalizedQuery)
+        })
+    }, [query, securityLists])
+
+    const highlightedListHiddenByFilter = Boolean(
+        highlightedSecurityListId &&
+        query.trim() &&
+        !filteredSecurityLists.some((securityList) => securityList.id === highlightedSecurityListId),
+    )
+
+    const load = useCallback(async (): Promise<SecurityListResource[]> => {
         setLoading(true)
         setError(null)
         try {
             const res = await ResourceServiceClient.listSecurityLists({ vcnId: vcn.id, region: vcn.region })
-            setSecurityLists(res.securityLists ?? [])
+            const items = res.securityLists ?? []
+            setSecurityLists(items)
+            return items
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err))
+            return []
         } finally {
             setLoading(false)
         }
@@ -46,6 +85,67 @@ export default function SecurityListView({
     useEffect(() => {
         load()
     }, [load])
+
+    useEffect(() => {
+        if (actionTimerRef.current !== null) {
+            window.clearTimeout(actionTimerRef.current)
+            actionTimerRef.current = null
+        }
+        if (!recentAction) {
+            return
+        }
+        actionTimerRef.current = window.setTimeout(() => {
+            actionTimerRef.current = null
+            setRecentAction(null)
+        }, 3200)
+        return () => {
+            if (actionTimerRef.current !== null) {
+                window.clearTimeout(actionTimerRef.current)
+                actionTimerRef.current = null
+            }
+        }
+    }, [recentAction])
+
+    useEffect(() => {
+        if (highlightTimerRef.current !== null) {
+            window.clearTimeout(highlightTimerRef.current)
+            highlightTimerRef.current = null
+        }
+        if (!highlightedSecurityListId) {
+            return
+        }
+        highlightTimerRef.current = window.setTimeout(() => {
+            highlightTimerRef.current = null
+            setHighlightedSecurityListId(null)
+        }, 2200)
+        return () => {
+            if (highlightTimerRef.current !== null) {
+                window.clearTimeout(highlightTimerRef.current)
+                highlightTimerRef.current = null
+            }
+        }
+    }, [highlightedSecurityListId])
+
+    useEffect(() => {
+        if (!highlightedSecurityListId) {
+            return
+        }
+        const frameId = window.requestAnimationFrame(() => {
+            securityListItemRefs.current.get(highlightedSecurityListId)?.scrollIntoView({
+                block: "nearest",
+                behavior: "smooth",
+            })
+        })
+        return () => window.cancelAnimationFrame(frameId)
+    }, [filteredSecurityLists, highlightedSecurityListId])
+
+    const revealSecurityList = useCallback((securityListId: string) => {
+        setQuery("")
+        setHighlightedSecurityListId(null)
+        window.requestAnimationFrame(() => {
+            setHighlightedSecurityListId(securityListId)
+        })
+    }, [])
 
     const handleDelete = async (id: string) => {
         const securityList = securityLists.find((item) => item.id === id)
@@ -58,12 +158,17 @@ export default function SecurityListView({
                 `Security List: ${securityList.name}`,
                 `Region: ${vcn.region}`,
             ],
-            requireText: securityList.name,
             onConfirm: async () => {
                 setDeletingId(id)
                 try {
                     await ResourceServiceClient.deleteSecurityList({ securityListId: id, region: vcn.region })
                     await load()
+                    setRecentAction({
+                        kind: "deleted",
+                        securityListName: securityList.name,
+                        timestamp: Date.now(),
+                    })
+                    setHighlightedSecurityListId(null)
                     setGuardrail(null)
                 } finally {
                     setDeletingId(null)
@@ -79,10 +184,23 @@ export default function SecurityListView({
                 compartmentId={vcn.compartmentId}
                 region={vcn.region}
                 initialData={editingList}
-                onSave={async () => {
+                onSave={async (result) => {
                     setEditingList(null)
                     setIsCreating(false)
-                    await load()
+                    const items = await load()
+                    const matchingSecurityList = result.securityListId
+                        ? items.find((item) => item.id === result.securityListId)
+                        : items.find((item) => item.name === result.securityListName)
+                    const nextSecurityListId = result.securityListId || matchingSecurityList?.id
+                    if (nextSecurityListId) {
+                        setHighlightedSecurityListId(nextSecurityListId)
+                    }
+                    setRecentAction({
+                        kind: result.kind,
+                        securityListId: nextSecurityListId,
+                        securityListName: result.securityListName,
+                        timestamp: Date.now(),
+                    })
                 }}
                 onCancel={() => {
                     setEditingList(null)
@@ -123,11 +241,77 @@ export default function SecurityListView({
                 </div>
             </div>
 
+            {securityLists.length > 0 && (
+                <div className="border-b border-[var(--vscode-panel-border)] px-3 pt-3 pb-2 bg-[var(--vscode-editor-background)]">
+                    <div className="flex items-center gap-2 rounded-[2px] border border-input-border bg-input-background px-2 py-1">
+                        <Search size={12} className="shrink-0 text-[var(--vscode-icon-foreground)]" />
+                        <input
+                            type="text"
+                            value={query}
+                            onChange={(event) => setQuery(event.target.value)}
+                            placeholder="Filter security lists and rules..."
+                            className="flex-1 bg-transparent text-[13px] text-input-foreground outline-none placeholder:text-input-placeholder"
+                        />
+                        {query && (
+                            <button
+                                type="button"
+                                onClick={() => setQuery("")}
+                                className="flex h-5 w-5 items-center justify-center rounded-[2px] text-description hover:bg-[var(--vscode-toolbar-hoverBackground)] hover:text-[var(--vscode-foreground)]"
+                                title="Clear filter"
+                            >
+                                <X size={12} />
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
+
             <div className="flex-1 overflow-y-auto px-3 py-3">
                 {error && (
                     <div className="mb-4 flex items-start gap-2 rounded-[2px] border border-error/30 bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,red_8%)] px-3 py-2.5 text-[11px] text-error">
                         <AlertCircle size={13} className="mt-0.5 shrink-0" />
                         <span>{error}</span>
+                    </div>
+                )}
+
+                {recentAction && (
+                    <div className="mb-4 flex items-center justify-between gap-3 rounded-[2px] border border-[color-mix(in_srgb,var(--vscode-button-background)_32%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_84%,var(--vscode-button-background)_16%)] px-3 py-2 text-[11px]">
+                        <div className="flex min-w-0 items-center gap-2">
+                            <CheckCircle2 size={14} className="shrink-0 text-[var(--vscode-testing-iconPassed)]" />
+                            <div className="min-w-0 text-description">
+                                {formatSecurityListActionMessage(recentAction.kind)}
+                                {" "}
+                                <span className="text-[var(--vscode-foreground)]">{recentAction.securityListName}</span>
+                                {" "}
+                                {formatRecentActionAge(recentAction.timestamp)}
+                            </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                            {recentAction.securityListId && recentAction.kind !== "deleted" && (
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => revealSecurityList(recentAction.securityListId ?? "")}
+                                    title="Show this security list in the list"
+                                >
+                                    Show Security List
+                                </Button>
+                            )}
+                            <Button variant="ghost" size="sm" onClick={() => setRecentAction(null)} title="Dismiss">
+                                Dismiss
+                            </Button>
+                        </div>
+                    </div>
+                )}
+
+                {highlightedListHiddenByFilter && recentAction?.securityListName && (
+                    <div className="mb-4 flex items-center justify-between gap-3 rounded-[2px] border border-[color-mix(in_srgb,var(--vscode-button-background)_35%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_86%,var(--vscode-button-background)_14%)] px-3 py-2">
+                        <div className="min-w-0 text-[11px] text-description">
+                            <span className="text-[var(--vscode-foreground)]">{recentAction.securityListName}</span> is hidden by the current filter.
+                        </div>
+                        <Button variant="secondary" size="sm" onClick={() => setQuery("")}>
+                            Clear Filter
+                        </Button>
                     </div>
                 )}
 
@@ -139,10 +323,29 @@ export default function SecurityListView({
                     <div className="text-center py-8 text-description text-[12px]">
                         No security lists found for this VCN.
                     </div>
+                ) : filteredSecurityLists.length === 0 ? (
+                    <div className="text-center py-8 text-description text-[12px]">
+                        No security lists match your filter.
+                    </div>
                 ) : (
                     <div className="flex flex-col gap-3">
-                        {securityLists.map(sl => (
-                            <div key={sl.id} className="rounded-[2px] border border-[var(--vscode-panel-border)] p-3 bg-[var(--vscode-editor-background)] hover:bg-[var(--vscode-list-hoverBackground)] transition-colors">
+                        {filteredSecurityLists.map(sl => (
+                            <div
+                                key={sl.id}
+                                ref={(node) => {
+                                    if (node) {
+                                        securityListItemRefs.current.set(sl.id, node)
+                                    } else {
+                                        securityListItemRefs.current.delete(sl.id)
+                                    }
+                                }}
+                                className={clsx(
+                                    "rounded-[2px] border p-3 transition-colors",
+                                    sl.id === highlightedSecurityListId
+                                        ? "border-[color-mix(in_srgb,var(--vscode-button-background)_45%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,var(--vscode-button-background)_18%)]"
+                                        : "border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] hover:bg-[var(--vscode-list-hoverBackground)]",
+                                )}
+                            >
                                 <div className="flex items-start justify-between gap-2">
                                     <div className="flex min-w-0 flex-col">
                                         <div className="font-semibold text-[13px] flex items-center gap-2 text-[var(--vscode-foreground)] w-full">
@@ -182,7 +385,6 @@ export default function SecurityListView({
                 confirmLabel="Delete Security List"
                 details={guardrail?.details ?? []}
                 tone="danger"
-                requireText={guardrail?.requireText}
                 busy={deletingId !== null}
                 onCancel={() => {
                     if (!deletingId) {
@@ -215,7 +417,7 @@ function SecurityListForm({
     compartmentId: string
     region: string
     initialData: SecurityListResource | null
-    onSave: () => void
+    onSave: (result: { kind: "created" | "updated"; securityListId?: string; securityListName: string }) => void
     onCancel: () => void
 }) {
     const [name, setName] = useState(initialData?.name || "")
@@ -248,6 +450,11 @@ function SecurityListForm({
                     ingressSecurityRules: sanitizeRules(ingressRules),
                     egressSecurityRules: sanitizeRules(egressRules)
                 })
+                onSave({
+                    kind: "updated",
+                    securityListId: initialData.id,
+                    securityListName: initialData.name,
+                })
             } else {
                 await ResourceServiceClient.createSecurityList({
                     vcnId,
@@ -257,8 +464,11 @@ function SecurityListForm({
                     ingressSecurityRules: sanitizeRules(ingressRules),
                     egressSecurityRules: sanitizeRules(egressRules)
                 })
+                onSave({
+                    kind: "created",
+                    securityListName: name,
+                })
             }
-            onSave()
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err))
             setSaving(false)
@@ -417,6 +627,38 @@ function getAllowsText(rule: SecurityRule) {
         return `ICMP traffic for: ${formatIcmp(rule.icmpOptions)}`;
     }
     return `Protocol ${rule.protocol}`;
+}
+
+function formatRecentActionAge(timestamp: number): string {
+    const ageMs = Math.max(0, Date.now() - timestamp)
+    if (ageMs < 5000) {
+        return "just now"
+    }
+    return `${Math.round(ageMs / 1000)}s ago`
+}
+
+function formatSecurityListActionMessage(kind: "created" | "updated" | "deleted"): string {
+    if (kind === "created") return "Created security list"
+    if (kind === "updated") return "Updated security list"
+    return "Deleted security list"
+}
+
+function buildSecurityRuleSearchText(rule: SecurityRule): string {
+    return [
+        rule.description,
+        rule.protocol,
+        rule.source,
+        rule.destination,
+        formatPortRange(rule.tcpOptions?.sourcePortRange),
+        formatPortRange(rule.tcpOptions?.destinationPortRange),
+        formatPortRange(rule.udpOptions?.sourcePortRange),
+        formatPortRange(rule.udpOptions?.destinationPortRange),
+        formatIcmp(rule.icmpOptions),
+        getAllowsText(rule),
+        rule.isStateless ? "stateless" : "stateful",
+    ]
+        .filter(Boolean)
+        .join(" ")
 }
 
 function SecurityRuleTable({

@@ -1,6 +1,6 @@
 import { clsx } from "clsx"
-import { AlertCircle, Loader2, MonitorPlay, MonitorStop, RefreshCw, Search, Server, SquareTerminal } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { AlertCircle, CheckCircle2, Loader2, MonitorPlay, MonitorStop, RefreshCw, Search, Server, SquareTerminal, X } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useExtensionState } from "../../context/ExtensionStateContext"
 import { ResourceServiceClient } from "../../services/grpc-client"
 import type { ComputeResource } from "../../services/types"
@@ -16,8 +16,13 @@ type GuardrailState = {
   description: string
   confirmLabel: string
   details: string[]
-  requireText?: string
   onConfirm: () => Promise<void>
+} | null
+type RecentActionState = {
+  resourceId: string
+  resourceName: string
+  message: string
+  timestamp: number
 } | null
 
 const TRANSITIONAL_STATES = new Set(["STARTING", "STOPPING", "PROVISIONING", "TERMINATING"])
@@ -39,6 +44,11 @@ export default function ComputeView() {
   const [sshUserOverrides, setSshUserOverrides] = useState<Record<string, string>>(loadSshUserOverrides)
   const [sshKeyOverrides, setSshKeyOverrides] = useState<Record<string, string>>(loadSshKeyOverrides)
   const [guardrail, setGuardrail] = useState<GuardrailState>(null)
+  const [recentAction, setRecentAction] = useState<RecentActionState>(null)
+  const [highlightedInstanceId, setHighlightedInstanceId] = useState<string | null>(null)
+  const actionTimerRef = useRef<number | null>(null)
+  const highlightTimerRef = useRef<number | null>(null)
+  const instanceItemRefs = useRef(new Map<string, HTMLDivElement>())
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -87,6 +97,46 @@ export default function ComputeView() {
     load()
   }, [load])
 
+  useEffect(() => {
+    if (actionTimerRef.current !== null) {
+      window.clearTimeout(actionTimerRef.current)
+      actionTimerRef.current = null
+    }
+    if (!recentAction) {
+      return
+    }
+    actionTimerRef.current = window.setTimeout(() => {
+      actionTimerRef.current = null
+      setRecentAction(null)
+    }, 3200)
+    return () => {
+      if (actionTimerRef.current !== null) {
+        window.clearTimeout(actionTimerRef.current)
+        actionTimerRef.current = null
+      }
+    }
+  }, [recentAction])
+
+  useEffect(() => {
+    if (highlightTimerRef.current !== null) {
+      window.clearTimeout(highlightTimerRef.current)
+      highlightTimerRef.current = null
+    }
+    if (!highlightedInstanceId) {
+      return
+    }
+    highlightTimerRef.current = window.setTimeout(() => {
+      highlightTimerRef.current = null
+      setHighlightedInstanceId(null)
+    }, 2200)
+    return () => {
+      if (highlightTimerRef.current !== null) {
+        window.clearTimeout(highlightTimerRef.current)
+        highlightTimerRef.current = null
+      }
+    }
+  }, [highlightedInstanceId])
+
   // Extension host can push refresh signals (e.g. command palette refresh).
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -112,12 +162,33 @@ export default function ComputeView() {
     return () => clearInterval(timer)
   }, [isPolling, load])
 
+  useEffect(() => {
+    if (!highlightedInstanceId || !filtered.some((item) => item.id === highlightedInstanceId)) {
+      return
+    }
+    const frameId = window.requestAnimationFrame(() => {
+      instanceItemRefs.current.get(highlightedInstanceId)?.scrollIntoView({
+        block: "nearest",
+        behavior: "smooth",
+      })
+    })
+    return () => window.cancelAnimationFrame(frameId)
+  }, [filtered, highlightedInstanceId])
+
   const handleStart = useCallback(
     async (id: string, region?: string) => {
       setActionState({ id, action: "starting" })
       try {
         await ResourceServiceClient.startCompute(id, region)
         await load()
+        const instance = instances.find((item) => item.id === id)
+        setHighlightedInstanceId(id)
+        setRecentAction({
+          resourceId: id,
+          resourceName: instance?.name ?? id,
+          message: "Start requested for",
+          timestamp: Date.now(),
+        })
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err))
       } finally {
@@ -133,6 +204,14 @@ export default function ComputeView() {
       try {
         await ResourceServiceClient.stopCompute(id, region)
         await load()
+        const instance = instances.find((item) => item.id === id)
+        setHighlightedInstanceId(id)
+        setRecentAction({
+          resourceId: id,
+          resourceName: instance?.name ?? id,
+          message: "Stop requested for",
+          timestamp: Date.now(),
+        })
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err))
       } finally {
@@ -168,6 +247,13 @@ export default function ComputeView() {
           port: sshConfig.port,
           privateKeyPath: effectiveKeyPath,
           disableHostKeyChecking: sshConfig.disableHostKeyChecking,
+        })
+        setHighlightedInstanceId(instance.id)
+        setRecentAction({
+          resourceId: instance.id,
+          resourceName: instance.name,
+          message: "Opened SSH session for",
+          timestamp: Date.now(),
         })
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err))
@@ -234,6 +320,11 @@ export default function ComputeView() {
     }
   }, [sshKeyOverrides])
 
+  const revealInstance = useCallback((instanceId: string) => {
+    setQuery("")
+    setHighlightedInstanceId(instanceId)
+  }, [])
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Header */}
@@ -271,6 +362,16 @@ export default function ComputeView() {
               placeholder="Filter instances..."
               className="flex-1 bg-transparent text-[13px] text-input-foreground outline-none placeholder:text-input-placeholder"
             />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                className="flex h-5 w-5 items-center justify-center rounded-[2px] text-description hover:bg-[var(--vscode-toolbar-hoverBackground)] hover:text-[var(--vscode-foreground)]"
+                title="Clear filter"
+              >
+                <X size={12} />
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -281,6 +382,25 @@ export default function ComputeView() {
           <div className="mb-4 flex items-start gap-2 rounded-lg border border-error/30 bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,red_8%)] px-3 py-2.5 text-xs text-error">
             <AlertCircle size={13} className="mt-0.5 shrink-0" />
             <span>{error}</span>
+          </div>
+        )}
+
+        {recentAction && (
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-[2px] border border-[color-mix(in_srgb,var(--vscode-button-background)_32%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_84%,var(--vscode-button-background)_16%)] px-3 py-2 text-[11px]">
+            <div className="flex min-w-0 items-center gap-2">
+              <CheckCircle2 size={14} className="shrink-0 text-[var(--vscode-testing-iconPassed)]" />
+              <div className="min-w-0 text-description">
+                {recentAction.message} <span className="text-[var(--vscode-foreground)]">{recentAction.resourceName}</span> {formatRecentActionAge(recentAction.timestamp)}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button variant="secondary" size="sm" onClick={() => revealInstance(recentAction.resourceId)} title="Show this instance in the list">
+                Show Instance
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setRecentAction(null)} title="Dismiss">
+                Dismiss
+              </Button>
+            </div>
           </div>
         )}
 
@@ -318,6 +438,14 @@ export default function ComputeView() {
                             instance={instance}
                             actionState={actionState}
                             connectingId={connectingId}
+                            highlighted={highlightedInstanceId === instance.id}
+                            onRegisterRef={(node) => {
+                              if (node) {
+                                instanceItemRefs.current.set(instance.id, node)
+                              } else {
+                                instanceItemRefs.current.delete(instance.id)
+                              }
+                            }}
                             sshConfig={sshConfig}
                             sshUserOverride={sshUserOverrides[instance.id] || ""}
                             sshKeyOverride={sshKeyOverrides[instance.id] || ""}
@@ -350,7 +478,6 @@ export default function ComputeView() {
         confirmLabel={guardrail?.confirmLabel ?? "Confirm"}
         details={guardrail?.details ?? []}
         tone={guardrail?.tone}
-        requireText={guardrail?.requireText}
         busy={actionState !== null}
         onCancel={() => {
           if (!actionState) {
@@ -367,6 +494,8 @@ function InstanceCard({
   instance,
   actionState,
   connectingId,
+  highlighted,
+  onRegisterRef,
   sshConfig,
   sshUserOverride,
   sshKeyOverride,
@@ -380,6 +509,8 @@ function InstanceCard({
   instance: ComputeResource
   actionState: ActionState
   connectingId: string | null
+  highlighted: boolean
+  onRegisterRef: (node: HTMLDivElement | null) => void
   sshConfig: SshConfig
   sshUserOverride: string
   sshKeyOverride: string
@@ -407,7 +538,15 @@ function InstanceCard({
         : ""
 
   return (
-    <div className="flex flex-col gap-3 rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] hover:bg-[var(--vscode-list-hoverBackground)] transition-colors p-2.5">
+    <div
+      ref={onRegisterRef}
+      className={clsx(
+        "flex flex-col gap-3 rounded-[2px] border bg-[var(--vscode-editor-background)] p-2.5 transition-colors",
+        highlighted
+          ? "border-[color-mix(in_srgb,var(--vscode-button-background)_45%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,var(--vscode-button-background)_18%)]"
+          : "border-[var(--vscode-panel-border)] hover:bg-[var(--vscode-list-hoverBackground)]",
+      )}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-col">
           <span className="truncate text-[13px] font-medium text-[var(--vscode-foreground)]">{instance.name}</span>
@@ -479,7 +618,6 @@ function InstanceCard({
             title: "Stop Compute Instance",
             description: "Stopping this instance interrupts any workloads currently running on it.",
             confirmLabel: "Stop Instance",
-            requireText: instance.name,
             details: [
               `Instance: ${instance.name}`,
               `Region: ${instance.region || "default"}`,
@@ -528,6 +666,14 @@ function LifecycleBadge({ state }: { state: string }) {
       {state}
     </span>
   )
+}
+
+function formatRecentActionAge(timestamp: number): string {
+  const ageMs = Math.max(0, Date.now() - timestamp)
+  if (ageMs < 5000) {
+    return "just now"
+  }
+  return `${Math.round(ageMs / 1000)}s ago`
 }
 
 function EmptyState({ hasSelectedCompartments }: { hasSelectedCompartments: boolean }) {

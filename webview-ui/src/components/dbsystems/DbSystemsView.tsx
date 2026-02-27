@@ -1,6 +1,7 @@
 import { clsx } from "clsx"
 import {
     AlertCircle,
+    CheckCircle2,
     Database,
     Loader2,
     MonitorPlay,
@@ -14,6 +15,7 @@ import {
     StopCircle,
     Trash2,
     Unplug,
+    X,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useExtensionState } from "../../context/ExtensionStateContext"
@@ -40,8 +42,13 @@ type GuardrailState = {
     description: string
     confirmLabel: string
     details: string[]
-    requireText?: string
     onConfirm: () => Promise<void>
+} | null
+type RecentActionState = {
+    resourceId: string
+    resourceName: string
+    message: string
+    timestamp: number
 } | null
 
 const TRANSITIONAL_STATES = new Set([
@@ -83,6 +90,11 @@ export default function DbSystemsView() {
     const [sshKeyOverrides, setSshKeyOverrides] = useState<Record<string, string>>({})
     const [sshSelectedIp, setSshSelectedIp] = useState<Record<string, string>>({})
     const [guardrail, setGuardrail] = useState<GuardrailState>(null)
+    const [recentAction, setRecentAction] = useState<RecentActionState>(null)
+    const [highlightedDbSystemId, setHighlightedDbSystemId] = useState<string | null>(null)
+    const actionTimerRef = useRef<number | null>(null)
+    const highlightTimerRef = useRef<number | null>(null)
+    const dbSystemItemRefs = useRef(new Map<string, HTMLDivElement>())
 
     const selectedDatabase = useMemo(
         () => dbSystems.find((db) => db.id === selectedDbId) ?? null,
@@ -139,6 +151,46 @@ export default function DbSystemsView() {
     }, [load])
 
     useEffect(() => {
+        if (actionTimerRef.current !== null) {
+            window.clearTimeout(actionTimerRef.current)
+            actionTimerRef.current = null
+        }
+        if (!recentAction) {
+            return
+        }
+        actionTimerRef.current = window.setTimeout(() => {
+            actionTimerRef.current = null
+            setRecentAction(null)
+        }, 3200)
+        return () => {
+            if (actionTimerRef.current !== null) {
+                window.clearTimeout(actionTimerRef.current)
+                actionTimerRef.current = null
+            }
+        }
+    }, [recentAction])
+
+    useEffect(() => {
+        if (highlightTimerRef.current !== null) {
+            window.clearTimeout(highlightTimerRef.current)
+            highlightTimerRef.current = null
+        }
+        if (!highlightedDbSystemId) {
+            return
+        }
+        highlightTimerRef.current = window.setTimeout(() => {
+            highlightTimerRef.current = null
+            setHighlightedDbSystemId(null)
+        }, 2200)
+        return () => {
+            if (highlightTimerRef.current !== null) {
+                window.clearTimeout(highlightTimerRef.current)
+                highlightTimerRef.current = null
+            }
+        }
+    }, [highlightedDbSystemId])
+
+    useEffect(() => {
         const onMessage = (event: MessageEvent) => {
             const msg = event.data
             if (
@@ -164,12 +216,34 @@ export default function DbSystemsView() {
         return () => clearInterval(timer)
     }, [isPolling, load])
 
+    useEffect(() => {
+        if (!highlightedDbSystemId || !filtered.some((item) => item.id === highlightedDbSystemId)) {
+            return
+        }
+        const frameId = window.requestAnimationFrame(() => {
+            dbSystemItemRefs.current.get(highlightedDbSystemId)?.scrollIntoView({
+                block: "nearest",
+                behavior: "smooth",
+            })
+        })
+        return () => window.cancelAnimationFrame(frameId)
+    }, [filtered, highlightedDbSystemId])
+
     const handleStart = useCallback(
         async (id: string, region?: string) => {
             setActionState({ id, action: "starting" })
             try {
                 await ResourceServiceClient.startDbSystem(id, region)
                 await load()
+                const dbSystem = dbSystems.find((item) => item.id === id)
+                setSelectedDbId(id)
+                setHighlightedDbSystemId(id)
+                setRecentAction({
+                    resourceId: id,
+                    resourceName: dbSystem?.name ?? id,
+                    message: "Start requested for",
+                    timestamp: Date.now(),
+                })
             } catch (err) {
                 setError(err instanceof Error ? err.message : String(err))
             } finally {
@@ -185,6 +259,15 @@ export default function DbSystemsView() {
             try {
                 await ResourceServiceClient.stopDbSystem(id, region)
                 await load()
+                const dbSystem = dbSystems.find((item) => item.id === id)
+                setSelectedDbId(id)
+                setHighlightedDbSystemId(id)
+                setRecentAction({
+                    resourceId: id,
+                    resourceName: dbSystem?.name ?? id,
+                    message: "Stop requested for",
+                    timestamp: Date.now(),
+                })
             } catch (err) {
                 setError(err instanceof Error ? err.message : String(err))
             } finally {
@@ -221,6 +304,14 @@ export default function DbSystemsView() {
                     port: sshConfig.port,
                     privateKeyPath: effectiveKeyPath,
                     disableHostKeyChecking: sshConfig.disableHostKeyChecking,
+                })
+                setSelectedDbId(sys.id)
+                setHighlightedDbSystemId(sys.id)
+                setRecentAction({
+                    resourceId: sys.id,
+                    resourceName: sys.name,
+                    message: "Opened SSH session for",
+                    timestamp: Date.now(),
                 })
             } catch (err) {
                 setError(err instanceof Error ? err.message : String(err))
@@ -262,6 +353,13 @@ export default function DbSystemsView() {
                 dbSystemId: response.dbSystemId,
                 serviceName: response.serviceName,
             })
+            setHighlightedDbSystemId(selectedDatabase.id)
+            setRecentAction({
+                resourceId: selectedDatabase.id,
+                resourceName: selectedDatabase.name,
+                message: "Connected to",
+                timestamp: Date.now(),
+            })
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err))
         } finally {
@@ -280,6 +378,15 @@ export default function DbSystemsView() {
         setDbBusyAction("disconnect")
         try {
             await disconnectConnection(connectionId)
+            if (selectedDatabase) {
+                setHighlightedDbSystemId(selectedDatabase.id)
+                setRecentAction({
+                    resourceId: selectedDatabase.id,
+                    resourceName: selectedDatabase.name,
+                    message: "Disconnected from",
+                    timestamp: Date.now(),
+                })
+            }
             setConnectionId("")
             setConnectionTarget(null)
             setSqlResult(null)
@@ -393,6 +500,15 @@ export default function DbSystemsView() {
                 serviceName,
             })
             setHasSavedProfile(true)
+            if (selectedDatabase) {
+                setHighlightedDbSystemId(selectedDatabase.id)
+                setRecentAction({
+                    resourceId: selectedDatabase.id,
+                    resourceName: selectedDatabase.name,
+                    message: "Saved connection profile for",
+                    timestamp: Date.now(),
+                })
+            }
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err))
         } finally {
@@ -407,6 +523,13 @@ export default function DbSystemsView() {
         try {
             await ResourceServiceClient.deleteDbSystemConnection(selectedDatabase.id)
             setHasSavedProfile(false)
+            setHighlightedDbSystemId(selectedDatabase.id)
+            setRecentAction({
+                resourceId: selectedDatabase.id,
+                resourceName: selectedDatabase.name,
+                message: "Deleted saved profile for",
+                timestamp: Date.now(),
+            })
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err))
         } finally {
@@ -425,6 +548,12 @@ export default function DbSystemsView() {
         } finally {
             setLoadingDiagnostics(false)
         }
+    }, [])
+
+    const revealDbSystem = useCallback((dbSystemId: string) => {
+        setQuery("")
+        setSelectedDbId(dbSystemId)
+        setHighlightedDbSystemId(dbSystemId)
     }, [])
 
     return (
@@ -462,6 +591,16 @@ export default function DbSystemsView() {
                             placeholder="Filter DB Systems..."
                             className="flex-1 bg-transparent text-[13px] text-input-foreground outline-none placeholder:text-input-placeholder"
                         />
+                        {query && (
+                            <button
+                                type="button"
+                                onClick={() => setQuery("")}
+                                className="flex h-5 w-5 items-center justify-center rounded-[2px] text-description hover:bg-[var(--vscode-toolbar-hoverBackground)] hover:text-[var(--vscode-foreground)]"
+                                title="Clear filter"
+                            >
+                                <X size={12} />
+                            </button>
+                        )}
                     </div>
                 )}
             </div>
@@ -471,6 +610,25 @@ export default function DbSystemsView() {
                     <div className="mb-4 flex items-start gap-2 rounded-lg border border-error/30 bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,red_8%)] px-3 py-2.5 text-xs text-error">
                         <AlertCircle size={13} className="mt-0.5 shrink-0" />
                         <span>{error}</span>
+                    </div>
+                )}
+
+                {recentAction && (
+                    <div className="mb-4 flex items-center justify-between gap-3 rounded-[2px] border border-[color-mix(in_srgb,var(--vscode-button-background)_32%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_84%,var(--vscode-button-background)_16%)] px-3 py-2 text-[11px]">
+                        <div className="flex min-w-0 items-center gap-2">
+                            <CheckCircle2 size={14} className="shrink-0 text-[var(--vscode-testing-iconPassed)]" />
+                            <div className="min-w-0 text-description">
+                                {recentAction.message} <span className="text-[var(--vscode-foreground)]">{recentAction.resourceName}</span> {formatRecentActionAge(recentAction.timestamp)}
+                            </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                            <Button variant="secondary" size="sm" onClick={() => revealDbSystem(recentAction.resourceId)} title="Show this DB System in the list">
+                                Show DB System
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => setRecentAction(null)} title="Dismiss">
+                                Dismiss
+                            </Button>
+                        </div>
                     </div>
                 )}
 
@@ -508,6 +666,14 @@ export default function DbSystemsView() {
                                                             key={`${db.id}-${db.region ?? "default"}`}
                                                             dbSystem={db}
                                                             selected={db.id === selectedDbId}
+                                                            highlighted={highlightedDbSystemId === db.id}
+                                                            onRegisterRef={(node) => {
+                                                                if (node) {
+                                                                    dbSystemItemRefs.current.set(db.id, node)
+                                                                } else {
+                                                                    dbSystemItemRefs.current.delete(db.id)
+                                                                }
+                                                            }}
                                                             actionState={actionState}
                                                             connectingId={connectingId}
                                                             sshConfig={sshConfig}
@@ -757,7 +923,6 @@ export default function DbSystemsView() {
                 confirmLabel={guardrail?.confirmLabel ?? "Confirm"}
                 details={guardrail?.details ?? []}
                 tone={guardrail?.tone}
-                requireText={guardrail?.requireText}
                 busy={actionState !== null}
                 onCancel={() => {
                     if (!actionState) {
@@ -773,6 +938,8 @@ export default function DbSystemsView() {
 function DatabaseCard({
     dbSystem,
     selected,
+    highlighted,
+    onRegisterRef,
     actionState,
     connectingId,
     sshConfig,
@@ -790,6 +957,8 @@ function DatabaseCard({
 }: {
     dbSystem: DbSystemResource
     selected: boolean
+    highlighted: boolean
+    onRegisterRef: (node: HTMLDivElement | null) => void
     actionState: ActionState
     connectingId: string | null
     sshConfig: SshConfig
@@ -816,10 +985,15 @@ function DatabaseCard({
 
     return (
         <div
+            ref={onRegisterRef}
             className={clsx(
                 "flex flex-col gap-2 rounded-[2px] border p-2.5 transition-colors cursor-pointer",
-                selected
+                selected && highlighted
+                    ? "border-[var(--vscode-focusBorder)] bg-[color-mix(in_srgb,var(--vscode-list-hoverBackground)_82%,var(--vscode-button-background)_18%)]"
+                    : selected
                     ? "border-[var(--vscode-focusBorder)] bg-[var(--vscode-list-hoverBackground)]"
+                    : highlighted
+                        ? "border-[color-mix(in_srgb,var(--vscode-button-background)_45%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,var(--vscode-button-background)_18%)]"
                     : "border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] hover:bg-[var(--vscode-list-hoverBackground)]",
             )}
             onClick={() => !selected && onSelect(dbSystem.id)}
@@ -935,7 +1109,6 @@ function DatabaseCard({
                         title: "Stop DB System",
                         description: "Stopping this DB System interrupts database node availability.",
                         confirmLabel: "Stop DB System",
-                        requireText: dbSystem.name,
                         details: [
                             `DB System: ${dbSystem.name}`,
                             `Region: ${dbSystem.region || "default"}`,
@@ -967,6 +1140,14 @@ function DatabaseCard({
             </div>
         </div>
     )
+}
+
+function formatRecentActionAge(timestamp: number): string {
+    const ageMs = Math.max(0, Date.now() - timestamp)
+    if (ageMs < 5000) {
+        return "just now"
+    }
+    return `${Math.round(ageMs / 1000)}s ago`
 }
 
 function LifecycleBadge({ state }: { state: string }) {
