@@ -16,7 +16,7 @@ export interface ChatMessage {
 const successfulVariantByModel = new Map<string, string>();
 const MAX_TRANSCRIPT_TURNS = 12;
 const MAX_TRANSCRIPT_CHARS = 6000;
-const DEFAULT_CHAT_MAX_TOKENS = 64000;
+const DEFAULT_CHAT_MAX_TOKENS = 16000;
 const MAX_CHAT_MAX_TOKENS = 128000;
 const DEFAULT_CHAT_TEMPERATURE = 0;
 const DEFAULT_CHAT_TOP_P = 1;

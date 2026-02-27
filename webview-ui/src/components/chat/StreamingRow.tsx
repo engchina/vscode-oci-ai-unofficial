@@ -7,11 +7,14 @@ interface StreamingRowProps {
 
 export default function StreamingRow({ text }: StreamingRowProps) {
   return (
-    <div className="flex gap-3 px-4 py-2.5">
-      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border-panel bg-[color-mix(in_srgb,var(--vscode-badge-background)_20%,transparent)]">
-        <Bot size={14} />
+    <div className="flex flex-col gap-1 px-3 py-4 w-full border-b border-[var(--vscode-panel-border)] hover:bg-[var(--vscode-list-hoverBackground)] transition-colors">
+      <div className="flex items-center gap-2 font-semibold text-[11px] text-[var(--vscode-sideBarTitle-foreground)] uppercase tracking-wide">
+        <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-[var(--vscode-editor-background)] border border-[var(--vscode-panel-border)] text-[var(--vscode-icon-foreground)]">
+          <Bot size={12} />
+        </div>
+        <span>Generative AI</span>
       </div>
-      <div className="max-w-[min(78ch,85%)] rounded-xl border border-[color-mix(in_srgb,var(--vscode-badge-background)_35%,transparent)] bg-[color-mix(in_srgb,var(--vscode-badge-background)_12%,transparent)] px-3.5 py-2.5">
+      <div className="pl-7 w-full text-[13px] text-[var(--vscode-foreground)] leading-relaxed">
         {text ? (
           <MessageContent content={text} />
         ) : (

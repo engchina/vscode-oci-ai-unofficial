@@ -239,31 +239,6 @@
           "default": "",
           "description": "Optional system prompt prepended to every AI chat session"
         },
-        "ociAi.nativeToolCall": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable native tool calling when supported by the selected model"
-        },
-        "ociAi.parallelToolCalling": {
-          "type": "boolean",
-          "default": true,
-          "description": "Allow parallel tool calls when using tool-enabled chat requests"
-        },
-        "ociAi.strictPlanMode": {
-          "type": "boolean",
-          "default": true,
-          "description": "Prevent file edits in strict plan mode"
-        },
-        "ociAi.autoCompact": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable automatic conversation compaction"
-        },
-        "ociAi.checkpoints": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable editor checkpoints for rollback"
-        },
         "ociAi.shellIntegrationTimeoutSec": {
           "type": "number",
           "default": 4,
@@ -271,7 +246,7 @@
         },
         "ociAi.chatMaxTokens": {
           "type": "number",
-          "default": 64000,
+          "default": 16000,
           "description": "Maximum tokens requested per chat completion (1-128000)"
         },
         "ociAi.chatTemperature": {
@@ -385,6 +360,47 @@
           "description": "Selected compartment IDs for Oracle Base Database Service",
           "items": {
             "type": "string"
+          }
+        },
+        "ociAi.adbConnectionProfiles": {
+          "type": "array",
+          "default": [],
+          "description": "Saved ADB connection profiles (passwords are kept securely in SecretStorage)",
+          "items": {
+            "type": "object",
+            "properties": {
+              "autonomousDatabaseId": {
+                "type": "string"
+              },
+              "walletPath": {
+                "type": "string"
+              },
+              "username": {
+                "type": "string"
+              },
+              "serviceName": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "ociAi.dbSystemConnectionProfiles": {
+          "type": "array",
+          "default": [],
+          "description": "Saved Oracle Base Database connection profiles",
+          "items": {
+            "type": "object",
+            "properties": {
+              "dbSystemId": {
+                "type": "string"
+              },
+              "username": {
+                "type": "string"
+              },
+              "serviceName": {
+                "type": "string"
+              }
+            }
           }
         }
       }

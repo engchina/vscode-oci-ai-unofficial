@@ -41,7 +41,7 @@ export interface CodeContextPayload {
 const CHAT_HISTORY_KEY = "ociAi.chatHistory";
 const MAX_PERSISTED_MESSAGES = 100;
 const DEFAULT_SHELL_TIMEOUT_SEC = 4;
-const DEFAULT_CHAT_MAX_TOKENS = 64000;
+const DEFAULT_CHAT_MAX_TOKENS = 16000;
 const MAX_CHAT_MAX_TOKENS = 128000;
 const DEFAULT_CHAT_TEMPERATURE = 0;
 const DEFAULT_CHAT_TOP_P = 1;
@@ -134,11 +134,7 @@ export class Controller {
       genAiLlmModelId: cfg.get<string>("genAiLlmModelId", "") || cfg.get<string>("genAiModelId", ""),
       genAiEmbeddingModelId: cfg.get<string>("genAiEmbeddingModelId", ""),
       systemPrompt: cfg.get<string>("systemPrompt", ""),
-      nativeToolCall: cfg.get<boolean>("nativeToolCall", true),
-      parallelToolCalling: cfg.get<boolean>("parallelToolCalling", true),
-      strictPlanMode: cfg.get<boolean>("strictPlanMode", true),
-      autoCompact: cfg.get<boolean>("autoCompact", true),
-      checkpoints: cfg.get<boolean>("checkpoints", true),
+
       shellIntegrationTimeoutSec: cfg.get<number>("shellIntegrationTimeoutSec", DEFAULT_SHELL_TIMEOUT_SEC),
       chatMaxTokens: cfg.get<number>("chatMaxTokens", DEFAULT_CHAT_MAX_TOKENS),
       chatTemperature: cfg.get<number>("chatTemperature", DEFAULT_CHAT_TEMPERATURE),
@@ -184,11 +180,7 @@ export class Controller {
     await cfg.update("genAiEmbeddingModelId", String(payload.genAiEmbeddingModelId ?? "").trim(), vscode.ConfigurationTarget.Global);
     await cfg.update("genAiModelId", String(payload.genAiLlmModelId ?? "").trim(), vscode.ConfigurationTarget.Global);
     await cfg.update("systemPrompt", String(payload.systemPrompt ?? ""), vscode.ConfigurationTarget.Global);
-    await cfg.update("nativeToolCall", Boolean(payload.nativeToolCall), vscode.ConfigurationTarget.Global);
-    await cfg.update("parallelToolCalling", Boolean(payload.parallelToolCalling), vscode.ConfigurationTarget.Global);
-    await cfg.update("strictPlanMode", Boolean(payload.strictPlanMode), vscode.ConfigurationTarget.Global);
-    await cfg.update("autoCompact", Boolean(payload.autoCompact), vscode.ConfigurationTarget.Global);
-    await cfg.update("checkpoints", Boolean(payload.checkpoints), vscode.ConfigurationTarget.Global);
+
     await cfg.update(
       "shellIntegrationTimeoutSec",
       coerceInt(payload.shellIntegrationTimeoutSec, DEFAULT_SHELL_TIMEOUT_SEC, 1, 120),

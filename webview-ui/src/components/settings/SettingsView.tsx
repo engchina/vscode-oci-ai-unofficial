@@ -1,5 +1,5 @@
 import { clsx } from "clsx"
-import { Bot, ChevronDown, Info, LoaderCircle, Plus, Save, Settings2, Sliders, Terminal, Trash2, Users, Wrench } from "lucide-react"
+import { Bot, ChevronDown, Info, Loader2, LoaderCircle, Plus, Save, Settings2, Terminal, Trash2, Users } from "lucide-react"
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction } from "react"
 import { StateServiceClient } from "../../services/grpc-client"
 import type { SettingsState } from "../../services/types"
@@ -17,7 +17,7 @@ interface SettingsViewProps {
   showDone?: boolean
 }
 
-type SettingsTab = "api-config" | "profiles" | "genai" | "features" | "terminal" | "general" | "about"
+type SettingsTab = "api-config" | "profiles" | "genai" | "terminal" | "about"
 type UpdateFieldFn = <K extends keyof SettingsState>(field: K, value: SettingsState[K]) => void
 
 const TABS: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
@@ -25,8 +25,6 @@ const TABS: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: "profiles", label: "Compartments", icon: <Users size={16} /> },
   { id: "terminal", label: "Terminal", icon: <Terminal size={16} /> },
   { id: "genai", label: "Generative AI", icon: <Bot size={16} /> },
-  { id: "features", label: "Features", icon: <Sliders size={16} /> },
-  { id: "general", label: "General", icon: <Wrench size={16} /> },
   { id: "about", label: "About", icon: <Info size={16} /> },
 ]
 
@@ -50,14 +48,9 @@ const EMPTY_SETTINGS: SettingsState = {
   privateKeyPassphrase: "",
   systemPrompt: "",
 
-  nativeToolCall: true,
-  parallelToolCalling: true,
-  strictPlanMode: true,
-  autoCompact: true,
-  checkpoints: true,
 
   shellIntegrationTimeoutSec: 4,
-  chatMaxTokens: 64000,
+  chatMaxTokens: 16000,
   chatTemperature: 0,
   chatTopP: 1,
 
@@ -232,14 +225,6 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
                 saving={saving}
               />
             )}
-            {activeTab === "features" && (
-              <FeaturesTab
-                settings={settings}
-                updateField={updateField}
-                handleSave={handleSave}
-                saving={saving}
-              />
-            )}
             {activeTab === "terminal" && (
               <TerminalTab
                 settings={settings}
@@ -250,7 +235,6 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
                 saving={saving}
               />
             )}
-            {activeTab === "general" && <GeneralTab settings={settings} />}
             {activeTab === "about" && <AboutTab />}
           </div>
         </div>
@@ -291,6 +275,8 @@ function ApiConfigTab({
   saving: boolean
 }) {
   const [newProfileName, setNewProfileName] = useState("")
+  const [addingProfile, setAddingProfile] = useState(false)
+  const [deletingProfile, setDeletingProfile] = useState<string | null>(null)
   const validationErrors = validateSettings(settings)
   const profiles = settings.profilesConfig || []
 
@@ -315,18 +301,14 @@ function ApiConfigTab({
   const addProfile = async () => {
     const name = newProfileName.trim()
     if (!name || profiles.some(p => p.name === name)) return
+    setAddingProfile(true)
     const updatedProfiles = [...profiles, { name, compartments: [] }]
+    // Only add profile to the list, don't switch to it yet.
+    // User should manually select it to edit. This avoids OCI auth errors
+    // for profiles that don't exist in ~/.oci/config yet.
     const updatedSettings = {
       ...settings,
       profilesConfig: updatedProfiles,
-      profile: name,
-      region: "",
-      tenancyOcid: "",
-      userOcid: "",
-      fingerprint: "",
-      privateKey: "",
-      privateKeyPassphrase: "",
-      authMode: "config-file" as const,
     }
     setSettings(updatedSettings)
     setNewProfileName("")
@@ -334,10 +316,13 @@ function ApiConfigTab({
       await StateServiceClient.saveSettings({ ...updatedSettings, suppressNotification: true })
     } catch (error) {
       console.error("Failed to save profile:", error)
+    } finally {
+      setAddingProfile(false)
     }
   }
 
   const deleteProfile = async (name: string) => {
+    setDeletingProfile(name)
     const updatedProfiles = profiles.filter(p => p.name !== name)
     const updatedSettings = { ...settings, profilesConfig: updatedProfiles }
     const needsProfileSwitch = settings.profile === name
@@ -355,6 +340,8 @@ function ApiConfigTab({
       }
     } catch (error) {
       console.error("Failed to delete profile:", error)
+    } finally {
+      setDeletingProfile(null)
     }
   }
 
@@ -429,10 +416,11 @@ function ApiConfigTab({
                   </button>
                   <button
                     onClick={() => deleteProfile(p.name)}
-                    className="shrink-0 rounded p-1 text-description hover:bg-list-background-hover hover:text-error transition-colors"
+                    disabled={deletingProfile === p.name}
+                    className="shrink-0 rounded p-1 text-description hover:bg-list-background-hover hover:text-error transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                     title={`Delete profile "${p.name}"`}
                   >
-                    <Trash2 size={12} />
+                    {deletingProfile === p.name ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
                   </button>
                 </div>
               ))
@@ -452,9 +440,9 @@ function ApiConfigTab({
             onKeyDown={e => e.key === "Enter" && addProfile()}
             className="flex-1 rounded-md border border-input-border bg-input-background px-2 py-1.5 text-xs outline-none focus:border-border"
           />
-          <Button size="sm" variant="secondary" onClick={addProfile} disabled={!newProfileName.trim()}>
-            <Plus size={12} className="mr-1" />
-            Add
+          <Button size="sm" variant="secondary" onClick={addProfile} disabled={addingProfile || !newProfileName.trim()}>
+            {addingProfile ? <Loader2 size={12} className="mr-1 animate-spin" /> : <Plus size={12} className="mr-1" />}
+            {addingProfile ? "Adding..." : "Add"}
           </Button>
         </div>
       </Card>
@@ -572,37 +560,9 @@ function GenAiTab({
         />
       </Card>
 
-      <Button onClick={handleSave} disabled={saving} className="self-start px-4">
-        <Save size={14} className="mr-1.5" />
-        {saving ? "Saving..." : "Save Settings"}
-      </Button>
-    </div>
-  )
-}
-
-function FeaturesTab({
-  settings,
-  updateField,
-  handleSave,
-  saving,
-}: {
-  settings: SettingsState
-  updateField: UpdateFieldFn
-  handleSave: () => void
-  saving: boolean
-}) {
-  return (
-    <div className="flex flex-col gap-4">
-      <h3 className="flex items-center gap-1.5 text-md font-semibold">
-        <Sliders size={14} />
-        Feature Settings
-      </h3>
-      <p className="-mt-2 text-xs text-description">Fine tune runtime behavior for the assistant and editor workflows.</p>
-
-      <Card title="AI Behavior">
+      <Card title="System Prompt">
         <Textarea
           id="systemPrompt"
-          label="System Prompt"
           placeholder="You are a helpful OCI cloud assistant. Answer concisely and accurately."
           value={settings.systemPrompt}
           onChange={(e) => updateField("systemPrompt", e.target.value)}
@@ -613,7 +573,7 @@ function FeaturesTab({
         </p>
       </Card>
 
-      <Card title="Chat Generation">
+      <Card title="LLM Parameters">
         <Input
           id="chatMaxTokens"
           label="Max Tokens"
@@ -621,7 +581,7 @@ function FeaturesTab({
           min={1}
           max={128000}
           value={settings.chatMaxTokens}
-          onChange={(e) => updateField("chatMaxTokens", parseIntInput(e.target.value, 64000, 1, 128000))}
+          onChange={(e) => updateField("chatMaxTokens", parseIntInput(e.target.value, 16000, 1, 128000))}
         />
         <Input
           id="chatTemperature"
@@ -644,48 +604,6 @@ function FeaturesTab({
           onChange={(e) => updateField("chatTopP", parseFloatInput(e.target.value, 1, 0, 1))}
         />
       </Card>
-
-      <div>
-        <h4 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[var(--vscode-sideBarTitle-foreground)]">Agent</h4>
-        <div className="flex flex-col gap-2.5 rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-3">
-          <Toggle
-            label="Native Tool Call"
-            description="Use native function calling when available"
-            checked={settings.nativeToolCall}
-            onChange={(checked) => updateField("nativeToolCall", checked)}
-          />
-          <Toggle
-            label="Parallel Tool Calling"
-            description="Execute multiple tool calls simultaneously"
-            checked={settings.parallelToolCalling}
-            onChange={(checked) => updateField("parallelToolCalling", checked)}
-          />
-          <Toggle
-            label="Strict Plan Mode"
-            description="Prevents file edits while in Plan mode"
-            checked={settings.strictPlanMode}
-            onChange={(checked) => updateField("strictPlanMode", checked)}
-          />
-          <Toggle
-            label="Auto Compact"
-            description="Automatically compress conversation history"
-            checked={settings.autoCompact}
-            onChange={(checked) => updateField("autoCompact", checked)}
-          />
-        </div>
-      </div>
-
-      <div>
-        <h4 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[var(--vscode-sideBarTitle-foreground)]">Editor</h4>
-        <div className="flex flex-col gap-2.5 rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-3">
-          <Toggle
-            label="Checkpoints"
-            description="Save progress at key points for easy rollback"
-            checked={settings.checkpoints}
-            onChange={(checked) => updateField("checkpoints", checked)}
-          />
-        </div>
-      </div>
 
       <Button onClick={handleSave} disabled={saving} className="self-start px-4">
         <Save size={14} className="mr-1.5" />
@@ -714,7 +632,7 @@ function TerminalTab({
     <div className="flex flex-col gap-4">
       <h3 className="flex items-center gap-1.5 text-md font-semibold">
         <Terminal size={14} />
-        Terminal Settings
+        Terminal
       </h3>
       <p className="-mt-2 text-xs text-description">Set terminal integration behavior used by command execution tasks.</p>
 
@@ -794,28 +712,6 @@ function TerminalTab({
         <Save size={14} className="mr-1.5" />
         {saving ? "Saving..." : "Save Settings"}
       </Button>
-    </div>
-  )
-}
-
-function GeneralTab({ settings }: { settings: SettingsState }) {
-  return (
-    <div className="flex flex-col gap-4">
-      <h3 className="flex items-center gap-1.5 text-md font-semibold">
-        <Wrench size={14} />
-        General Settings
-      </h3>
-      <p className="-mt-2 text-xs text-description">Global extension preferences and behavior controls.</p>
-
-      <div className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-3">
-        <div className="flex flex-col gap-2 text-xs text-description">
-          <span>Native Tool Call: {settings.nativeToolCall ? "On" : "Off"}</span>
-          <span>Parallel Tool Calling: {settings.parallelToolCalling ? "On" : "Off"}</span>
-          <span>Strict Plan Mode: {settings.strictPlanMode ? "On" : "Off"}</span>
-          <span>Auto Compact: {settings.autoCompact ? "On" : "Off"}</span>
-          <span>Checkpoints: {settings.checkpoints ? "On" : "Off"}</span>
-        </div>
-      </div>
     </div>
   )
 }

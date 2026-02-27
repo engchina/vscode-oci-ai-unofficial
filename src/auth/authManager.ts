@@ -194,7 +194,9 @@ export class AuthManager {
     if (typeof profileRegion === "string" && profileRegion.trim().length > 0) {
       return profileRegion.trim();
     }
-    return vscode.workspace.getConfiguration("ociAi").get<string>("region", "").trim();
+    // Return empty string for profiles without a saved region
+    // This prevents showing region from a different profile when switching to a new one
+    return "";
   }
 
   public async updateRegionForProfile(profile: string, region: string): Promise<void> {

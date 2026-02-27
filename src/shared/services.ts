@@ -64,12 +64,6 @@ export interface SaveSettingsRequest {
   privateKeyPassphrase: string;
   systemPrompt: string;
 
-  // Feature flags
-  nativeToolCall: boolean;
-  parallelToolCalling: boolean;
-  strictPlanMode: boolean;
-  autoCompact: boolean;
-  checkpoints: boolean;
 
   // Runtime tuning
   shellIntegrationTimeoutSec: number;

@@ -1,6 +1,5 @@
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import type { OracleDbDiagnosticsResponse } from "../../services/types"
-import Button from "../ui/Button"
 
 type ProblemType =
   | "ok"
@@ -15,14 +14,9 @@ type Guide = {
   summary: string
   steps: string[]
   commands: string[]
-  docsUrl: string
 }
 
-const NODE_ORACLEDB_INSTALL_DOC =
-  "https://node-oracledb.readthedocs.io/en/latest/user_guide/installation.html"
-
 export default function OracleDiagnosticsPanel({ diagnostics }: { diagnostics: OracleDbDiagnosticsResponse | null }) {
-  const [copyMessage, setCopyMessage] = useState("")
   const guide = useMemo(() => (diagnostics ? buildGuide(diagnostics) : null), [diagnostics])
 
   if (!diagnostics || !guide) {
@@ -30,21 +24,6 @@ export default function OracleDiagnosticsPanel({ diagnostics }: { diagnostics: O
   }
 
   const commandText = guide.commands.join("\n")
-
-  const handleCopy = async () => {
-    if (!commandText.trim()) {
-      setCopyMessage("No command available")
-      return
-    }
-    try {
-      await navigator.clipboard.writeText(commandText)
-      setCopyMessage("Commands copied")
-      window.setTimeout(() => setCopyMessage(""), 1800)
-    } catch {
-      setCopyMessage("Copy failed")
-      window.setTimeout(() => setCopyMessage(""), 1800)
-    }
-  }
 
   return (
     <div className="rounded-md border border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_97%,black_3%)] px-2.5 py-2 text-[11px] text-description">
@@ -76,16 +55,6 @@ export default function OracleDiagnosticsPanel({ diagnostics }: { diagnostics: O
       {guide.commands.length > 0 && (
         <pre className="mt-2 whitespace-pre-wrap rounded border border-border-panel bg-input-background px-2 py-1.5 text-[10px] leading-relaxed text-description">{commandText}</pre>
       )}
-
-      <div className="mt-2 flex flex-wrap gap-2">
-        <Button type="button" size="sm" variant="secondary" onClick={handleCopy} disabled={guide.commands.length === 0}>
-          Copy Commands
-        </Button>
-        <Button type="button" size="sm" variant="secondary" onClick={() => window.open(guide.docsUrl, "_blank", "noopener,noreferrer")}>
-          Open Docs
-        </Button>
-        {copyMessage && <span className="self-center text-[10px] text-description">{copyMessage}</span>}
-      </div>
     </div>
   )
 }
@@ -106,7 +75,6 @@ function buildGuide(diagnostics: OracleDbDiagnosticsResponse): Guide {
         "If you still cannot connect, verify connect string/service name and network ACL/security list.",
       ],
       commands: [],
-      docsUrl: NODE_ORACLEDB_INSTALL_DOC,
     }
   }
 
@@ -121,7 +89,6 @@ function buildGuide(diagnostics: OracleDbDiagnosticsResponse): Guide {
         "Click Connection Diagnostic again to verify Thick mode is effective.",
       ],
       commands: getInstantClientCommands(diagnostics, isLinux, isWindows),
-      docsUrl: NODE_ORACLEDB_INSTALL_DOC,
     }
   }
 
@@ -140,7 +107,6 @@ function buildGuide(diagnostics: OracleDbDiagnosticsResponse): Guide {
         "# If needed, reinstall and rebuild:",
         "npm i oracledb@^6.10.0",
       ],
-      docsUrl: NODE_ORACLEDB_INSTALL_DOC,
     }
   }
 
@@ -155,7 +121,6 @@ function buildGuide(diagnostics: OracleDbDiagnosticsResponse): Guide {
         "If this machine cannot install Instant Client, use SSH into DB system and connect via sqlplus as fallback.",
       ],
       commands: getInstantClientCommands(diagnostics, isLinux, isWindows),
-      docsUrl: NODE_ORACLEDB_INSTALL_DOC,
     }
   }
 
@@ -169,7 +134,6 @@ function buildGuide(diagnostics: OracleDbDiagnosticsResponse): Guide {
       "Run Connection Diagnostic again after changes.",
     ],
     commands: [],
-    docsUrl: NODE_ORACLEDB_INSTALL_DOC,
   }
 }
 

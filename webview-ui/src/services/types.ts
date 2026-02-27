@@ -64,11 +64,6 @@ export interface SaveSettingsRequest {
   privateKeyPassphrase: string
   systemPrompt: string
 
-  nativeToolCall: boolean
-  parallelToolCalling: boolean
-  strictPlanMode: boolean
-  autoCompact: boolean
-  checkpoints: boolean
 
   shellIntegrationTimeoutSec: number
   chatMaxTokens: number

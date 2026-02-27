@@ -1,6 +1,13 @@
+import * as vscode from "vscode";
 import { Controller, type PostMessageToWebview } from "./index";
 import type { GrpcRequest, ExtensionMessage } from "../shared/messages";
 import type { StreamTokenResponse } from "../shared/services";
+
+/** Display a status bar message with timeout (half of default notification duration) */
+const STATUS_MESSAGE_TIMEOUT_MS = 2500;
+function showStatusMessage(message: string): void {
+  vscode.window.setStatusBarMessage(`$(info) ${message}`, STATUS_MESSAGE_TIMEOUT_MS);
+}
 
 type StreamingResponseHandler<T> = (response: T, isLast?: boolean) => Promise<void>;
 
@@ -156,31 +163,45 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
     listCompute: async (c) => ({ instances: await c.listComputeInstances() }),
     startCompute: async (c, msg) => {
       await c.startComputeInstance(msg.instanceId, typeof msg.region === "string" ? msg.region : undefined);
+      showStatusMessage("Compute instance start requested.");
       return {};
     },
     stopCompute: async (c, msg) => {
       await c.stopComputeInstance(msg.instanceId, typeof msg.region === "string" ? msg.region : undefined);
+      showStatusMessage("Compute instance stop requested.");
       return {};
     },
     connectComputeSsh: async (c, msg) => c.connectComputeSsh(msg),
     listAdb: async (c) => ({ databases: await c.listAutonomousDatabases() }),
     startAdb: async (c, msg) => {
       await c.startAutonomousDatabase(msg.autonomousDatabaseId, typeof msg.region === "string" ? msg.region : undefined);
+      showStatusMessage("Autonomous Database start requested.");
       return {};
     },
     stopAdb: async (c, msg) => {
       await c.stopAutonomousDatabase(msg.autonomousDatabaseId, typeof msg.region === "string" ? msg.region : undefined);
+      showStatusMessage("Autonomous Database stop requested.");
       return {};
     },
-    downloadAdbWallet: async (c, msg) => c.downloadAdbWallet(msg),
-    connectAdb: async (c, msg) => c.connectAdb(msg),
+    downloadAdbWallet: async (c, msg) => {
+      const result = await c.downloadAdbWallet(msg);
+      showStatusMessage("ADB wallet downloaded.");
+      return result;
+    },
+    connectAdb: async (c, msg) => {
+      const result = await c.connectAdb(msg);
+      showStatusMessage("ADB connected.");
+      return result;
+    },
     disconnectAdb: async (c, msg) => {
       await c.disconnectAdb(msg.connectionId);
+      showStatusMessage("ADB disconnected.");
       return {};
     },
     executeAdbSql: async (c, msg) => c.executeAdbSql(msg),
     saveAdbConnection: async (c, msg) => {
       await c.saveAdbConnection(msg);
+      showStatusMessage("ADB connection saved.");
       return {};
     },
     loadAdbConnection: async (c, msg) => {
@@ -189,27 +210,36 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
     },
     deleteAdbConnection: async (c, msg) => {
       await c.deleteAdbConnection(String(msg.autonomousDatabaseId ?? ""));
+      showStatusMessage("ADB connection deleted.");
       return {};
     },
     listDbSystems: async (c) => ({ dbSystems: await c.listDbSystems() }),
     startDbSystem: async (c, msg) => {
       await c.startDbSystem(msg.dbSystemId, typeof msg.region === "string" ? msg.region : undefined);
+      showStatusMessage("DB System start requested.");
       return {};
     },
     stopDbSystem: async (c, msg) => {
       await c.stopDbSystem(msg.dbSystemId, typeof msg.region === "string" ? msg.region : undefined);
+      showStatusMessage("DB System stop requested.");
       return {};
     },
-    connectDbSystem: async (c, msg) => c.connectDbSystem(msg),
+    connectDbSystem: async (c, msg) => {
+      const result = await c.connectDbSystem(msg);
+      showStatusMessage("DB System connected.");
+      return result;
+    },
     connectDbSystemSsh: async (c, msg) => c.connectDbSystemSsh(msg),
     disconnectDbSystem: async (c, msg) => {
       await c.disconnectDbSystem(msg.connectionId);
+      showStatusMessage("DB System disconnected.");
       return {};
     },
     executeDbSystemSql: async (c, msg) => c.executeDbSystemSql(msg),
     getOracleDbDiagnostics: async (c) => c.getOracleDbDiagnostics(),
     saveDbSystemConnection: async (c, msg) => {
       await c.saveDbSystemConnection(msg);
+      showStatusMessage("DB System connection saved.");
       return {};
     },
     getDbSystemConnectionStrings: async (c, msg) => c.getDbSystemConnectionStrings(msg),
@@ -219,6 +249,7 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
     },
     deleteDbSystemConnection: async (c, msg) => {
       await c.deleteDbSystemConnection(String(msg.dbSystemId ?? ""));
+      showStatusMessage("DB System connection deleted.");
       return {};
     },
     listVcns: async (c) => ({ vcns: await c.listVcns() }),
@@ -232,6 +263,7 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
         msg.egressSecurityRules || [],
         msg.region
       );
+      showStatusMessage("Security List created.");
       return {};
     },
     updateSecurityList: async (c, msg) => {
@@ -241,10 +273,12 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
         msg.egressSecurityRules || [],
         msg.region
       );
+      showStatusMessage("Security List updated.");
       return {};
     },
     deleteSecurityList: async (c, msg) => {
       await c.deleteSecurityList(msg.securityListId, msg.region);
+      showStatusMessage("Security List deleted.");
       return {};
     },
   },

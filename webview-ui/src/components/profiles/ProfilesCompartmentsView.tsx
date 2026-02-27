@@ -1,5 +1,5 @@
 import { clsx } from "clsx"
-import { ChevronDown, Lock, Plus, Save, Trash2, Users } from "lucide-react"
+import { ChevronDown, LoaderCircle, Lock, Plus, Save, Trash2, Users } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { StateServiceClient } from "../../services/grpc-client"
 import type { SettingsState, SavedCompartment } from "../../services/types"
@@ -24,13 +24,8 @@ const EMPTY_SETTINGS: SettingsState = {
     privateKey: "",
     privateKeyPassphrase: "",
     systemPrompt: "",
-    nativeToolCall: true,
-    parallelToolCalling: true,
-    strictPlanMode: true,
-    autoCompact: true,
-    checkpoints: true,
     shellIntegrationTimeoutSec: 4,
-    chatMaxTokens: 64000,
+    chatMaxTokens: 16000,
     chatTemperature: 0,
     chatTopP: 1,
     authMode: "config-file",
@@ -102,7 +97,7 @@ export default function ProfilesCompartmentsView() {
     const handleSave = useCallback(async () => {
         setSaving(true)
         try {
-            await StateServiceClient.saveSettings({ ...settings, suppressNotification: true })
+            await StateServiceClient.saveSettings(settings)
         } catch (error) {
             console.error("Failed to save settings:", error)
         } finally {
@@ -120,10 +115,18 @@ export default function ProfilesCompartmentsView() {
 
     return (
         <div className="flex flex-col gap-4">
-            <h3 className="flex items-center gap-1.5 text-md font-semibold">
-                <Users size={14} />
-                Compartments
-            </h3>
+            <div className="flex items-center justify-between">
+                <h3 className="flex items-center gap-1.5 text-md font-semibold">
+                    <Users size={14} />
+                    Compartments
+                </h3>
+                {saving && (
+                    <span className="inline-flex items-center gap-1 text-[11px] text-description">
+                        <LoaderCircle size={12} className="animate-spin" />
+                        Saving...
+                    </span>
+                )}
+            </div>
             <p className="-mt-2 text-xs text-description">Manage OCI profiles and their compartment mappings.</p>
 
             <ProfileConfigEditor settings={settings} updateField={updateField} />
@@ -147,14 +150,31 @@ function ProfileConfigEditor({
     const [newCompName, setNewCompName] = useState("")
     const [editingProfile, setEditingProfile] = useState<string | null>(null)
     const [selectedProfile, setSelectedProfile] = useState<string | null>(null)
+    const [selectedProfileTenancyOcid, setSelectedProfileTenancyOcid] = useState<string>("")
 
     const profiles = settings.profilesConfig || []
-    const tenancyOcid = settings.tenancyOcid?.trim() || ""
 
     // Auto-select first profile if none selected or if current selection no longer exists
     const effectiveSelectedProfile = (selectedProfile && profiles.some(p => p.name === selectedProfile))
         ? selectedProfile
         : (profiles.length > 0 ? profiles[0].name : null)
+
+    // Load tenancy OCID for the selected profile
+    useEffect(() => {
+        if (!effectiveSelectedProfile) {
+            setSelectedProfileTenancyOcid("")
+            return
+        }
+        // Load the selected profile's secrets to get its tenancy OCID
+        StateServiceClient.getProfileSecrets(effectiveSelectedProfile)
+            .then((secrets) => {
+                setSelectedProfileTenancyOcid(secrets.tenancyOcid?.trim() || "")
+            })
+            .catch((err) => {
+                console.error("Failed to load profile secrets:", err)
+                setSelectedProfileTenancyOcid("")
+            })
+    }, [effectiveSelectedProfile])
 
     const addCompartment = (profileName: string) => {
         if (!newCompId.trim() || !newCompName.trim()) return
@@ -220,13 +240,13 @@ function ProfileConfigEditor({
                         {/* Compartments inside Profile */}
                         <div className="flex flex-col pl-2 gap-1 border-l-2 border-border-panel">
                             {/* Immutable Root Compartment (Tenancy OCID) */}
-                            {tenancyOcid && (
+                            {selectedProfileTenancyOcid && (
                                 <div className="flex items-center justify-between gap-2 px-2 py-1 rounded bg-[color-mix(in_srgb,var(--vscode-editor-background)_85%,black_15%)]">
                                     <div className="flex items-center gap-1.5 min-w-0">
                                         <Lock size={10} className="shrink-0 text-description" />
                                         <div className="flex flex-col min-w-0">
                                             <span className="text-xs truncate font-medium">Root (Tenancy)</span>
-                                            <span className="text-[10px] text-description truncate" title={tenancyOcid}>{tenancyOcid}</span>
+                                            <span className="text-[10px] text-description truncate" title={selectedProfileTenancyOcid}>{selectedProfileTenancyOcid}</span>
                                         </div>
                                     </div>
                                 </div>

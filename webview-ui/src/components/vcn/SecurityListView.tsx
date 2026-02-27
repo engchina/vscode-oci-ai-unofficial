@@ -18,6 +18,7 @@ export default function SecurityListView({
 
     const [editingList, setEditingList] = useState<SecurityListResource | null>(null)
     const [isCreating, setIsCreating] = useState(false)
+    const [deletingId, setDeletingId] = useState<string | null>(null)
 
     const load = useCallback(async () => {
         setLoading(true)
@@ -38,13 +39,14 @@ export default function SecurityListView({
 
     const handleDelete = async (id: string) => {
         if (!confirm("Are you sure you want to delete this Security List?")) return
+        setDeletingId(id)
         try {
-            setLoading(true)
             await ResourceServiceClient.deleteSecurityList({ securityListId: id, region: vcn.region })
             await load()
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err))
-            setLoading(false)
+        } finally {
+            setDeletingId(null)
         }
     }
 
@@ -131,8 +133,8 @@ export default function SecurityListView({
                                         <Button variant="secondary" size="sm" onClick={() => setEditingList(sl)}>
                                             <Edit size={12} />
                                         </Button>
-                                        <Button variant="secondary" size="sm" onClick={() => handleDelete(sl.id)}>
-                                            <Trash2 size={12} className="text-error" />
+                                        <Button variant="secondary" size="sm" onClick={() => handleDelete(sl.id)} disabled={deletingId === sl.id}>
+                                            {deletingId === sl.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} className="text-error" />}
                                         </Button>
                                     </div>
                                 </div>
