@@ -437,7 +437,9 @@ export class OciService {
         compartmentId,
         dbSystemId: dbSystem.id,
       });
-      for (const node of nodesResult.items || []) {
+      const nodes = nodesResult.items || [];
+
+      for (const node of nodes) {
         if (node.vnicId) {
           try {
             const vnic = (await vcnClient.getVnic({ vnicId: node.vnicId })).vnic;
@@ -446,6 +448,8 @@ export class OciService {
           } catch { }
         }
       }
+
+      dbSystem.nodeLifecycleState = deriveNodeLifecycleState(nodes);
     } catch { }
   }
 
@@ -467,6 +471,28 @@ export class OciService {
     } while (page);
     return all;
   }
+}
+
+const NODE_TRANSITIONAL_STATES = new Set([
+  "STARTING", "STOPPING", "PROVISIONING", "TERMINATING",
+  "UPDATING", "MIGRATING",
+]);
+
+function deriveNodeLifecycleState(nodes: { lifecycleState?: string }[]): string | undefined {
+  if (nodes.length === 0) return undefined;
+
+  let hasStopped = false;
+  for (const node of nodes) {
+    const state = (node.lifecycleState as string) || "";
+    if (NODE_TRANSITIONAL_STATES.has(state)) {
+      return state;
+    }
+    if (state === "STOPPED") {
+      hasStopped = true;
+    }
+  }
+  if (hasStopped) return "STOPPED";
+  return undefined;
 }
 
 function splitRegions(raw: string): string[] {

@@ -143,7 +143,10 @@ export default function DbSystemsView() {
         return () => window.removeEventListener("message", onMessage)
     }, [load])
 
-    const isPolling = dbSystems.some(db => TRANSITIONAL_STATES.has(db.lifecycleState))
+    const isPolling = dbSystems.some(db =>
+        TRANSITIONAL_STATES.has(db.lifecycleState) ||
+        (db.nodeLifecycleState != null && TRANSITIONAL_STATES.has(db.nodeLifecycleState))
+    )
     useEffect(() => {
         if (!isPolling) return
         const timer = setInterval(load, POLL_INTERVAL_MS)
@@ -761,8 +764,9 @@ function DatabaseCard({
     onChangeSshKeyOverride: (id: string, k: string) => void
 }) {
     const isActing = actionState?.id === dbSystem.id
-    const isAvailable = dbSystem.lifecycleState === "AVAILABLE"
-    const isTerminal = dbSystem.lifecycleState === "TERMINATED" || dbSystem.lifecycleState === "FAILED"
+    const effectiveState = dbSystem.nodeLifecycleState ?? dbSystem.lifecycleState
+    const isAvailable = effectiveState === "AVAILABLE"
+    const isTerminal = effectiveState === "TERMINATED" || effectiveState === "FAILED"
     const isConnecting = connectingId === dbSystem.id
 
     const host = selectedIp
@@ -835,7 +839,14 @@ function DatabaseCard({
                     </div>
 
                 </div>
-                <LifecycleBadge state={dbSystem.lifecycleState} />
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                    <LifecycleBadge state={effectiveState} />
+                    {dbSystem.nodeLifecycleState && dbSystem.nodeLifecycleState !== dbSystem.lifecycleState && (
+                        <span className="text-[9px] text-description">
+                            System: {dbSystem.lifecycleState} / Node: {dbSystem.nodeLifecycleState}
+                        </span>
+                    )}
+                </div>
             </div>
 
             <div className="flex items-center gap-2">

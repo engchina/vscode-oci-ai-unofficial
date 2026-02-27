@@ -14,6 +14,7 @@ export interface DbSystemResource {
   id: string;
   name: string;
   lifecycleState: ResourceState | string;
+  nodeLifecycleState?: string;
   compartmentId?: string;
   region?: string;
   publicIp?: string;

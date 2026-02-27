@@ -1,7 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
   <!-- Background removed for sidebar compatibility -->
-  
-  <g transform="translate(13, 25) scale(0.9)">
+  <g transform="translate(-15, -10) scale(1.15)">
     <g transform="translate(0, 15)">
       <!-- Cloud Silhouette (Deep Red) -->
       <path d="M70 160 h110 c25 0 45 -20 45 -45 c0 -23.5 -18 -42.5 -41 -44.5 c-6 -25 -28 -45 -54 -45 c-25 0 -47 17.5 -53 42 c-22 1 -40 20 -40 42.5 c0 24.5 19.5 45 44 45 Z" 
