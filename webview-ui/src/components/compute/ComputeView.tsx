@@ -5,10 +5,20 @@ import { useExtensionState } from "../../context/ExtensionStateContext"
 import { ResourceServiceClient } from "../../services/grpc-client"
 import type { ComputeResource } from "../../services/types"
 import { DEFAULT_SSH_USERNAME, SSH_CONFIG_STORAGE_KEY, loadSshConfig, saveSshConfig, type HostPreference, type SshConfig } from "../../sshConfig"
+import GuardrailDialog from "../common/GuardrailDialog"
 import Button from "../ui/Button"
 import CompartmentSelector from "../ui/CompartmentSelector"
 
 type ActionState = { id: string; action: "starting" | "stopping" } | null
+type GuardrailState = {
+  tone: "warning" | "danger"
+  title: string
+  description: string
+  confirmLabel: string
+  details: string[]
+  requireText?: string
+  onConfirm: () => Promise<void>
+} | null
 
 const TRANSITIONAL_STATES = new Set(["STARTING", "STOPPING", "PROVISIONING", "TERMINATING"])
 const POLL_INTERVAL_MS = 5000
@@ -28,6 +38,7 @@ export default function ComputeView() {
   const [sshConfig, setSshConfig] = useState<SshConfig>(loadSshConfig)
   const [sshUserOverrides, setSshUserOverrides] = useState<Record<string, string>>(loadSshUserOverrides)
   const [sshKeyOverrides, setSshKeyOverrides] = useState<Record<string, string>>(loadSshKeyOverrides)
+  const [guardrail, setGuardrail] = useState<GuardrailState>(null)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -167,6 +178,17 @@ export default function ComputeView() {
     [sshConfig, sshUserOverrides, sshKeyOverrides],
   )
 
+  const handleGuardedAction = useCallback(async () => {
+    if (!guardrail) return
+    try {
+      await guardrail.onConfirm()
+      setGuardrail(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+      setGuardrail(null)
+    }
+  }, [guardrail])
+
   useEffect(() => {
     saveSshConfig(sshConfig)
   }, [sshConfig])
@@ -301,6 +323,7 @@ export default function ComputeView() {
                             sshKeyOverride={sshKeyOverrides[instance.id] || ""}
                             onStart={handleStart}
                             onStop={handleStop}
+                            onRequestGuardrail={setGuardrail}
                             onConnect={handleConnect}
                             onChangeSshUserOverride={(instanceId, username) =>
                               setSshUserOverrides((prev) => ({ ...prev, [instanceId]: username }))
@@ -319,6 +342,23 @@ export default function ComputeView() {
           </div>
         )}
       </div>
+
+      <GuardrailDialog
+        open={guardrail !== null}
+        title={guardrail?.title ?? ""}
+        description={guardrail?.description ?? ""}
+        confirmLabel={guardrail?.confirmLabel ?? "Confirm"}
+        details={guardrail?.details ?? []}
+        tone={guardrail?.tone}
+        requireText={guardrail?.requireText}
+        busy={actionState !== null}
+        onCancel={() => {
+          if (!actionState) {
+            setGuardrail(null)
+          }
+        }}
+        onConfirm={handleGuardedAction}
+      />
     </div>
   )
 }
@@ -332,6 +372,7 @@ function InstanceCard({
   sshKeyOverride,
   onStart,
   onStop,
+  onRequestGuardrail,
   onConnect,
   onChangeSshUserOverride,
   onChangeSshKeyOverride,
@@ -344,6 +385,7 @@ function InstanceCard({
   sshKeyOverride: string
   onStart: (id: string, region?: string) => void
   onStop: (id: string, region?: string) => void
+  onRequestGuardrail: (value: GuardrailState) => void
   onConnect: (instance: ComputeResource) => void
   onChangeSshUserOverride: (instanceId: string, username: string) => void
   onChangeSshKeyOverride: (instanceId: string, keyPath: string) => void
@@ -405,7 +447,20 @@ function InstanceCard({
           size="sm"
           variant="secondary"
           disabled={isActing || !isStopped}
-          onClick={() => onStart(instance.id, instance.region)}
+          onClick={() => onRequestGuardrail({
+            tone: "warning",
+            title: "Start Compute Instance",
+            description: "Starting this instance can resume workloads and start billing again.",
+            confirmLabel: "Start Instance",
+            details: [
+              `Instance: ${instance.name}`,
+              `Region: ${instance.region || "default"}`,
+              `Public IP: ${instance.publicIp || "None"}`,
+            ],
+            onConfirm: async () => {
+              await onStart(instance.id, instance.region)
+            },
+          })}
           className="flex items-center gap-1.5"
         >
           {isActing && actionState?.action === "starting" ? (
@@ -419,7 +474,21 @@ function InstanceCard({
           size="sm"
           variant="secondary"
           disabled={isActing || !isRunning}
-          onClick={() => onStop(instance.id, instance.region)}
+          onClick={() => onRequestGuardrail({
+            tone: "danger",
+            title: "Stop Compute Instance",
+            description: "Stopping this instance interrupts any workloads currently running on it.",
+            confirmLabel: "Stop Instance",
+            requireText: instance.name,
+            details: [
+              `Instance: ${instance.name}`,
+              `Region: ${instance.region || "default"}`,
+              `Private IP: ${instance.privateIp || "None"}`,
+            ],
+            onConfirm: async () => {
+              await onStop(instance.id, instance.region)
+            },
+          })}
           className="flex items-center gap-1.5"
         >
           {isActing && actionState?.action === "stopping" ? (

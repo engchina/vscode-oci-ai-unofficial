@@ -1,6 +1,17 @@
 import * as vscode from "vscode";
+import * as common from "oci-common";
+import { Readable } from "stream";
 import { OciClientFactory } from "./clientFactory";
-import { AdbResource, ComputeResource, VcnResource, SecurityListResource, SecurityRule, DbSystemResource } from "../types";
+import {
+  AdbResource,
+  ComputeResource,
+  VcnResource,
+  SecurityListResource,
+  SecurityRule,
+  DbSystemResource,
+  ObjectStorageBucketResource,
+  ObjectStorageObjectResource
+} from "../types";
 
 export class OciService {
   constructor(private readonly factory: OciClientFactory) { }
@@ -383,6 +394,198 @@ export class OciService {
     await client.deleteSecurityList({ securityListId });
   }
 
+  public async listObjectStorageBuckets(): Promise<ObjectStorageBucketResource[]> {
+    const cfg = vscode.workspace.getConfiguration("ociAi");
+    const compartmentIds = normalizeCompartmentIds(cfg.get<string[]>("objectStorageCompartmentIds") || []);
+    if (compartmentIds.length === 0) {
+      return [];
+    }
+
+    const buckets: ObjectStorageBucketResource[] = [];
+    for (const region of splitRegions(cfg.get<string>("region", ""))) {
+      const resolvedRegion = await this.resolveRegionId(region);
+      const namespaceName = await this.getObjectStorageNamespace(resolvedRegion);
+      for (const compartmentId of compartmentIds) {
+        let page: string | undefined;
+        do {
+          const response = await this.sendObjectStorageRequest({
+            method: "GET",
+            region: resolvedRegion,
+            path: "/n/{namespaceName}/b/",
+            pathParams: { "{namespaceName}": namespaceName },
+            queryParams: {
+              compartmentId,
+              limit: 1000,
+              page,
+            },
+          });
+          const items = await response.json() as Array<Record<string, unknown>>;
+          const detailedBuckets = await Promise.all(
+            items.map(async (bucket): Promise<ObjectStorageBucketResource | null> => {
+              const name = String(bucket.name ?? "").trim();
+              if (!name) {
+                return null;
+              }
+              const details = await this.getObjectStorageBucketDetails(namespaceName, name, resolvedRegion);
+              const exactStats = await this.getObjectStorageBucketExactStats(namespaceName, name, resolvedRegion);
+              return {
+                name,
+                compartmentId,
+                namespaceName,
+                region: resolvedRegion,
+                storageTier: readOptionalString(details.storageTier ?? bucket.storageTier),
+                publicAccessType: readOptionalString(details.publicAccessType ?? bucket.publicAccessType),
+                approximateCount: exactStats.approximateCount,
+                approximateSize: exactStats.approximateSize,
+                createdAt: readOptionalString(details.timeCreated ?? bucket.timeCreated),
+              } satisfies ObjectStorageBucketResource;
+            })
+          );
+          buckets.push(...detailedBuckets.filter((bucket): bucket is ObjectStorageBucketResource => bucket !== null));
+          page = response.headers.get("opc-next-page") || undefined;
+        } while (page);
+      }
+    }
+
+    return buckets.sort((a, b) =>
+      a.compartmentId.localeCompare(b.compartmentId) ||
+      a.region.localeCompare(b.region) ||
+      a.name.localeCompare(b.name)
+    );
+  }
+
+  public async listObjectStorageObjects(
+    namespaceName: string,
+    bucketName: string,
+    prefix = "",
+    region?: string
+  ): Promise<{ prefixes: string[]; objects: ObjectStorageObjectResource[] }> {
+    const response = await this.sendObjectStorageRequest({
+      method: "GET",
+      region,
+      path: "/n/{namespaceName}/b/{bucketName}/o",
+      pathParams: {
+        "{namespaceName}": namespaceName,
+        "{bucketName}": bucketName,
+      },
+      queryParams: {
+        delimiter: "/",
+        fields: "name,size,etag,md5,timeCreated,timeModified,storageTier,archivalState",
+        prefix: prefix || undefined,
+        limit: 1000,
+      },
+    });
+    const payload = await response.json() as {
+      prefixes?: unknown[];
+      objects?: Array<Record<string, unknown>>;
+    };
+
+    return {
+      prefixes: Array.isArray(payload.prefixes)
+        ? payload.prefixes.map((value) => String(value ?? "").trim()).filter((value) => value.length > 0)
+        : [],
+      objects: Array.isArray(payload.objects)
+        ? payload.objects
+          .map((item) => ({
+            name: String(item.name ?? "").trim(),
+            size: readOptionalNumber(item.size),
+            etag: readOptionalString(item.etag),
+            md5: readOptionalString(item.md5),
+            storageTier: readOptionalString(item.storageTier),
+            archivalState: readOptionalString(item.archivalState),
+            timeCreated: readOptionalString(item.timeCreated),
+            timeModified: readOptionalString(item.timeModified),
+          }))
+          .filter((item) => item.name.length > 0)
+        : [],
+    };
+  }
+
+  public async uploadObjectStorageObject(
+    namespaceName: string,
+    bucketName: string,
+    objectName: string,
+    content: Uint8Array,
+    region?: string
+  ): Promise<void> {
+    await this.sendObjectStorageRequest({
+      method: "PUT",
+      region,
+      path: "/n/{namespaceName}/b/{bucketName}/o/{objectName}",
+      pathParams: {
+        "{namespaceName}": namespaceName,
+        "{bucketName}": bucketName,
+        "{objectName}": objectName,
+      },
+      headerParams: {
+        "content-type": "application/octet-stream",
+        "content-length": String(content.byteLength),
+      },
+      bodyContent: Readable.from(Buffer.from(content)),
+    });
+  }
+
+  public async downloadObjectStorageObject(
+    namespaceName: string,
+    bucketName: string,
+    objectName: string,
+    region?: string
+  ): Promise<Uint8Array> {
+    const response = await this.sendObjectStorageRequest({
+      method: "GET",
+      region,
+      path: "/n/{namespaceName}/b/{bucketName}/o/{objectName}",
+      pathParams: {
+        "{namespaceName}": namespaceName,
+        "{bucketName}": bucketName,
+        "{objectName}": objectName,
+      },
+      headerParams: {
+        accept: "application/octet-stream",
+      },
+    });
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
+  public async createObjectStoragePreauthenticatedRequest(
+    namespaceName: string,
+    bucketName: string,
+    objectName: string,
+    expiresInHours = 24,
+    region?: string
+  ): Promise<{ accessType: string; accessUri: string; fullUrl: string; objectName: string; timeExpires: string }> {
+    const resolvedRegion = await this.resolveRegionId(region);
+    const timeExpires = new Date(Date.now() + Math.max(1, expiresInHours) * 60 * 60 * 1000).toISOString();
+    const response = await this.sendObjectStorageRequest({
+      method: "POST",
+      region: resolvedRegion,
+      path: "/n/{namespaceName}/b/{bucketName}/p/",
+      pathParams: {
+        "{namespaceName}": namespaceName,
+        "{bucketName}": bucketName,
+      },
+      headerParams: {
+        "content-type": "application/json",
+      },
+      bodyContent: JSON.stringify({
+        name: `oci-ai-${sanitizeParName(objectName)}-${Date.now()}`,
+        objectName,
+        accessType: "ObjectRead",
+        timeExpires,
+      }),
+    });
+    const payload = await response.json() as Record<string, unknown>;
+    const accessUri = readOptionalString(payload.accessUri) || "";
+
+    return {
+      accessType: readOptionalString(payload.accessType) || "ObjectRead",
+      accessUri,
+      fullUrl: accessUri ? `https://objectstorage.${resolvedRegion}.oraclecloud.com${accessUri}` : "",
+      objectName,
+      timeExpires: readOptionalString(payload.timeExpires) || timeExpires,
+    };
+  }
+
   private async populateInstanceNetworkAddresses(
     instance: ComputeResource,
     compartmentId: string | undefined,
@@ -470,6 +673,127 @@ export class OciService {
       page = response.opcNextPage;
     } while (page);
     return all;
+  }
+
+  private async getObjectStorageNamespace(region?: string): Promise<string> {
+    const response = await this.sendObjectStorageRequest({
+      method: "GET",
+      region,
+      path: "/n/",
+    });
+    const raw = (await response.text()).trim();
+    if (!raw) {
+      throw new Error("Object Storage namespace response was empty.");
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed === "string" && parsed.trim()) {
+        return parsed.trim();
+      }
+    } catch {
+      // Fall back to raw text below.
+    }
+    return raw.replace(/^"+|"+$/g, "").trim();
+  }
+
+  private async getObjectStorageBucketDetails(
+    namespaceName: string,
+    bucketName: string,
+    region?: string
+  ): Promise<Record<string, unknown>> {
+    const response = await this.sendObjectStorageRequest({
+      method: "GET",
+      region,
+      path: "/n/{namespaceName}/b/{bucketName}",
+      pathParams: {
+        "{namespaceName}": namespaceName,
+        "{bucketName}": bucketName,
+      },
+      queryParams: {
+        fields: "approximateCount,approximateSize",
+      },
+    });
+    return await response.json() as Record<string, unknown>;
+  }
+
+  private async getObjectStorageBucketExactStats(
+    namespaceName: string,
+    bucketName: string,
+    region?: string
+  ): Promise<{ approximateCount: number; approximateSize: number }> {
+    let approximateCount = 0;
+    let approximateSize = 0;
+    let page: string | undefined;
+
+    do {
+      const response = await this.sendObjectStorageRequest({
+        method: "GET",
+        region,
+        path: "/n/{namespaceName}/b/{bucketName}/o",
+        pathParams: {
+          "{namespaceName}": namespaceName,
+          "{bucketName}": bucketName,
+        },
+        queryParams: {
+          fields: "size",
+          limit: 1000,
+          page,
+        },
+      });
+      const payload = await response.json() as {
+        objects?: Array<Record<string, unknown>>;
+      };
+
+      for (const item of Array.isArray(payload.objects) ? payload.objects : []) {
+        approximateCount += 1;
+        approximateSize += readOptionalNumber(item.size) ?? 0;
+      }
+      page = response.headers.get("opc-next-page") || undefined;
+    } while (page);
+
+    return {
+      approximateCount,
+      approximateSize,
+    };
+  }
+
+  private async sendObjectStorageRequest(params: {
+    method: common.Method;
+    region?: string;
+    path: string;
+    pathParams?: common.Params;
+    queryParams?: common.Params;
+    headerParams?: common.Params;
+    bodyContent?: string | Readable;
+  }): Promise<Response> {
+    const resolvedRegion = await this.resolveRegionId(params.region);
+    if (!resolvedRegion) {
+      throw new Error("OCI region is required for Object Storage requests.");
+    }
+
+    const authenticationDetailsProvider = await this.factory.createAuthenticationProviderAsync();
+    const signer = new common.DefaultRequestSigner(authenticationDetailsProvider);
+    const httpClient = new common.FetchHttpClient(signer);
+    const request = await common.composeRequest({
+      baseEndpoint: `https://objectstorage.${resolvedRegion}.oraclecloud.com`,
+      path: params.path,
+      method: params.method,
+      defaultHeaders: params.headerParams?.accept ? {} : { accept: "application/json" },
+      pathParams: params.pathParams,
+      queryParams: params.queryParams,
+      headerParams: params.headerParams,
+      bodyContent: params.bodyContent,
+    });
+    const response = await httpClient.send(request, params.method === "GET" || params.method === "HEAD");
+    if (!response.ok) {
+      throw new Error(await formatObjectStorageError(response));
+    }
+    return response;
+  }
+
+  private async resolveRegionId(regionOverride?: string): Promise<string> {
+    const client = await this.factory.createComputeClientAsync(regionOverride);
+    return String(client.regionId || regionOverride || "").trim();
   }
 }
 
@@ -562,4 +886,38 @@ function extractServiceName(connectString: string): string {
   }
   const suffix = normalized.slice(slashIdx + 1).split(/[?\s]/)[0] || "";
   return suffix.trim();
+}
+
+function readOptionalString(value: unknown): string | undefined {
+  const normalized = String(value ?? "").trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function readOptionalNumber(value: unknown): number | undefined {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+async function formatObjectStorageError(response: Response): Promise<string> {
+  const fallback = `Object Storage request failed with status ${response.status}.`;
+  try {
+    const text = await response.text();
+    if (!text) {
+      return fallback;
+    }
+    try {
+      const payload = JSON.parse(text) as Record<string, unknown>;
+      const message = readOptionalString(payload.message) || readOptionalString(payload.code);
+      return message || text || fallback;
+    } catch {
+      return text;
+    }
+  } catch {
+    return fallback;
+  }
+}
+
+function sanitizeParName(objectName: string): string {
+  const base = String(objectName ?? "").trim().split("/").filter(Boolean).pop() || "object";
+  return base.replace(/[^a-zA-Z0-9_.-]+/g, "-").slice(0, 40) || "object";
 }

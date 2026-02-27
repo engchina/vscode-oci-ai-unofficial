@@ -134,7 +134,7 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
     },
     updateFeatureCompartmentSelection: async (c, msg) => {
       await c.updateFeatureCompartmentSelection(
-        String(msg.featureKey ?? "") as "compute" | "adb" | "dbSystem" | "vcn" | "chat",
+        String(msg.featureKey ?? "") as "compute" | "adb" | "dbSystem" | "vcn" | "chat" | "objectStorage",
         Array.isArray(msg.compartmentIds) ? msg.compartmentIds.map((id: unknown) => String(id ?? "")) : []
       );
       return {};
@@ -280,6 +280,27 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
       await c.deleteSecurityList(msg.securityListId, msg.region);
       showStatusMessage("Security List deleted.");
       return {};
+    },
+    listObjectStorageBuckets: async (c) => ({ buckets: await c.listObjectStorageBuckets() }),
+    listObjectStorageObjects: async (c, msg) => c.listObjectStorageObjects(msg),
+    uploadObjectStorageObject: async (c, msg) => {
+      const result = await c.uploadObjectStorageObject(msg);
+      if (!result.cancelled) {
+        showStatusMessage("Object uploaded.");
+      }
+      return result;
+    },
+    downloadObjectStorageObject: async (c, msg) => {
+      const result = await c.downloadObjectStorageObject(msg);
+      if (!result.cancelled) {
+        showStatusMessage("Object downloaded.");
+      }
+      return result;
+    },
+    createObjectStoragePar: async (c, msg) => {
+      const result = await c.createObjectStoragePar(msg);
+      showStatusMessage("Pre-authenticated request created.");
+      return result;
     },
   },
 };

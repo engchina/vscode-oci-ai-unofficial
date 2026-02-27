@@ -26,6 +26,7 @@ import type {
     OracleDbDiagnosticsResponse,
 } from "../../services/types"
 import { DEFAULT_SSH_USERNAME, loadSshConfig, saveSshConfig, type SshConfig } from "../../sshConfig"
+import GuardrailDialog from "../common/GuardrailDialog"
 import OracleDiagnosticsPanel from "../common/OracleDiagnosticsPanel"
 import Button from "../ui/Button"
 import CompartmentSelector from "../ui/CompartmentSelector"
@@ -33,6 +34,15 @@ import Input from "../ui/Input"
 import Textarea from "../ui/Textarea"
 
 type ActionState = { id: string; action: "starting" | "stopping" } | null
+type GuardrailState = {
+    tone: "warning" | "danger"
+    title: string
+    description: string
+    confirmLabel: string
+    details: string[]
+    requireText?: string
+    onConfirm: () => Promise<void>
+} | null
 
 const TRANSITIONAL_STATES = new Set([
     "STARTING", "STOPPING", "PROVISIONING", "TERMINATING",
@@ -72,6 +82,7 @@ export default function DbSystemsView() {
     const [sshUserOverrides, setSshUserOverrides] = useState<Record<string, string>>({})
     const [sshKeyOverrides, setSshKeyOverrides] = useState<Record<string, string>>({})
     const [sshSelectedIp, setSshSelectedIp] = useState<Record<string, string>>({})
+    const [guardrail, setGuardrail] = useState<GuardrailState>(null)
 
     const selectedDatabase = useMemo(
         () => dbSystems.find((db) => db.id === selectedDbId) ?? null,
@@ -219,6 +230,17 @@ export default function DbSystemsView() {
         },
         [sshConfig, sshUserOverrides, sshKeyOverrides],
     )
+
+    const handleGuardedAction = useCallback(async () => {
+        if (!guardrail) return
+        try {
+            await guardrail.onConfirm()
+            setGuardrail(null)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : String(err))
+            setGuardrail(null)
+        }
+    }, [guardrail])
 
     const handleConnect = useCallback(async () => {
         if (!selectedDatabase?.id) {
@@ -494,6 +516,7 @@ export default function DbSystemsView() {
                                                             selectedIp={sshSelectedIp[db.id] || db.publicIp || db.privateIp || ""}
                                                             onStart={handleStart}
                                                             onStop={handleStop}
+                                                            onRequestGuardrail={setGuardrail}
                                                             onSelect={setSelectedDbId}
                                                             onConnectSsh={handleSshConnect}
                                                             onChangeSshSelectedIp={(id, ip) => setSshSelectedIp((prev) => ({ ...prev, [id]: ip }))}
@@ -726,6 +749,23 @@ export default function DbSystemsView() {
                     </div>
                 )}
             </div>
+
+            <GuardrailDialog
+                open={guardrail !== null}
+                title={guardrail?.title ?? ""}
+                description={guardrail?.description ?? ""}
+                confirmLabel={guardrail?.confirmLabel ?? "Confirm"}
+                details={guardrail?.details ?? []}
+                tone={guardrail?.tone}
+                requireText={guardrail?.requireText}
+                busy={actionState !== null}
+                onCancel={() => {
+                    if (!actionState) {
+                        setGuardrail(null)
+                    }
+                }}
+                onConfirm={handleGuardedAction}
+            />
         </div>
     )
 }
@@ -741,6 +781,7 @@ function DatabaseCard({
     selectedIp,
     onStart,
     onStop,
+    onRequestGuardrail,
     onSelect,
     onConnectSsh,
     onChangeSshSelectedIp,
@@ -757,6 +798,7 @@ function DatabaseCard({
     selectedIp: string
     onStart: (id: string, region?: string) => void
     onStop: (id: string, region?: string) => void
+    onRequestGuardrail: (value: GuardrailState) => void
     onSelect: (id: string) => void
     onConnectSsh: (sys: DbSystemResource) => void
     onChangeSshSelectedIp: (id: string, ip: string) => void
@@ -861,7 +903,20 @@ function DatabaseCard({
                     size="sm"
                     variant="secondary"
                     disabled={isActing || isAvailable || isTerminal}
-                    onClick={() => onStart(dbSystem.id, dbSystem.region)}
+                    onClick={() => onRequestGuardrail({
+                        tone: "warning",
+                        title: "Start DB System",
+                        description: "Starting this DB System resumes database node workloads and billing.",
+                        confirmLabel: "Start DB System",
+                        details: [
+                            `DB System: ${dbSystem.name}`,
+                            `Region: ${dbSystem.region || "default"}`,
+                            `Target IP: ${host || "None"}`,
+                        ],
+                        onConfirm: async () => {
+                            await onStart(dbSystem.id, dbSystem.region)
+                        },
+                    })}
                     className="flex items-center gap-1.5"
                 >
                     {isActing && actionState?.action === "starting" ? (
@@ -875,7 +930,21 @@ function DatabaseCard({
                     size="sm"
                     variant="secondary"
                     disabled={isActing || !isAvailable}
-                    onClick={() => onStop(dbSystem.id, dbSystem.region)}
+                    onClick={() => onRequestGuardrail({
+                        tone: "danger",
+                        title: "Stop DB System",
+                        description: "Stopping this DB System interrupts database node availability.",
+                        confirmLabel: "Stop DB System",
+                        requireText: dbSystem.name,
+                        details: [
+                            `DB System: ${dbSystem.name}`,
+                            `Region: ${dbSystem.region || "default"}`,
+                            `Target IP: ${host || "None"}`,
+                        ],
+                        onConfirm: async () => {
+                            await onStop(dbSystem.id, dbSystem.region)
+                        },
+                    })}
                     className="flex items-center gap-1.5"
                 >
                     {isActing && actionState?.action === "stopping" ? (

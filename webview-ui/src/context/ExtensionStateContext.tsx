@@ -24,6 +24,7 @@ export interface ExtensionStateContextType {
   adbCompartmentIds: string[]
   dbSystemCompartmentIds: string[]
   vcnCompartmentIds: string[]
+  objectStorageCompartmentIds: string[]
   profilesConfig: { name: string; compartments: { id: string; name: string }[] }[]
   tenancyOcid: string
   genAiRegion: string
@@ -75,6 +76,7 @@ export function ExtensionStateContextProvider({ children }: { children: ReactNod
     adbCompartmentIds: [],
     dbSystemCompartmentIds: [],
     vcnCompartmentIds: [],
+    objectStorageCompartmentIds: [],
     profilesConfig: [],
     tenancyOcid: "",
     genAiRegion: "",

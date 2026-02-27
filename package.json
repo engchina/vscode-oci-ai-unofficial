@@ -341,6 +341,14 @@
           "default": [],
           "description": "OCID of the compartment where Virtual Cloud Networks are located. Array of strings."
         },
+        "ociAi.objectStorageCompartmentIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Selected compartment IDs for Object Storage bucket browsing"
+        },
         "ociAi.chatCompartmentId": {
           "type": "string",
           "default": "",

@@ -5,7 +5,7 @@ import { useExtensionState } from "../../context/ExtensionStateContext"
 import { StateServiceClient } from "../../services/grpc-client"
 
 interface CompartmentSelectorProps {
-    featureKey: "compute" | "adb" | "chat" | "vcn" | "dbSystem"
+    featureKey: "compute" | "adb" | "chat" | "vcn" | "dbSystem" | "objectStorage"
     multiple?: boolean
 }
 
@@ -17,6 +17,7 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
         adbCompartmentIds,
         dbSystemCompartmentIds,
         vcnCompartmentIds,
+        objectStorageCompartmentIds,
         profilesConfig,
         tenancyOcid,
     } = useExtensionState()
@@ -64,6 +65,7 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
         else if (featureKey === "adb") selection = adbCompartmentIds
         else if (featureKey === "dbSystem") selection = dbSystemCompartmentIds
         else if (featureKey === "vcn") selection = vcnCompartmentIds
+        else if (featureKey === "objectStorage") selection = objectStorageCompartmentIds
         else if (featureKey === "chat") {
             // Default chat to root compartment if nothing selected
             if (chatCompartmentId) {
@@ -83,6 +85,7 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
         adbCompartmentIds,
         dbSystemCompartmentIds,
         vcnCompartmentIds,
+        objectStorageCompartmentIds,
         chatCompartmentId,
         normalizeCompartmentId,
         rootCompartment,

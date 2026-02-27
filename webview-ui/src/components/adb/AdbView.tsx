@@ -24,6 +24,7 @@ import type {
   LoadAdbConnectionResponse,
   OracleDbDiagnosticsResponse,
 } from "../../services/types"
+import GuardrailDialog from "../common/GuardrailDialog"
 import OracleDiagnosticsPanel from "../common/OracleDiagnosticsPanel"
 import Button from "../ui/Button"
 import CompartmentSelector from "../ui/CompartmentSelector"
@@ -31,6 +32,15 @@ import Input from "../ui/Input"
 import Textarea from "../ui/Textarea"
 
 type ActionState = { id: string; action: "starting" | "stopping" } | null
+type GuardrailState = {
+  tone: "warning" | "danger"
+  title: string
+  description: string
+  confirmLabel: string
+  details: string[]
+  requireText?: string
+  onConfirm: () => Promise<void>
+} | null
 
 const TRANSITIONAL_STATES = new Set([
   "STARTING", "STOPPING", "PROVISIONING", "TERMINATING",
@@ -63,6 +73,7 @@ export default function AdbView() {
   const [diagnostics, setDiagnostics] = useState<OracleDbDiagnosticsResponse | null>(null)
   const [loadingDiagnostics, setLoadingDiagnostics] = useState(false)
   const previousSelectedAdbIdRef = useRef("")
+  const [guardrail, setGuardrail] = useState<GuardrailState>(null)
 
   const selectedDatabase = useMemo(
     () => databases.find((db) => db.id === selectedAdbId) ?? null,
@@ -362,6 +373,17 @@ export default function AdbView() {
     }
   }, [selectedDatabase])
 
+  const handleGuardedAction = useCallback(async () => {
+    if (!guardrail) return
+    try {
+      await guardrail.onConfirm()
+      setGuardrail(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+      setGuardrail(null)
+    }
+  }, [guardrail])
+
   const handleDiagnostics = useCallback(async () => {
     setError(null)
     setLoadingDiagnostics(true)
@@ -459,6 +481,7 @@ export default function AdbView() {
                               actionState={actionState}
                               onStart={handleStart}
                               onStop={handleStop}
+                              onRequestGuardrail={setGuardrail}
                               onSelect={setSelectedAdbId}
                             />
                           ))}
@@ -699,6 +722,23 @@ export default function AdbView() {
           </div>
         )}
       </div>
+
+      <GuardrailDialog
+        open={guardrail !== null}
+        title={guardrail?.title ?? ""}
+        description={guardrail?.description ?? ""}
+        confirmLabel={guardrail?.confirmLabel ?? "Confirm"}
+        details={guardrail?.details ?? []}
+        tone={guardrail?.tone}
+        requireText={guardrail?.requireText}
+        busy={actionState !== null}
+        onCancel={() => {
+          if (!actionState) {
+            setGuardrail(null)
+          }
+        }}
+        onConfirm={handleGuardedAction}
+      />
     </div>
   )
 }
@@ -709,6 +749,7 @@ function DatabaseCard({
   actionState,
   onStart,
   onStop,
+  onRequestGuardrail,
   onSelect,
 }: {
   database: AdbResource
@@ -716,6 +757,7 @@ function DatabaseCard({
   actionState: ActionState
   onStart: (id: string, region?: string) => void
   onStop: (id: string, region?: string) => void
+  onRequestGuardrail: (value: GuardrailState) => void
   onSelect: (id: string) => void
 }) {
   const isActing = actionState?.id === database.id
@@ -752,7 +794,19 @@ function DatabaseCard({
           size="sm"
           variant="secondary"
           disabled={isActing || !isStopped}
-          onClick={() => onStart(database.id, database.region)}
+          onClick={() => onRequestGuardrail({
+            tone: "warning",
+            title: "Start Autonomous Database",
+            description: "Starting this database resumes access and billing.",
+            confirmLabel: "Start Database",
+            details: [
+              `Database: ${database.name}`,
+              `Region: ${database.region || "default"}`,
+            ],
+            onConfirm: async () => {
+              await onStart(database.id, database.region)
+            },
+          })}
           className="flex items-center gap-1.5"
         >
           {isActing && actionState?.action === "starting" ? (
@@ -766,7 +820,20 @@ function DatabaseCard({
           size="sm"
           variant="secondary"
           disabled={isActing || !isAvailable}
-          onClick={() => onStop(database.id, database.region)}
+          onClick={() => onRequestGuardrail({
+            tone: "danger",
+            title: "Stop Autonomous Database",
+            description: "Stopping this database interrupts client access until it is started again.",
+            confirmLabel: "Stop Database",
+            requireText: database.name,
+            details: [
+              `Database: ${database.name}`,
+              `Region: ${database.region || "default"}`,
+            ],
+            onConfirm: async () => {
+              await onStop(database.id, database.region)
+            },
+          })}
           className="flex items-center gap-1.5"
         >
           {isActing && actionState?.action === "stopping" ? (

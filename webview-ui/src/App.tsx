@@ -6,6 +6,7 @@ import ComputeView from "./components/compute/ComputeView"
 import VcnView from "./components/vcn/VcnView"
 import HistoryView from "./components/history/HistoryView"
 import Navbar from "./components/menu/Navbar"
+import ObjectStorageView from "./components/objectstorage/ObjectStorageView"
 import SettingsView from "./components/settings/SettingsView"
 import { useExtensionState } from "./context/ExtensionStateContext"
 import { Providers } from "./Providers"
@@ -89,6 +90,16 @@ function AppContent() {
         </div>
       </AccordionItem>
 
+
+      <AccordionItem
+        title="Object Storage"
+        isOpen={openSection === "objectStorage"}
+        onToggle={() => toggleSection("objectStorage")}
+      >
+        <div className="flex flex-col h-full">
+          <ObjectStorageView />
+        </div>
+      </AccordionItem>
 
       <AccordionItem
         title="Generative AI Chat"

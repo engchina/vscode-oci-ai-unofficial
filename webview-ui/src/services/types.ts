@@ -34,6 +34,7 @@ export interface AppState {
   adbCompartmentIds: string[]
   dbSystemCompartmentIds: string[]
   vcnCompartmentIds: string[]
+  objectStorageCompartmentIds: string[]
   profilesConfig: ProfileConfig[]
   tenancyOcid: string
   genAiRegion: string
@@ -54,6 +55,7 @@ export interface SaveSettingsRequest {
   adbCompartmentIds: string[]
   dbSystemCompartmentIds: string[]
   vcnCompartmentIds: string[]
+  objectStorageCompartmentIds: string[]
   genAiRegion: string
   genAiLlmModelId: string
   genAiEmbeddingModelId: string
@@ -238,6 +240,29 @@ export interface SecurityListResource {
   egressSecurityRules: SecurityRule[];
 }
 
+export interface ObjectStorageBucketResource {
+  name: string
+  compartmentId: string
+  namespaceName: string
+  region: string
+  storageTier?: string
+  publicAccessType?: string
+  approximateCount?: number
+  approximateSize?: number
+  createdAt?: string
+}
+
+export interface ObjectStorageObjectResource {
+  name: string
+  size?: number
+  etag?: string
+  md5?: string
+  storageTier?: string
+  archivalState?: string
+  timeCreated?: string
+  timeModified?: string
+}
+
 export interface ListComputeResponse {
   instances: ComputeResource[]
 }
@@ -340,6 +365,63 @@ export interface ListSecurityListRequest {
 
 export interface ListSecurityListResponse {
   securityLists: SecurityListResource[];
+}
+
+export interface ListObjectStorageBucketsResponse {
+  buckets: ObjectStorageBucketResource[]
+}
+
+export interface ListObjectStorageObjectsRequest {
+  namespaceName: string
+  bucketName: string
+  region?: string
+  prefix?: string
+}
+
+export interface ListObjectStorageObjectsResponse {
+  prefixes: string[]
+  objects: ObjectStorageObjectResource[]
+}
+
+export interface UploadObjectStorageObjectRequest {
+  namespaceName: string
+  bucketName: string
+  region?: string
+  objectName?: string
+  prefix?: string
+}
+
+export interface UploadObjectStorageObjectResponse {
+  objectName: string
+  objectSize?: number
+  cancelled?: boolean
+}
+
+export interface DownloadObjectStorageObjectRequest {
+  namespaceName: string
+  bucketName: string
+  objectName: string
+  region?: string
+}
+
+export interface DownloadObjectStorageObjectResponse {
+  cancelled?: boolean
+}
+
+export interface CreateObjectStorageParRequest {
+  namespaceName: string
+  bucketName: string
+  objectName: string
+  region?: string
+  expiresInHours?: number
+}
+
+export interface CreateObjectStorageParResponse {
+  accessType: string
+  accessUri: string
+  fullUrl: string
+  objectName: string
+  timeExpires: string
 }
 
 export interface UpdateSecurityListRequest {

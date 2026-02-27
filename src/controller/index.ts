@@ -10,11 +10,15 @@ import type {
   ConnectComputeSshResponse,
   ConnectAdbRequest,
   ConnectAdbResponse,
+  CreateObjectStorageParResponse,
+  DownloadObjectStorageObjectRequest,
+  DownloadObjectStorageObjectResponse,
   DownloadAdbWalletRequest,
   DownloadAdbWalletResponse,
   ExecuteAdbSqlRequest,
   ExecuteAdbSqlResponse,
   AdbConnectionProfile,
+  ListObjectStorageObjectsResponse,
   SaveAdbConnectionRequest,
   LoadAdbConnectionResponse,
   AppState,
@@ -23,7 +27,8 @@ import type {
   SaveSettingsRequest,
   SendMessageRequest,
   SettingsState,
-  StreamTokenResponse
+  StreamTokenResponse,
+  UploadObjectStorageObjectResponse
 } from "../shared/services";
 import type { ExtensionMessage } from "../shared/messages";
 
@@ -98,6 +103,7 @@ export class Controller {
       adbCompartmentIds: Array.isArray(cfg.get("adbCompartmentIds")) ? cfg.get<string[]>("adbCompartmentIds") as string[] : [],
       dbSystemCompartmentIds: Array.isArray(cfg.get("dbSystemCompartmentIds")) ? cfg.get<string[]>("dbSystemCompartmentIds") as string[] : [],
       vcnCompartmentIds: Array.isArray(cfg.get("vcnCompartmentIds")) ? cfg.get<string[]>("vcnCompartmentIds") as string[] : [],
+      objectStorageCompartmentIds: Array.isArray(cfg.get("objectStorageCompartmentIds")) ? cfg.get<string[]>("objectStorageCompartmentIds") as string[] : [],
       profilesConfig: Array.isArray(cfg.get("profilesConfig")) ? cfg.get<any[]>("profilesConfig") as any[] : [],
       tenancyOcid: secrets.tenancyOcid || "",
       genAiRegion: cfg.get<string>("genAiRegion", ""),
@@ -130,6 +136,7 @@ export class Controller {
       adbCompartmentIds: Array.isArray(cfg.get("adbCompartmentIds")) ? cfg.get<string[]>("adbCompartmentIds") as string[] : [],
       dbSystemCompartmentIds: Array.isArray(cfg.get("dbSystemCompartmentIds")) ? cfg.get<string[]>("dbSystemCompartmentIds") as string[] : [],
       vcnCompartmentIds: Array.isArray(cfg.get("vcnCompartmentIds")) ? cfg.get<string[]>("vcnCompartmentIds") as string[] : [],
+      objectStorageCompartmentIds: Array.isArray(cfg.get("objectStorageCompartmentIds")) ? cfg.get<string[]>("objectStorageCompartmentIds") as string[] : [],
       genAiRegion: cfg.get<string>("genAiRegion", ""),
       genAiLlmModelId: cfg.get<string>("genAiLlmModelId", "") || cfg.get<string>("genAiModelId", ""),
       genAiEmbeddingModelId: cfg.get<string>("genAiEmbeddingModelId", ""),
@@ -170,6 +177,7 @@ export class Controller {
     await cfg.update("adbCompartmentIds", Array.isArray(payload.adbCompartmentIds) ? payload.adbCompartmentIds : [], vscode.ConfigurationTarget.Global);
     await cfg.update("dbSystemCompartmentIds", Array.isArray(payload.dbSystemCompartmentIds) ? payload.dbSystemCompartmentIds : [], vscode.ConfigurationTarget.Global);
     await cfg.update("vcnCompartmentIds", Array.isArray(payload.vcnCompartmentIds) ? payload.vcnCompartmentIds : [], vscode.ConfigurationTarget.Global);
+    await cfg.update("objectStorageCompartmentIds", Array.isArray(payload.objectStorageCompartmentIds) ? payload.objectStorageCompartmentIds : [], vscode.ConfigurationTarget.Global);
 
     if (payload.profilesConfig) {
       await cfg.update("profilesConfig", payload.profilesConfig, vscode.ConfigurationTarget.Global);
@@ -217,7 +225,7 @@ export class Controller {
 
   /** Update only one feature's compartment selection without overwriting unrelated settings */
   public async updateFeatureCompartmentSelection(
-    featureKey: "compute" | "adb" | "dbSystem" | "vcn" | "chat",
+    featureKey: "compute" | "adb" | "dbSystem" | "vcn" | "chat" | "objectStorage",
     compartmentIds: string[]
   ): Promise<void> {
     const cfg = vscode.workspace.getConfiguration("ociAi");
@@ -233,6 +241,8 @@ export class Controller {
       await cfg.update("dbSystemCompartmentIds", normalized, vscode.ConfigurationTarget.Global);
     } else if (featureKey === "vcn") {
       await cfg.update("vcnCompartmentIds", normalized, vscode.ConfigurationTarget.Global);
+    } else if (featureKey === "objectStorage") {
+      await cfg.update("objectStorageCompartmentIds", normalized, vscode.ConfigurationTarget.Global);
     } else if (featureKey === "chat") {
       await cfg.update("chatCompartmentId", normalized[0] ?? "", vscode.ConfigurationTarget.Global);
     } else {
@@ -785,6 +795,105 @@ export class Controller {
   public async deleteSecurityList(securityListId: string, region?: string): Promise<void> {
     return this.ociService.deleteSecurityList(securityListId, region);
   }
+
+  public async listObjectStorageBuckets(): Promise<import("../types").ObjectStorageBucketResource[]> {
+    return this.ociService.listObjectStorageBuckets();
+  }
+
+  public async listObjectStorageObjects(request: import("../shared/services").ListObjectStorageObjectsRequest): Promise<ListObjectStorageObjectsResponse> {
+    const namespaceName = String(request.namespaceName ?? "").trim();
+    const bucketName = String(request.bucketName ?? "").trim();
+    if (!namespaceName || !bucketName) {
+      throw new Error("namespaceName and bucketName are required.");
+    }
+    return this.ociService.listObjectStorageObjects(
+      namespaceName,
+      bucketName,
+      normalizeObjectStoragePrefix(request.prefix),
+      typeof request.region === "string" ? request.region : undefined
+    );
+  }
+
+  public async uploadObjectStorageObject(
+    request: import("../shared/services").UploadObjectStorageObjectRequest
+  ): Promise<UploadObjectStorageObjectResponse> {
+    const namespaceName = String(request.namespaceName ?? "").trim();
+    const bucketName = String(request.bucketName ?? "").trim();
+    if (!namespaceName || !bucketName) {
+      throw new Error("namespaceName and bucketName are required.");
+    }
+
+    const picked = await vscode.window.showOpenDialog({
+      canSelectFiles: true,
+      canSelectFolders: false,
+      canSelectMany: false,
+      openLabel: "Upload to Object Storage",
+      title: `Upload file to ${bucketName}`,
+    });
+    const fileUri = picked?.[0];
+    if (!fileUri) {
+      return { objectName: "", cancelled: true };
+    }
+
+    const inputName = String(request.objectName ?? "").trim();
+    const prefix = normalizeObjectStoragePrefix(request.prefix);
+    const objectName = inputName || `${prefix}${path.basename(fileUri.fsPath)}`;
+    const content = await vscode.workspace.fs.readFile(fileUri);
+
+    await this.ociService.uploadObjectStorageObject(
+      namespaceName,
+      bucketName,
+      objectName,
+      content,
+      typeof request.region === "string" ? request.region : undefined
+    );
+    return { objectName, objectSize: content.byteLength };
+  }
+
+  public async downloadObjectStorageObject(request: DownloadObjectStorageObjectRequest): Promise<DownloadObjectStorageObjectResponse> {
+    const namespaceName = String(request.namespaceName ?? "").trim();
+    const bucketName = String(request.bucketName ?? "").trim();
+    const objectName = String(request.objectName ?? "").trim();
+    if (!namespaceName || !bucketName || !objectName) {
+      throw new Error("namespaceName, bucketName, and objectName are required.");
+    }
+
+    const targetUri = await vscode.window.showSaveDialog({
+      title: `Save ${path.basename(objectName)}`,
+      saveLabel: "Download Object",
+      defaultUri: vscode.Uri.file(path.join(os.homedir(), path.basename(objectName))),
+    });
+    if (!targetUri) {
+      return { cancelled: true };
+    }
+
+    const content = await this.ociService.downloadObjectStorageObject(
+      namespaceName,
+      bucketName,
+      objectName,
+      typeof request.region === "string" ? request.region : undefined
+    );
+    await vscode.workspace.fs.writeFile(targetUri, content);
+    return { cancelled: false };
+  }
+
+  public async createObjectStoragePar(
+    request: import("../shared/services").CreateObjectStorageParRequest
+  ): Promise<CreateObjectStorageParResponse> {
+    const namespaceName = String(request.namespaceName ?? "").trim();
+    const bucketName = String(request.bucketName ?? "").trim();
+    const objectName = String(request.objectName ?? "").trim();
+    if (!namespaceName || !bucketName || !objectName) {
+      throw new Error("namespaceName, bucketName, and objectName are required.");
+    }
+    return this.ociService.createObjectStoragePreauthenticatedRequest(
+      namespaceName,
+      bucketName,
+      objectName,
+      typeof request.expiresInHours === "number" ? request.expiresInHours : undefined,
+      typeof request.region === "string" ? request.region : undefined
+    );
+  }
 }
 
 function normalizeImages(images: ChatImageData[] | undefined): ChatImageData[] {
@@ -814,6 +923,14 @@ function normalizeImages(images: ChatImageData[] | undefined): ChatImageData[] {
     }
   }
   return cleaned;
+}
+
+function normalizeObjectStoragePrefix(value: unknown): string {
+  const prefix = String(value ?? "").trim().replace(/^\/+/, "");
+  if (!prefix) {
+    return "";
+  }
+  return prefix.endsWith("/") ? prefix : `${prefix}/`;
 }
 
 function coerceInt(value: unknown, fallback: number, min: number, max: number): number {

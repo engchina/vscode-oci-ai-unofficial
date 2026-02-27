@@ -3,7 +3,16 @@ import { AlertCircle, ChevronLeft, Loader2, Plus, RefreshCw, Shield, Trash2, Edi
 import { useCallback, useEffect, useState } from "react"
 import { ResourceServiceClient } from "../../services/grpc-client"
 import type { SecurityListResource, SecurityRule, VcnResource } from "../../services/types"
+import GuardrailDialog from "../common/GuardrailDialog"
 import Button from "../ui/Button"
+
+type GuardrailState = {
+    title: string
+    description: string
+    details: string[]
+    requireText?: string
+    onConfirm: () => Promise<void>
+} | null
 
 export default function SecurityListView({
     vcn,
@@ -19,6 +28,7 @@ export default function SecurityListView({
     const [editingList, setEditingList] = useState<SecurityListResource | null>(null)
     const [isCreating, setIsCreating] = useState(false)
     const [deletingId, setDeletingId] = useState<string | null>(null)
+    const [guardrail, setGuardrail] = useState<GuardrailState>(null)
 
     const load = useCallback(async () => {
         setLoading(true)
@@ -38,16 +48,28 @@ export default function SecurityListView({
     }, [load])
 
     const handleDelete = async (id: string) => {
-        if (!confirm("Are you sure you want to delete this Security List?")) return
-        setDeletingId(id)
-        try {
-            await ResourceServiceClient.deleteSecurityList({ securityListId: id, region: vcn.region })
-            await load()
-        } catch (err) {
-            setError(err instanceof Error ? err.message : String(err))
-        } finally {
-            setDeletingId(null)
-        }
+        const securityList = securityLists.find((item) => item.id === id)
+        if (!securityList) return
+        setGuardrail({
+            title: "Delete Security List",
+            description: "Deleting a security list can immediately affect ingress and egress traffic for attached subnets.",
+            details: [
+                `VCN: ${vcn.name}`,
+                `Security List: ${securityList.name}`,
+                `Region: ${vcn.region}`,
+            ],
+            requireText: securityList.name,
+            onConfirm: async () => {
+                setDeletingId(id)
+                try {
+                    await ResourceServiceClient.deleteSecurityList({ securityListId: id, region: vcn.region })
+                    await load()
+                    setGuardrail(null)
+                } finally {
+                    setDeletingId(null)
+                }
+            },
+        })
     }
 
     if (editingList || isCreating) {
@@ -152,6 +174,31 @@ export default function SecurityListView({
                     </div>
                 )}
             </div>
+
+            <GuardrailDialog
+                open={guardrail !== null}
+                title={guardrail?.title ?? ""}
+                description={guardrail?.description ?? ""}
+                confirmLabel="Delete Security List"
+                details={guardrail?.details ?? []}
+                tone="danger"
+                requireText={guardrail?.requireText}
+                busy={deletingId !== null}
+                onCancel={() => {
+                    if (!deletingId) {
+                        setGuardrail(null)
+                    }
+                }}
+                onConfirm={async () => {
+                    if (!guardrail) return
+                    try {
+                        await guardrail.onConfirm()
+                    } catch (err) {
+                        setError(err instanceof Error ? err.message : String(err))
+                        setGuardrail(null)
+                    }
+                }}
+            />
         </div>
     )
 }

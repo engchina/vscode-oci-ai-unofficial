@@ -69,3 +69,26 @@ export interface SecurityListResource {
   ingressSecurityRules: SecurityRule[];
   egressSecurityRules: SecurityRule[];
 }
+
+export interface ObjectStorageBucketResource {
+  name: string;
+  compartmentId: string;
+  namespaceName: string;
+  region: string;
+  storageTier?: string;
+  publicAccessType?: string;
+  approximateCount?: number;
+  approximateSize?: number;
+  createdAt?: string;
+}
+
+export interface ObjectStorageObjectResource {
+  name: string;
+  size?: number;
+  etag?: string;
+  md5?: string;
+  storageTier?: string;
+  archivalState?: string;
+  timeCreated?: string;
+  timeModified?: string;
+}

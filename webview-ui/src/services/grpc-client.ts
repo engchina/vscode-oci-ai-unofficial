@@ -35,6 +35,15 @@ import type {
   GetDbSystemConnectionStringsRequest,
   GetDbSystemConnectionStringsResponse,
   OracleDbDiagnosticsResponse,
+  ListObjectStorageBucketsResponse,
+  ListObjectStorageObjectsRequest,
+  ListObjectStorageObjectsResponse,
+  UploadObjectStorageObjectRequest,
+  UploadObjectStorageObjectResponse,
+  DownloadObjectStorageObjectRequest,
+  DownloadObjectStorageObjectResponse,
+  CreateObjectStorageParRequest,
+  CreateObjectStorageParResponse,
 } from "./types"
 import { type Callbacks, ProtoBusClient } from "./grpc-client-base"
 
@@ -54,7 +63,7 @@ export class StateServiceClient extends ProtoBusClient {
   }
 
   static updateFeatureCompartmentSelection(
-    featureKey: "compute" | "adb" | "dbSystem" | "vcn" | "chat",
+    featureKey: "compute" | "adb" | "dbSystem" | "vcn" | "chat" | "objectStorage",
     compartmentIds: string[],
   ): Promise<void> {
     return this.makeUnaryRequest<void>("updateFeatureCompartmentSelection", { featureKey, compartmentIds })
@@ -234,5 +243,25 @@ export class ResourceServiceClient extends ProtoBusClient {
 
   static deleteSecurityList(request: DeleteSecurityListRequest): Promise<void> {
     return this.makeUnaryRequest<void>("deleteSecurityList", request)
+  }
+
+  static listObjectStorageBuckets(): Promise<ListObjectStorageBucketsResponse> {
+    return this.makeUnaryRequest<ListObjectStorageBucketsResponse>("listObjectStorageBuckets", {})
+  }
+
+  static listObjectStorageObjects(request: ListObjectStorageObjectsRequest): Promise<ListObjectStorageObjectsResponse> {
+    return this.makeUnaryRequest<ListObjectStorageObjectsResponse>("listObjectStorageObjects", request)
+  }
+
+  static uploadObjectStorageObject(request: UploadObjectStorageObjectRequest): Promise<UploadObjectStorageObjectResponse> {
+    return this.makeUnaryRequest<UploadObjectStorageObjectResponse>("uploadObjectStorageObject", request, 120000)
+  }
+
+  static downloadObjectStorageObject(request: DownloadObjectStorageObjectRequest): Promise<DownloadObjectStorageObjectResponse> {
+    return this.makeUnaryRequest<DownloadObjectStorageObjectResponse>("downloadObjectStorageObject", request, 120000)
+  }
+
+  static createObjectStoragePar(request: CreateObjectStorageParRequest): Promise<CreateObjectStorageParResponse> {
+    return this.makeUnaryRequest<CreateObjectStorageParResponse>("createObjectStoragePar", request)
   }
 }
