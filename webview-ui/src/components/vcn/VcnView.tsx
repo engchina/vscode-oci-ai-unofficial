@@ -9,12 +9,16 @@ import CompartmentSelector from "../ui/CompartmentSelector"
 import SecurityListView from "./SecurityListView"
 
 export default function VcnView() {
-    const { activeProfile, profilesConfig, tenancyOcid } = useExtensionState()
+    const { activeProfile, profilesConfig, tenancyOcid, vcnCompartmentIds } = useExtensionState()
     const [vcns, setVcns] = useState<VcnResource[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [query, setQuery] = useState("")
     const [selectedVcn, setSelectedVcn] = useState<VcnResource | null>(null)
+    const activeProfileConfig = useMemo(
+        () => profilesConfig.find((p) => p.name === activeProfile),
+        [activeProfile, profilesConfig],
+    )
 
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase()
@@ -30,27 +34,44 @@ export default function VcnView() {
         if (rootId) {
             map.set(rootId, "Root (Tenancy)")
         }
-        const activeProfileConfig = profilesConfig.find((p) => p.name === activeProfile)
         for (const c of activeProfileConfig?.compartments ?? []) {
             if (c.id?.trim()) {
                 map.set(c.id.trim(), c.name?.trim() || c.id.trim())
             }
         }
         return map
-    }, [activeProfile, profilesConfig, tenancyOcid])
+    }, [activeProfileConfig, tenancyOcid])
+    const availableCompartmentIds = useMemo(() => new Set(compartmentNameById.keys()), [compartmentNameById])
+    const selectedCompartmentIds = useMemo(() => {
+        if (availableCompartmentIds.size === 0) {
+            return []
+        }
+        const selected = vcnCompartmentIds
+            .map((id) => id.trim())
+            .filter((id) => id.length > 0 && availableCompartmentIds.has(id))
+        return [...new Set(selected)]
+    }, [availableCompartmentIds, vcnCompartmentIds])
 
     const load = useCallback(async () => {
         setLoading(true)
         setError(null)
+        if (selectedCompartmentIds.length === 0) {
+            setVcns([])
+            setSelectedVcn(null)
+            setLoading(false)
+            return
+        }
         try {
             const res = await ResourceServiceClient.listVcns()
-            setVcns(res.vcns ?? [])
+            const selectedIds = new Set(selectedCompartmentIds)
+            const items = (res.vcns ?? []).filter((vcn) => selectedIds.has((vcn.compartmentId || "").trim()))
+            setVcns(items)
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err))
         } finally {
             setLoading(false)
         }
-    }, [])
+    }, [selectedCompartmentIds])
 
     useEffect(() => {
         load()
@@ -136,7 +157,7 @@ export default function VcnView() {
                         <span>Loading VCNs...</span>
                     </div>
                 ) : vcns.length === 0 ? (
-                    <EmptyState />
+                    <EmptyState hasSelectedCompartments={selectedCompartmentIds.length > 0} />
                 ) : (
                     <div className="flex flex-col gap-3">
                         <h4 className="mb-1 text-xs font-semibold uppercase tracking-wider text-description">
@@ -228,15 +249,21 @@ function LifecycleBadge({ state }: { state: string }) {
     )
 }
 
-function EmptyState() {
+function EmptyState({ hasSelectedCompartments }: { hasSelectedCompartments: boolean }) {
     return (
         <div className="flex flex-col items-center justify-center gap-3 py-16">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-border-panel bg-list-background-hover">
                 <Network size={22} className="text-description" />
             </div>
             <div className="text-center">
-                <p className="text-sm font-medium">No Virtual Cloud Networks found</p>
-                <p className="mt-1 text-xs text-description">Check your compartment ID in OCI Settings.</p>
+                <p className="text-sm font-medium">
+                    {hasSelectedCompartments ? "No Virtual Cloud Networks found" : "No compartment selected"}
+                </p>
+                <p className="mt-1 text-xs text-description">
+                    {hasSelectedCompartments
+                        ? "No VCNs found in the selected compartments."
+                        : "Please select one or more compartments."}
+                </p>
             </div>
         </div>
     )

@@ -125,6 +125,13 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
       await c.saveSettings(msg);
       return {};
     },
+    updateFeatureCompartmentSelection: async (c, msg) => {
+      await c.updateFeatureCompartmentSelection(
+        String(msg.featureKey ?? "") as "compute" | "adb" | "dbSystem" | "vcn" | "chat",
+        Array.isArray(msg.compartmentIds) ? msg.compartmentIds.map((id: unknown) => String(id ?? "")) : []
+      );
+      return {};
+    },
     getProfileSecrets: async (c, msg) => c.getProfileSecrets(String(msg.profile ?? "DEFAULT")),
     switchCompartment: async (c, msg) => {
       await c.switchCompartment(msg.id);

@@ -42,7 +42,7 @@ const TRANSITIONAL_STATES = new Set([
 const POLL_INTERVAL_MS = 5000
 
 export default function DbSystemsView() {
-    const { activeProfile, profilesConfig, tenancyOcid } = useExtensionState()
+    const { activeProfile, profilesConfig, tenancyOcid, dbSystemCompartmentIds } = useExtensionState()
     const [dbSystems, setDbSystems] = useState<DbSystemResource[]>([])
     const [selectedDbId, setSelectedDbId] = useState("")
     const [loading, setLoading] = useState(true)
@@ -98,6 +98,10 @@ export default function DbSystemsView() {
         }
         return map
     }, [activeProfile, profilesConfig, tenancyOcid])
+    const selectedCompartmentIds = useMemo(
+        () => dbSystemCompartmentIds.map((id) => id.trim()).filter((id) => id.length > 0),
+        [dbSystemCompartmentIds],
+    )
 
     const load = useCallback(async () => {
         setLoading(true)
@@ -117,7 +121,7 @@ export default function DbSystemsView() {
         } finally {
             setLoading(false)
         }
-    }, [selectedDbId])
+    }, [selectedDbId, selectedCompartmentIds])
 
     useEffect(() => {
         load()
@@ -451,7 +455,7 @@ export default function DbSystemsView() {
                         <span>Loading DB Systems...</span>
                     </div>
                 ) : dbSystems.length === 0 ? (
-                    <EmptyState />
+                    <EmptyState hasSelectedCompartments={selectedCompartmentIds.length > 0} />
                 ) : (
                     <div className="flex flex-col gap-4">
                         <div className="flex flex-col gap-2">
@@ -904,12 +908,18 @@ function LifecycleBadge({ state }: { state: string }) {
     )
 }
 
-function EmptyState() {
+function EmptyState({ hasSelectedCompartments }: { hasSelectedCompartments: boolean }) {
     return (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border-panel py-16 text-description">
             <Database size={24} className="mb-2 opacity-70" />
-            <p className="text-sm">No DB Systems found.</p>
-            <p className="mt-1 text-xs">Check your compartment and permissions.</p>
+            <p className="text-sm">
+                {hasSelectedCompartments ? "No DB Systems found." : "No compartment selected"}
+            </p>
+            <p className="mt-1 text-xs">
+                {hasSelectedCompartments
+                    ? "No DB Systems found in the selected compartments."
+                    : "Please select one or more compartments."}
+            </p>
         </div>
     )
 }

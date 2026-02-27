@@ -18,7 +18,7 @@ const LEGACY_COMPUTE_DEFAULT_USERNAME = "ubuntu"
 const SSH_KEY_OVERRIDES_STORAGE_KEY = "ociAi.compute.sshKeyOverrides"
 
 export default function ComputeView() {
-  const { activeProfile, profilesConfig, tenancyOcid } = useExtensionState()
+  const { activeProfile, profilesConfig, tenancyOcid, computeCompartmentIds } = useExtensionState()
   const [instances, setInstances] = useState<ComputeResource[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -49,10 +49,19 @@ export default function ComputeView() {
     }
     return map
   }, [activeProfile, profilesConfig, tenancyOcid])
+  const selectedCompartmentIds = useMemo(
+    () => computeCompartmentIds.map((id) => id.trim()).filter((id) => id.length > 0),
+    [computeCompartmentIds],
+  )
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
+    if (selectedCompartmentIds.length === 0) {
+      setInstances([])
+      setLoading(false)
+      return
+    }
     try {
       const res = await ResourceServiceClient.listCompute()
       setInstances(res.instances ?? [])
@@ -61,7 +70,7 @@ export default function ComputeView() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [selectedCompartmentIds])
 
   useEffect(() => {
     load()
@@ -259,7 +268,7 @@ export default function ComputeView() {
             <span>Loading instances...</span>
           </div>
         ) : instances.length === 0 ? (
-          <EmptyState />
+          <EmptyState hasSelectedCompartments={selectedCompartmentIds.length > 0} />
         ) : (
           <div className="flex flex-col gap-3">
             <h4 className="mb-1 text-xs font-semibold uppercase tracking-wider text-description">
@@ -452,15 +461,21 @@ function LifecycleBadge({ state }: { state: string }) {
   )
 }
 
-function EmptyState() {
+function EmptyState({ hasSelectedCompartments }: { hasSelectedCompartments: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-16">
       <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-border-panel bg-list-background-hover">
         <Server size={22} className="text-description" />
       </div>
       <div className="text-center">
-        <p className="text-sm font-medium">No compute instances found</p>
-        <p className="mt-1 text-xs text-description">Check your compartment ID in OCI Settings.</p>
+        <p className="text-sm font-medium">
+          {hasSelectedCompartments ? "No compute instances found" : "No compartment selected"}
+        </p>
+        <p className="mt-1 text-xs text-description">
+          {hasSelectedCompartments
+            ? "No instances found in the selected compartments."
+            : "Please select one or more compartments."}
+        </p>
       </div>
     </div>
   )

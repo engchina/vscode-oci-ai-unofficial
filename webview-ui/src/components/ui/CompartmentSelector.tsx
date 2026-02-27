@@ -3,7 +3,6 @@ import { Check, ChevronDown, Lock, MonitorStop } from "lucide-react"
 import { useState, useRef, useEffect, useMemo, useCallback, type MouseEvent as ReactMouseEvent } from "react"
 import { useExtensionState } from "../../context/ExtensionStateContext"
 import { StateServiceClient } from "../../services/grpc-client"
-import type { SettingsState } from "../../services/types"
 
 interface CompartmentSelectorProps {
     featureKey: "compute" | "adb" | "chat" | "vcn" | "dbSystem"
@@ -26,7 +25,6 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
     const [optimisticSelection, setOptimisticSelection] = useState<string[] | null>(null)
     const [isSaving, setIsSaving] = useState(false)
     const dropdownRef = useRef<HTMLDivElement>(null)
-    const settingsCacheRef = useRef<SettingsState | null>(null)
 
     // Determine current active profile config
     const activeProfileConfig = useMemo(
@@ -35,18 +33,29 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
     )
     const profileCompartments = activeProfileConfig?.compartments || []
 
+    const normalizeCompartmentId = useCallback((id: string) => String(id ?? "").trim(), [])
+
     // Build available compartments: root (tenancy) first, then profile compartments
     const rootCompartment = useMemo(() => tenancyOcid?.trim()
         ? { id: tenancyOcid.trim(), name: "Root (Tenancy)", isRoot: true }
         : null, [tenancyOcid])
 
-    const availableCompartments = useMemo(
-        () => [
-            ...(rootCompartment ? [rootCompartment] : []),
-            ...profileCompartments.map(c => ({ ...c, isRoot: false })),
-        ],
-        [rootCompartment, profileCompartments],
-    )
+    const availableCompartments = useMemo(() => {
+        const seen = new Set<string>()
+        const next = [
+            ...(rootCompartment ? [{ id: normalizeCompartmentId(rootCompartment.id), name: rootCompartment.name, isRoot: true }] : []),
+            ...profileCompartments
+                .map(c => ({ id: normalizeCompartmentId(c.id), name: c.name, isRoot: false }))
+                .filter(c => c.id.length > 0),
+        ].filter((c) => {
+            if (seen.has(c.id)) {
+                return false
+            }
+            seen.add(c.id)
+            return true
+        })
+        return next
+    }, [normalizeCompartmentId, profileCompartments, rootCompartment])
 
     // Determine currently selected items for this feature
     const persistedSelection = useMemo(() => {
@@ -65,7 +74,9 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
         }
 
         const availableIds = new Set(availableCompartments.map(c => c.id))
-        return selection.filter(id => availableIds.has(id))
+        return selection
+            .map(normalizeCompartmentId)
+            .filter(id => id.length > 0 && availableIds.has(id))
     }, [
         featureKey,
         computeCompartmentIds,
@@ -73,6 +84,7 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
         dbSystemCompartmentIds,
         vcnCompartmentIds,
         chatCompartmentId,
+        normalizeCompartmentId,
         rootCompartment,
         availableCompartments,
     ])
@@ -91,15 +103,6 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
         }
     }, [persistedSelection, optimisticSelection])
 
-    // Preload settings into cache when dropdown is opened to avoid delay on first click
-    useEffect(() => {
-        if (isOpen && !settingsCacheRef.current) {
-            StateServiceClient.getSettings().then(state => {
-                settingsCacheRef.current = state
-            }).catch(console.error)
-        }
-    }, [isOpen])
-
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -112,15 +115,20 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
 
     const handleToggle = useCallback(async (id: string, e: ReactMouseEvent<HTMLButtonElement>) => {
         e.stopPropagation()
+        const normalizedId = normalizeCompartmentId(id)
+        if (!normalizedId) {
+            return
+        }
+
         let newSelection: string[]
         if (multiple) {
-            if (currentSelection.includes(id)) {
-                newSelection = currentSelection.filter(s => s !== id)
+            if (currentSelection.includes(normalizedId)) {
+                newSelection = currentSelection.filter(s => s !== normalizedId)
             } else {
-                newSelection = [...currentSelection, id]
+                newSelection = [...currentSelection, normalizedId]
             }
         } else {
-            newSelection = [id]
+            newSelection = [normalizedId]
             setIsOpen(false)
         }
 
@@ -128,29 +136,16 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
         setOptimisticSelection(newSelection)
         setIsSaving(true)
 
-        // Save (reuse cached settings to avoid full round-trip on every click)
-        const state = settingsCacheRef.current ?? await StateServiceClient.getSettings()
-
-        if (featureKey === "compute") {
-            state.computeCompartmentIds = newSelection
-        } else if (featureKey === "adb") {
-            state.adbCompartmentIds = newSelection
-        } else if (featureKey === "dbSystem") {
-            state.dbSystemCompartmentIds = newSelection
-        } else if (featureKey === "vcn") {
-            state.vcnCompartmentIds = newSelection
-        } else if (featureKey === "chat") {
-            state.chatCompartmentId = newSelection[0] || ""
-        }
-
-        settingsCacheRef.current = state
-
         try {
-            await StateServiceClient.saveSettings({ ...state, suppressNotification: true })
+            await StateServiceClient.updateFeatureCompartmentSelection(featureKey, newSelection)
+        } catch (error) {
+            console.error("Failed to save compartment selection:", error)
+            // Revert optimistic UI if persistence fails, so selector and data views stay consistent.
+            setOptimisticSelection(null)
         } finally {
             setIsSaving(false)
         }
-    }, [currentSelection, featureKey, multiple])
+    }, [currentSelection, featureKey, multiple, normalizeCompartmentId])
 
     const selectionText = currentSelection.length === 0
         ? "No Compartment Selected"
@@ -211,4 +206,3 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
         </div>
     )
 }
-

@@ -53,6 +53,13 @@ export class StateServiceClient extends ProtoBusClient {
     return this.makeUnaryRequest<void>("saveSettings", request)
   }
 
+  static updateFeatureCompartmentSelection(
+    featureKey: "compute" | "adb" | "dbSystem" | "vcn" | "chat",
+    compartmentIds: string[],
+  ): Promise<void> {
+    return this.makeUnaryRequest<void>("updateFeatureCompartmentSelection", { featureKey, compartmentIds })
+  }
+
   static getProfileSecrets(profile: string): Promise<ProfileSecretsResponse> {
     return this.makeUnaryRequest<ProfileSecretsResponse>("getProfileSecrets", { profile })
   }

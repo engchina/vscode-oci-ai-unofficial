@@ -122,7 +122,7 @@ export default function ProfilesCompartmentsView() {
         <div className="flex flex-col gap-4">
             <h3 className="flex items-center gap-1.5 text-md font-semibold">
                 <Users size={14} />
-                Profiles & Compartments
+                Compartments
             </h3>
             <p className="-mt-2 text-xs text-description">Manage OCI profiles and their compartment mappings.</p>
 
@@ -155,17 +155,6 @@ function ProfileConfigEditor({
     const effectiveSelectedProfile = (selectedProfile && profiles.some(p => p.name === selectedProfile))
         ? selectedProfile
         : (profiles.length > 0 ? profiles[0].name : null)
-
-    const removeProfile = (name: string) => {
-        const updated = profiles.filter(p => p.name !== name)
-        updateField("profilesConfig", updated)
-        if (settings.activeProfile === name) {
-            updateField("activeProfile", updated.length > 0 ? updated[0].name : "DEFAULT")
-        }
-        if (selectedProfile === name) {
-            setSelectedProfile(updated.length > 0 ? updated[0].name : null)
-        }
-    }
 
     const addCompartment = (profileName: string) => {
         if (!newCompId.trim() || !newCompName.trim()) return
@@ -225,14 +214,8 @@ function ProfileConfigEditor({
                     <div className="flex flex-col gap-2 rounded-md border border-border-panel p-2 bg-[color-mix(in_srgb,var(--vscode-editor-background)_96%,black_4%)]">
                         <div className="flex items-center justify-between">
                             <span className="text-xs font-semibold">{p.name}</span>
-                            <button
-                                onClick={() => removeProfile(p.name)}
-                                className="rounded p-1 text-description hover:bg-list-background-hover hover:text-error transition-colors"
-                                title="Remove Profile"
-                            >
-                                <Trash2 size={12} />
-                            </button>
                         </div>
+                        <p className="text-[10px] text-description">Profile deletion is available in Profiles.</p>
 
                         {/* Compartments inside Profile */}
                         <div className="flex flex-col pl-2 gap-1 border-l-2 border-border-panel">
@@ -298,7 +281,7 @@ function ProfileConfigEditor({
             })()}
 
             {!effectiveSelectedProfile && profiles.length === 0 && (
-                <div className="text-xs text-description px-2 py-2">No profiles available. Add a profile in the API Configuration tab.</div>
+                <div className="text-xs text-description px-2 py-2">No profiles available. Add a profile in the Profiles tab.</div>
             )}
         </div>
     )

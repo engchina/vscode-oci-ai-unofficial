@@ -40,7 +40,7 @@ const TRANSITIONAL_STATES = new Set([
 const POLL_INTERVAL_MS = 5000
 
 export default function AdbView() {
-  const { activeProfile, profilesConfig, tenancyOcid } = useExtensionState()
+  const { activeProfile, profilesConfig, tenancyOcid, adbCompartmentIds } = useExtensionState()
   const [databases, setDatabases] = useState<AdbResource[]>([])
   const [selectedAdbId, setSelectedAdbId] = useState("")
   const [loading, setLoading] = useState(true)
@@ -89,10 +89,20 @@ export default function AdbView() {
     }
     return map
   }, [activeProfile, profilesConfig, tenancyOcid])
+  const selectedCompartmentIds = useMemo(
+    () => adbCompartmentIds.map((id) => id.trim()).filter((id) => id.length > 0),
+    [adbCompartmentIds],
+  )
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
+    if (selectedCompartmentIds.length === 0) {
+      setDatabases([])
+      setSelectedAdbId("")
+      setLoading(false)
+      return
+    }
     try {
       const res = await ResourceServiceClient.listAdb()
       const items = res.databases ?? []
@@ -108,7 +118,7 @@ export default function AdbView() {
     } finally {
       setLoading(false)
     }
-  }, [selectedAdbId])
+  }, [selectedAdbId, selectedCompartmentIds])
 
   useEffect(() => {
     load()
@@ -418,7 +428,7 @@ export default function AdbView() {
             <span>Loading databases...</span>
           </div>
         ) : databases.length === 0 ? (
-          <EmptyState />
+          <EmptyState hasSelectedCompartments={selectedCompartmentIds.length > 0} />
         ) : (
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
@@ -789,12 +799,18 @@ function LifecycleBadge({ state }: { state: string }) {
   )
 }
 
-function EmptyState() {
+function EmptyState({ hasSelectedCompartments }: { hasSelectedCompartments: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border-panel py-16 text-description">
       <Database size={24} className="mb-2 opacity-70" />
-      <p className="text-sm">No Autonomous Databases found.</p>
-      <p className="mt-1 text-xs">Check your compartment and permissions.</p>
+      <p className="text-sm">
+        {hasSelectedCompartments ? "No Autonomous Databases found." : "No compartment selected"}
+      </p>
+      <p className="mt-1 text-xs">
+        {hasSelectedCompartments
+          ? "No databases found in the selected compartments."
+          : "Please select one or more compartments."}
+      </p>
     </div>
   )
 }

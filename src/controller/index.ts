@@ -223,6 +223,33 @@ export class Controller {
     await this.broadcastState();
   }
 
+  /** Update only one feature's compartment selection without overwriting unrelated settings */
+  public async updateFeatureCompartmentSelection(
+    featureKey: "compute" | "adb" | "dbSystem" | "vcn" | "chat",
+    compartmentIds: string[]
+  ): Promise<void> {
+    const cfg = vscode.workspace.getConfiguration("ociAi");
+    const normalized = Array.isArray(compartmentIds)
+      ? compartmentIds.map((id) => String(id ?? "").trim()).filter((id) => id.length > 0)
+      : [];
+
+    if (featureKey === "compute") {
+      await cfg.update("computeCompartmentIds", normalized, vscode.ConfigurationTarget.Global);
+    } else if (featureKey === "adb") {
+      await cfg.update("adbCompartmentIds", normalized, vscode.ConfigurationTarget.Global);
+    } else if (featureKey === "dbSystem") {
+      await cfg.update("dbSystemCompartmentIds", normalized, vscode.ConfigurationTarget.Global);
+    } else if (featureKey === "vcn") {
+      await cfg.update("vcnCompartmentIds", normalized, vscode.ConfigurationTarget.Global);
+    } else if (featureKey === "chat") {
+      await cfg.update("chatCompartmentId", normalized[0] ?? "", vscode.ConfigurationTarget.Global);
+    } else {
+      throw new Error(`Unsupported feature key: ${featureKey}`);
+    }
+
+    await this.broadcastState();
+  }
+
   /** Subscribe to state updates */
   public async subscribeToState(requestId: string, stream: StreamingResponseHandler<AppState>): Promise<void> {
     this.stateSubscribers.set(requestId, stream);

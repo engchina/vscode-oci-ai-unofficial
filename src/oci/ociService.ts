@@ -7,13 +7,11 @@ export class OciService {
 
   public async listComputeInstances(): Promise<ComputeResource[]> {
     const cfg = vscode.workspace.getConfiguration("ociAi");
-    const compartmentIds = [...(cfg.get<string[]>("computeCompartmentIds") || [])];
-    const regions = splitRegions(cfg.get<string>("region", ""));
-
+    const compartmentIds = normalizeCompartmentIds(cfg.get<string[]>("computeCompartmentIds") || []);
     if (compartmentIds.length === 0) {
-      const legacy = cfg.get<string>("compartmentId", "");
-      if (legacy) compartmentIds.push(legacy);
+      return [];
     }
+    const regions = splitRegions(cfg.get<string>("region", ""));
 
     const instances: ComputeResource[] = [];
 
@@ -21,22 +19,20 @@ export class OciService {
       const computeClient = await this.factory.createComputeClientAsync(region);
       const virtualNetworkClient = await this.factory.createVirtualNetworkClientAsync(region);
       for (const compartmentId of compartmentIds) {
-        const normalizedCompartmentId = compartmentId.trim();
-        if (!normalizedCompartmentId) continue;
         let page: string | undefined;
         do {
-          const result = await computeClient.listInstances({ compartmentId: normalizedCompartmentId, page });
+          const result = await computeClient.listInstances({ compartmentId, page });
           const regionInstances = (result.items || []).map((instance) => ({
             id: instance.id || "",
             name: instance.displayName || instance.id || "Unnamed Instance",
             lifecycleState: (instance.lifecycleState as string) || "UNKNOWN",
-            compartmentId: normalizedCompartmentId,
+            compartmentId,
             region,
           }));
           instances.push(...regionInstances);
           await Promise.all(
             regionInstances.map((instance) =>
-              this.populateInstanceNetworkAddresses(instance, normalizedCompartmentId, computeClient, virtualNetworkClient)
+              this.populateInstanceNetworkAddresses(instance, compartmentId, computeClient, virtualNetworkClient)
             )
           );
           page = result.opcNextPage;
@@ -65,30 +61,26 @@ export class OciService {
 
   public async listAutonomousDatabases(): Promise<AdbResource[]> {
     const cfg = vscode.workspace.getConfiguration("ociAi");
-    const compartmentIds = [...(cfg.get<string[]>("adbCompartmentIds") || [])];
-    const regions = splitRegions(cfg.get<string>("region", ""));
-
+    const compartmentIds = normalizeCompartmentIds(cfg.get<string[]>("adbCompartmentIds") || []);
     if (compartmentIds.length === 0) {
-      const legacy = cfg.get<string>("compartmentId", "");
-      if (legacy) compartmentIds.push(legacy);
+      return [];
     }
+    const regions = splitRegions(cfg.get<string>("region", ""));
 
     const databases: AdbResource[] = [];
 
     for (const region of regions) {
       const client = await this.factory.createDatabaseClientAsync(region);
       for (const compartmentId of compartmentIds) {
-        const normalizedCompartmentId = compartmentId.trim();
-        if (!normalizedCompartmentId) continue;
         let page: string | undefined;
         do {
-          const result = await client.listAutonomousDatabases({ compartmentId: normalizedCompartmentId, page });
+          const result = await client.listAutonomousDatabases({ compartmentId, page });
           databases.push(
             ...(result.items || []).map((adb) => ({
               id: adb.id || "",
               name: adb.dbName || adb.displayName || adb.id || "Unnamed ADB",
               lifecycleState: (adb.lifecycleState as string) || "UNKNOWN",
-              compartmentId: normalizedCompartmentId,
+              compartmentId,
               region,
             }))
           );
@@ -112,13 +104,11 @@ export class OciService {
 
   public async listDbSystems(): Promise<DbSystemResource[]> {
     const cfg = vscode.workspace.getConfiguration("ociAi");
-    const compartmentIds = [...(cfg.get<string[]>("dbSystemCompartmentIds") || [])];
-    const regions = splitRegions(cfg.get<string>("region", ""));
-
+    const compartmentIds = normalizeCompartmentIds(cfg.get<string[]>("dbSystemCompartmentIds") || []);
     if (compartmentIds.length === 0) {
-      const legacy = cfg.get<string>("compartmentId", "");
-      if (legacy) compartmentIds.push(legacy);
+      return [];
     }
+    const regions = splitRegions(cfg.get<string>("region", ""));
 
     const dbSystems: DbSystemResource[] = [];
 
@@ -127,17 +117,14 @@ export class OciService {
       const vcnClient = await this.factory.createVirtualNetworkClientAsync(region);
 
       for (const compartmentId of compartmentIds) {
-        const normalized = compartmentId.trim();
-        if (!normalized) continue;
-
         let page: string | undefined;
         do {
-          const result = await dbClient.listDbSystems({ compartmentId: normalized, page });
+          const result = await dbClient.listDbSystems({ compartmentId, page });
           const regionSystems = (result.items || []).map((sys) => ({
             id: sys.id || "",
             name: sys.displayName || sys.id || "Unnamed DB System",
             lifecycleState: (sys.lifecycleState as string) || "UNKNOWN",
-            compartmentId: normalized,
+            compartmentId,
             region,
           }));
 
@@ -145,7 +132,7 @@ export class OciService {
 
           await Promise.all(
             regionSystems.map((sys) =>
-              this.populateDbSystemNetworkAddresses(sys, normalized, dbClient, vcnClient)
+              this.populateDbSystemNetworkAddresses(sys, compartmentId, dbClient, vcnClient)
             )
           );
 
@@ -294,30 +281,28 @@ export class OciService {
 
   public async listVcns(): Promise<VcnResource[]> {
     const cfg = vscode.workspace.getConfiguration("ociAi");
-    const compartmentIds = [...(cfg.get<string[]>("vcnCompartmentIds") || [])];
-    const regions = splitRegions(cfg.get<string>("region", ""));
-
+    const compartmentIds = normalizeCompartmentIds(cfg.get<string[]>("vcnCompartmentIds") || []);
     if (compartmentIds.length === 0) {
-      const legacy = cfg.get<string>("compartmentId", "");
-      if (legacy) compartmentIds.push(legacy);
+      return [];
     }
+    const regions = splitRegions(cfg.get<string>("region", ""));
 
     const vcns: VcnResource[] = [];
 
     for (const region of regions) {
       const client = await this.factory.createVirtualNetworkClientAsync(region);
       for (const compartmentId of compartmentIds) {
-        const normalizedCompartmentId = compartmentId.trim();
-        if (!normalizedCompartmentId) continue;
         let page: string | undefined;
         do {
-          const result = await client.listVcns({ compartmentId: normalizedCompartmentId, page });
+          const result = await client.listVcns({ compartmentId, page });
           vcns.push(
             ...(result.items || []).map((vcn) => ({
               id: vcn.id || "",
               name: vcn.displayName || vcn.id || "Unnamed VCN",
               lifecycleState: (vcn.lifecycleState as string) || "UNKNOWN",
-              compartmentId: normalizedCompartmentId,
+              // Use the resource's actual compartment whenever available.
+              // Some list calls can still return resources outside the request compartment scope.
+              compartmentId: vcn.compartmentId || compartmentId,
               region,
               cidrBlocks: vcn.cidrBlocks || [],
             }))
@@ -490,6 +475,12 @@ function splitRegions(raw: string): string[] {
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
   return regions.length > 0 ? regions : [""];
+}
+
+function normalizeCompartmentIds(compartmentIds: string[]): string[] {
+  return compartmentIds
+    .map((item) => String(item ?? "").trim())
+    .filter((item) => item.length > 0);
 }
 
 function sanitizeConnectionLabel(value: string): string {

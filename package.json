@@ -378,6 +378,14 @@
           "items": {
             "type": "string"
           }
+        },
+        "ociAi.dbSystemCompartmentIds": {
+          "type": "array",
+          "default": [],
+          "description": "Selected compartment IDs for Oracle Base Database Service",
+          "items": {
+            "type": "string"
+          }
         }
       }
     }

@@ -21,8 +21,8 @@ type SettingsTab = "api-config" | "profiles" | "genai" | "features" | "terminal"
 type UpdateFieldFn = <K extends keyof SettingsState>(field: K, value: SettingsState[K]) => void
 
 const TABS: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
-  { id: "api-config", label: "API Configuration", icon: <Settings2 size={16} /> },
-  { id: "profiles", label: "Profiles & Compartments", icon: <Users size={16} /> },
+  { id: "api-config", label: "Profiles", icon: <Settings2 size={16} /> },
+  { id: "profiles", label: "Compartments", icon: <Users size={16} /> },
   { id: "terminal", label: "Terminal", icon: <Terminal size={16} /> },
   { id: "genai", label: "Generative AI", icon: <Bot size={16} /> },
   { id: "features", label: "Features", icon: <Sliders size={16} /> },
@@ -362,7 +362,7 @@ function ApiConfigTab({
     <div className="flex flex-col gap-4">
       <h3 className="flex items-center gap-1.5 text-md font-semibold">
         <Settings2 size={14} />
-        API Configuration
+        Profiles
       </h3>
       <p className="-mt-2 text-xs text-description">These values are used for OCI API calls and model inference.</p>
 
