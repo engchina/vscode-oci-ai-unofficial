@@ -6,6 +6,7 @@ import type {
   ChatMessageData,
   CodeContextPayload,
   SendMessageRequest,
+  SqlWorkbenchState,
   StreamTokenResponse
 } from "../services/types"
 
@@ -16,7 +17,6 @@ export interface ExtensionStateContextType {
   didHydrateState: boolean
 
   activeProfile: string
-  profile: string
   region: string
   compartmentId: string
   computeCompartmentIds: string[]
@@ -33,6 +33,7 @@ export interface ExtensionStateContextType {
   chatMessages: ChatMessageData[]
   isStreaming: boolean
   configWarning: string
+  sqlWorkbench: SqlWorkbenchState
 
   // Streaming text accumulator
   streamingText: string
@@ -51,6 +52,8 @@ export interface ExtensionStateContextType {
   stopStreaming: () => void
   clearHistory: () => void
   newChat: () => void
+  editAndResend: (messageIndex: number, newText: string) => void
+  regenerate: (messageIndex: number) => void
 
   // Code context injection from editor
   pendingCodeContext: CodeContextPayload | null
@@ -68,7 +71,6 @@ export function ExtensionStateContextProvider({ children }: { children: ReactNod
 
   const [state, setState] = useState<AppState>({
     activeProfile: "DEFAULT",
-    profile: "",
     region: "",
     compartmentId: "",
     computeCompartmentIds: [],
@@ -85,6 +87,10 @@ export function ExtensionStateContextProvider({ children }: { children: ReactNod
     chatMessages: [],
     isStreaming: false,
     configWarning: "",
+    sqlWorkbench: {
+      history: [],
+      favorites: [],
+    },
   })
 
   const cancelStreamRef = useRef<(() => void) | null>(null)
@@ -204,6 +210,113 @@ export function ExtensionStateContextProvider({ children }: { children: ReactNod
     })
   }, [stopStreaming])
 
+  // Edit a user message and resend from that point
+  const editAndResend = useCallback((messageIndex: number, newText: string) => {
+    if (isStreaming) return
+
+    setState((prev) => {
+      // Keep messages up to (not including) the edited user message, then add the edited one
+      const truncated = prev.chatMessages.slice(0, messageIndex)
+      return { ...prev, chatMessages: [...truncated, { role: "user" as const, text: newText }] }
+    })
+
+    setIsStreaming(true)
+    setStreamingText("")
+
+    cancelStreamRef.current = ChatServiceClient.sendMessage(
+      { text: newText },
+      {
+        onResponse: (response: StreamTokenResponse) => {
+          if (typeof response?.token !== "string") return
+          setStreamingText((prev) => prev + response.token)
+        },
+        onError: (error) => {
+          console.error("Chat stream error:", error)
+          setStreamingText((prev) => prev + `\n\nError: ${error.message}`)
+          setIsStreaming(false)
+          cancelStreamRef.current = null
+        },
+        onComplete: () => {
+          setStreamingText((currentStreaming) => {
+            if (currentStreaming.trim()) {
+              setState((prev) => ({
+                ...prev,
+                chatMessages: [...prev.chatMessages, { role: "model" as const, text: currentStreaming.trim() }],
+              }))
+            }
+            return ""
+          })
+          setIsStreaming(false)
+          cancelStreamRef.current = null
+        },
+      },
+    )
+  }, [isStreaming])
+
+  // Regenerate: resend the user message before the given AI message index
+  const regenerate = useCallback((messageIndex: number) => {
+    if (isStreaming) return
+
+    // Read current messages to find the user message to resend and compute truncation
+    const messages = state.chatMessages
+    const message = messages[messageIndex]
+    if (!message) return
+
+    let truncateAt: number
+    let userMsg: ChatMessageData | undefined
+
+    if (message.role === "model") {
+      // Remove this AI response, find preceding user message
+      truncateAt = messageIndex
+      userMsg = messages.slice(0, messageIndex).reverse().find((m) => m.role === "user")
+    } else {
+      // User message: remove everything after, resend this message
+      truncateAt = messageIndex + 1
+      userMsg = message
+    }
+
+    if (!userMsg) return
+
+    // Truncate messages
+    setState((prev) => ({
+      ...prev,
+      chatMessages: prev.chatMessages.slice(0, truncateAt),
+    }))
+
+    // Resend
+    setIsStreaming(true)
+    setStreamingText("")
+
+    cancelStreamRef.current = ChatServiceClient.sendMessage(
+      { text: userMsg.text, images: userMsg.images },
+      {
+        onResponse: (response: StreamTokenResponse) => {
+          if (typeof response?.token !== "string") return
+          setStreamingText((p) => p + response.token)
+        },
+        onError: (error) => {
+          console.error("Chat stream error:", error)
+          setStreamingText((p) => p + `\n\nError: ${error.message}`)
+          setIsStreaming(false)
+          cancelStreamRef.current = null
+        },
+        onComplete: () => {
+          setStreamingText((currentStreaming) => {
+            if (currentStreaming.trim()) {
+              setState((p) => ({
+                ...p,
+                chatMessages: [...p.chatMessages, { role: "model" as const, text: currentStreaming.trim() }],
+              }))
+            }
+            return ""
+          })
+          setIsStreaming(false)
+          cancelStreamRef.current = null
+        },
+      },
+    )
+  }, [isStreaming, state.chatMessages])
+
   const contextValue: ExtensionStateContextType = {
     didHydrateState,
     ...state,
@@ -218,6 +331,8 @@ export function ExtensionStateContextProvider({ children }: { children: ReactNod
     stopStreaming,
     clearHistory,
     newChat,
+    editAndResend,
+    regenerate,
     pendingCodeContext,
     clearPendingCodeContext,
   }

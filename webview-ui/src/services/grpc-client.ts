@@ -8,6 +8,8 @@ import type {
   DeleteProfileRequest,
   DownloadAdbWalletRequest,
   DownloadAdbWalletResponse,
+  ExplainSqlPlanRequest,
+  ExplainSqlPlanResponse,
   ExecuteAdbSqlRequest,
   ExecuteAdbSqlResponse,
   ListAdbResponse,
@@ -15,10 +17,14 @@ import type {
   LoadAdbConnectionResponse,
   ProfileSecretsResponse,
   SaveAdbConnectionRequest,
+  SaveSqlFavoriteRequest,
   SaveSettingsRequest,
   SendMessageRequest,
   SettingsState,
+  SqlAssistantRequest,
+  SqlAssistantResponse,
   StreamTokenResponse,
+  TestSqlConnectionResponse,
   ListVcnResponse,
   ListSecurityListRequest,
   ListSecurityListResponse,
@@ -45,6 +51,7 @@ import type {
   DownloadObjectStorageObjectResponse,
   CreateObjectStorageParRequest,
   CreateObjectStorageParResponse,
+  DeleteSqlFavoriteRequest,
 } from "./types"
 import { type Callbacks, ProtoBusClient } from "./grpc-client-base"
 
@@ -121,6 +128,42 @@ export class UiServiceClient extends ProtoBusClient {
 
   static subscribeToCodeContextReady(callbacks: Callbacks<CodeContextPayload>): () => void {
     return this.makeStreamingRequest<CodeContextPayload>("subscribeToCodeContextReady", {}, callbacks)
+  }
+}
+
+export class SqlWorkbenchServiceClient extends ProtoBusClient {
+  static override serviceName = "SqlWorkbenchService"
+
+  static testAdbConnection(request: ConnectAdbRequest): Promise<TestSqlConnectionResponse> {
+    return this.makeUnaryRequest<TestSqlConnectionResponse>("testAdbConnection", request, 120000)
+  }
+
+  static testDbSystemConnection(request: ConnectDbSystemRequest): Promise<TestSqlConnectionResponse> {
+    return this.makeUnaryRequest<TestSqlConnectionResponse>("testDbSystemConnection", request, 120000)
+  }
+
+  static explainAdbSqlPlan(request: ExplainSqlPlanRequest): Promise<ExplainSqlPlanResponse> {
+    return this.makeUnaryRequest<ExplainSqlPlanResponse>("explainAdbSqlPlan", request, 120000)
+  }
+
+  static explainDbSystemSqlPlan(request: ExplainSqlPlanRequest): Promise<ExplainSqlPlanResponse> {
+    return this.makeUnaryRequest<ExplainSqlPlanResponse>("explainDbSystemSqlPlan", request, 120000)
+  }
+
+  static requestSqlAssistant(request: SqlAssistantRequest): Promise<SqlAssistantResponse> {
+    return this.makeUnaryRequest<SqlAssistantResponse>("requestSqlAssistant", request, 120000)
+  }
+
+  static saveSqlFavorite(request: SaveSqlFavoriteRequest): Promise<void> {
+    return this.makeUnaryRequest<void>("saveSqlFavorite", request)
+  }
+
+  static deleteSqlFavorite(request: DeleteSqlFavoriteRequest): Promise<void> {
+    return this.makeUnaryRequest<void>("deleteSqlFavorite", request)
+  }
+
+  static clearSqlHistory(): Promise<void> {
+    return this.makeUnaryRequest<void>("clearSqlHistory", {})
   }
 }
 

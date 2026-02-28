@@ -21,10 +21,37 @@ export interface ProfileConfig {
   compartments: SavedCompartment[];
 }
 
+export type SqlWorkbenchConnectionType = "adb" | "dbSystem";
+
+export interface SqlHistoryEntry {
+  id: string;
+  sql: string;
+  executedAt: string;
+  connectionType: SqlWorkbenchConnectionType;
+  targetId?: string;
+  targetName?: string;
+  serviceName?: string;
+  username?: string;
+}
+
+export interface SqlFavoriteEntry {
+  id: string;
+  label: string;
+  sql: string;
+  description?: string;
+  connectionType?: SqlWorkbenchConnectionType;
+  targetId?: string;
+  targetName?: string;
+}
+
+export interface SqlWorkbenchState {
+  history: SqlHistoryEntry[];
+  favorites: SqlFavoriteEntry[];
+}
+
 /** Full application state pushed to webview */
 export interface AppState {
   activeProfile: string;
-  profile: string; // legacy support
   region: string;
   compartmentId: string; // legacy support
   computeCompartmentIds: string[];
@@ -42,12 +69,12 @@ export interface AppState {
   isStreaming: boolean;
   /** Non-empty when required configuration is missing */
   configWarning: string;
+  sqlWorkbench: SqlWorkbenchState;
 }
 
 /** Settings payload for saving */
 export interface SaveSettingsRequest {
   activeProfile: string;
-  profile: string; // legacy support
   /** Profile whose per-profile secrets/region are currently being edited. */
   editingProfile?: string;
   region: string;
@@ -97,6 +124,8 @@ export interface SettingsState extends SaveSettingsRequest {
   savedCompartments: SavedCompartment[];
   /** Named profiles and their compartments */
   profilesConfig: ProfileConfig[];
+  extensionVersion: string;
+  extensionDescription: string;
 }
 
 /** Chat send request */
@@ -161,6 +190,11 @@ export interface AdbSqlRow {
 export interface ExecuteAdbSqlRequest {
   connectionId: string;
   sql: string;
+  connectionType?: SqlWorkbenchConnectionType;
+  targetId?: string;
+  targetName?: string;
+  serviceName?: string;
+  username?: string;
 }
 
 export interface ExecuteAdbSqlResponse {
@@ -169,6 +203,57 @@ export interface ExecuteAdbSqlResponse {
   rows: AdbSqlRow[];
   rowsAffected: number;
   message: string;
+}
+
+export interface ExplainSqlPlanRequest {
+  connectionId: string;
+  sql: string;
+  connectionType?: SqlWorkbenchConnectionType;
+  targetId?: string;
+  targetName?: string;
+  serviceName?: string;
+  username?: string;
+}
+
+export interface ExplainSqlPlanResponse {
+  planLines: string[];
+  message: string;
+}
+
+export interface TestSqlConnectionResponse {
+  success: boolean;
+  message: string;
+  latencyMs: number;
+}
+
+export interface SaveSqlFavoriteRequest {
+  id?: string;
+  label: string;
+  sql: string;
+  description?: string;
+  connectionType?: SqlWorkbenchConnectionType;
+  targetId?: string;
+  targetName?: string;
+}
+
+export interface DeleteSqlFavoriteRequest {
+  id: string;
+}
+
+export type SqlAssistantMode = "generate" | "optimize";
+
+export interface SqlAssistantRequest {
+  mode: SqlAssistantMode;
+  prompt: string;
+  sql?: string;
+  schemaContext?: string;
+  connectionType?: SqlWorkbenchConnectionType;
+  targetName?: string;
+}
+
+export interface SqlAssistantResponse {
+  content: string;
+  suggestedSql?: string;
 }
 
 export interface ListDbSystemsResponse {
@@ -205,6 +290,11 @@ export interface ConnectDbSystemSshResponse {
 export interface ExecuteDbSystemSqlRequest {
   connectionId: string;
   sql: string;
+  connectionType?: SqlWorkbenchConnectionType;
+  targetId?: string;
+  targetName?: string;
+  serviceName?: string;
+  username?: string;
 }
 
 export interface SaveDbSystemConnectionRequest {

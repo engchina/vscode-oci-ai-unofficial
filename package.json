@@ -1,8 +1,8 @@
 {
   "name": "vscode-oci-ai-unofficial",
   "displayName": "vscode-oci-ai-unofficial",
-  "description": "OCI development toolkit for VS Code, covering AI and broader OCI workflows.",
-  "version": "0.0.8",
+  "description": "A comprehensive extension for Oracle Cloud Infrastructure (OCI) in VS Code, supporting AI services and diversified cloud management workflows.",
+  "version": "0.0.9",
   "publisher": "local",
   "icon": "icon.png",
   "engines": {
@@ -168,11 +168,6 @@
           "type": "string",
           "default": "DEFAULT",
           "description": "The currently active global profile"
-        },
-        "ociAi.profile": {
-          "type": "string",
-          "default": "DEFAULT",
-          "description": "Active profile name used to look up API key credentials in SecretStorage"
         },
         "ociAi.authMode": {
           "type": "string",

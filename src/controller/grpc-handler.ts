@@ -163,6 +163,28 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
       return {};
     },
   },
+  SqlWorkbenchService: {
+    testAdbConnection: async (c, msg) => c.testAdbConnection(msg),
+    testDbSystemConnection: async (c, msg) => c.testDbSystemConnection(msg),
+    explainAdbSqlPlan: async (c, msg) => c.explainAdbSqlPlan(msg),
+    explainDbSystemSqlPlan: async (c, msg) => c.explainDbSystemSqlPlan(msg),
+    requestSqlAssistant: async (c, msg) => c.requestSqlAssistant(msg),
+    saveSqlFavorite: async (c, msg) => {
+      await c.saveSqlFavorite(msg);
+      showStatusMessage("SQL favorite saved.");
+      return {};
+    },
+    deleteSqlFavorite: async (c, msg) => {
+      await c.deleteSqlFavorite(msg);
+      showStatusMessage("SQL favorite deleted.");
+      return {};
+    },
+    clearSqlHistory: async (c) => {
+      await c.clearSqlHistory();
+      showStatusMessage("SQL history cleared.");
+      return {};
+    },
+  },
   ResourceService: {
     listCompute: async (c) => ({ instances: await c.listComputeInstances() }),
     startCompute: async (c, msg) => {

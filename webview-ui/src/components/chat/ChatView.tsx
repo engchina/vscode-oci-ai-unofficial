@@ -22,7 +22,9 @@ export default function ChatView({ isHidden = false }: ChatViewProps) {
     genAiLlmModelId,
     pendingCodeContext,
     clearPendingCodeContext,
-    configWarning
+    configWarning,
+    editAndResend,
+    regenerate,
   } = useExtensionState()
 
   const virtuosoRef = useRef<VirtuosoHandle>(null)
@@ -63,7 +65,14 @@ export default function ChatView({ isHidden = false }: ChatViewProps) {
             className="h-full px-1 py-2"
             itemContent={(index) => {
               if (index < chatMessages.length) {
-                return <ChatRow message={chatMessages[index]} />
+                return (
+                  <ChatRow
+                    message={chatMessages[index]}
+                    messageIndex={index}
+                    onEdit={editAndResend}
+                    onRegenerate={regenerate}
+                  />
+                )
               }
               return <StreamingRow text={streamingText} />
             }}

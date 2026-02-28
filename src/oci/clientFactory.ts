@@ -6,6 +6,10 @@ import { AuthManager } from "../auth/authManager";
 export class OciClientFactory {
   constructor(private readonly authManager: AuthManager) {}
 
+  public getRegion(): string | undefined {
+    return this.authManager.getRegion();
+  }
+
   public getCompartmentId(): string {
     const compartmentId = this.authManager.getCompartmentId();
     if (!compartmentId) {

@@ -30,7 +30,6 @@ const TABS: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
 
 const EMPTY_SETTINGS: SettingsState = {
   activeProfile: "DEFAULT",
-  profile: "",
   region: "",
   compartmentId: "",
   computeCompartmentIds: [],
@@ -58,6 +57,8 @@ const EMPTY_SETTINGS: SettingsState = {
   authMode: "api-key",
   savedCompartments: [],
   profilesConfig: [],
+  extensionVersion: "",
+  extensionDescription: "",
 }
 
 function getMissingApiKeyFields(s: Pick<SettingsState, "tenancyOcid" | "userOcid" | "fingerprint" | "privateKey">): string[] {
@@ -94,14 +95,14 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
     if (preferred && profiles.some((profile) => profile.name === preferred)) {
       return preferred
     }
-    if (state.profile.trim() && profiles.some((profile) => profile.name === state.profile)) {
-      return state.profile.trim()
+    if (state.activeProfile.trim() && profiles.some((profile) => profile.name === state.activeProfile)) {
+      return state.activeProfile.trim()
     }
-    return profiles[0]?.name?.trim() || state.profile.trim() || "DEFAULT"
+    return profiles[0]?.name?.trim() || state.activeProfile.trim() || "DEFAULT"
   }, [])
 
   const applyEditingProfileSecrets = useCallback(async (state: SettingsState, profileName: string) => {
-    if (!profileName || profileName === state.profile.trim()) {
+    if (!profileName || profileName === state.activeProfile.trim()) {
       return state
     }
     try {
@@ -293,7 +294,7 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
                 saving={saving}
               />
             )}
-            {activeTab === "about" && <AboutTab />}
+            {activeTab === "about" && <AboutTab settings={settings} />}
           </div>
         </div>
       </div>
@@ -346,7 +347,7 @@ function ApiConfigTab({
   const [addingProfile, setAddingProfile] = useState(false)
   const [deletingProfile, setDeletingProfile] = useState<string | null>(null)
   const profiles = settings.profilesConfig || []
-  const runtimeProfile = settings.profile.trim() || "DEFAULT"
+  const runtimeProfile = settings.activeProfile.trim() || "DEFAULT"
   const effectiveSelectedProfile = editingProfile && profiles.some((profile) => profile.name === editingProfile)
     ? editingProfile
     : profiles.find((profile) => profile.name === runtimeProfile)?.name || profiles[0]?.name || runtimeProfile
@@ -402,11 +403,7 @@ function ApiConfigTab({
     const updatedProfiles = profiles.filter(p => p.name !== name)
     const nextProfile = updatedProfiles.length > 0 ? updatedProfiles[0].name : "DEFAULT"
     const updatedSettings = { ...settings, profilesConfig: updatedProfiles }
-    const needsRuntimeProfileSwitch = runtimeProfile === name
     const needsEditingProfileSwitch = effectiveSelectedProfile === name
-    if (needsRuntimeProfileSwitch) {
-      updatedSettings.profile = nextProfile
-    }
     if (settings.activeProfile === name) {
       updatedSettings.activeProfile = nextProfile
     }
@@ -794,7 +791,7 @@ function TerminalTab({
   )
 }
 
-function AboutTab() {
+function AboutTab({ settings }: { settings: SettingsState }) {
   return (
     <div className="flex flex-col gap-4">
       <h3 className="flex items-center gap-1.5 text-md font-semibold">
@@ -811,11 +808,11 @@ function AboutTab() {
           </div>
           <div className="flex flex-wrap gap-1">
             <span className="text-xs text-description">Version: </span>
-            <span className="text-sm">0.0.1</span>
+            <span className="text-sm">{settings.extensionVersion}</span>
           </div>
           <div className="flex flex-wrap gap-1">
             <span className="text-xs text-description">Description: </span>
-            <span className="text-sm break-words">OCI development toolkit for VS Code, covering AI and broader OCI workflows.</span>
+            <span className="text-sm break-words">{settings.extensionDescription}</span>
           </div>
         </div>
       </div>

@@ -8,7 +8,6 @@ import Card from "../ui/Card"
 
 const EMPTY_SETTINGS: SettingsState = {
     activeProfile: "DEFAULT",
-    profile: "",
     region: "",
     compartmentId: "",
     computeCompartmentIds: [],
@@ -33,6 +32,8 @@ const EMPTY_SETTINGS: SettingsState = {
     savedCompartments: [],
     vcnCompartmentIds: [],
     profilesConfig: [],
+    extensionVersion: "",
+    extensionDescription: "",
 }
 
 export default function ProfilesCompartmentsView() {

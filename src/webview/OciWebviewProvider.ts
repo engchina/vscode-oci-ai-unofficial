@@ -50,8 +50,7 @@ export class OciWebviewProvider implements vscode.WebviewViewProvider {
     vscode.workspace.onDidChangeConfiguration(
       (e) => {
         if (
-          e.affectsConfiguration("ociAi.profile")
-          || e.affectsConfiguration("ociAi.activeProfile")
+          e.affectsConfiguration("ociAi.activeProfile")
           || e.affectsConfiguration("ociAi.profilesConfig")
         ) {
           this.updateSelectedProfileDescription();
@@ -84,7 +83,7 @@ export class OciWebviewProvider implements vscode.WebviewViewProvider {
   private updateSelectedProfileDescription(): void {
     if (!this.webview) return;
     const cfg = vscode.workspace.getConfiguration("ociAi");
-    const selectedProfile = cfg.get<string>("profile", "DEFAULT").trim() || "DEFAULT";
+    const selectedProfile = cfg.get<string>("activeProfile", "DEFAULT").trim() || "DEFAULT";
     const profilesConfig = cfg.get<{ name: string; compartments: { id: string; name: string }[] }[]>("profilesConfig", []);
     const profiles = Array.isArray(profilesConfig) ? profilesConfig : [];
     const selectedProfileConfig = profiles.find(profile => profile.name === selectedProfile);

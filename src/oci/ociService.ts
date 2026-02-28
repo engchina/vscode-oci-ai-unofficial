@@ -22,7 +22,7 @@ export class OciService {
     if (compartmentIds.length === 0) {
       return [];
     }
-    const regions = splitRegions(cfg.get<string>("region", ""));
+    const regions = this.getActiveProfileRegions();
 
     const instances: ComputeResource[] = [];
 
@@ -76,7 +76,7 @@ export class OciService {
     if (compartmentIds.length === 0) {
       return [];
     }
-    const regions = splitRegions(cfg.get<string>("region", ""));
+    const regions = this.getActiveProfileRegions();
 
     const databases: AdbResource[] = [];
 
@@ -119,7 +119,7 @@ export class OciService {
     if (compartmentIds.length === 0) {
       return [];
     }
-    const regions = splitRegions(cfg.get<string>("region", ""));
+    const regions = this.getActiveProfileRegions();
 
     const dbSystems: DbSystemResource[] = [];
 
@@ -296,7 +296,7 @@ export class OciService {
     if (compartmentIds.length === 0) {
       return [];
     }
-    const regions = splitRegions(cfg.get<string>("region", ""));
+    const regions = this.getActiveProfileRegions();
 
     const vcns: VcnResource[] = [];
 
@@ -402,7 +402,7 @@ export class OciService {
     }
 
     const buckets: ObjectStorageBucketResource[] = [];
-    for (const region of splitRegions(cfg.get<string>("region", ""))) {
+    for (const region of this.getActiveProfileRegions()) {
       const resolvedRegion = await this.resolveRegionId(region);
       const namespaceName = await this.getObjectStorageNamespace(resolvedRegion);
       for (const compartmentId of compartmentIds) {
@@ -794,6 +794,10 @@ export class OciService {
   private async resolveRegionId(regionOverride?: string): Promise<string> {
     const client = await this.factory.createComputeClientAsync(regionOverride);
     return String(client.regionId || regionOverride || "").trim();
+  }
+
+  private getActiveProfileRegions(): string[] {
+    return splitRegions(this.factory.getRegion() ?? "");
   }
 }
 

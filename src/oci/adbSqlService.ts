@@ -11,12 +11,15 @@ import type {
   ConnectAdbResponse,
   DownloadAdbWalletRequest,
   DownloadAdbWalletResponse,
+  ExplainSqlPlanRequest,
+  ExplainSqlPlanResponse,
   ExecuteAdbSqlRequest,
   ExecuteAdbSqlResponse,
   ConnectDbSystemRequest,
   ConnectDbSystemResponse,
   ExecuteDbSystemSqlRequest,
   OracleDbDiagnosticsResponse,
+  TestSqlConnectionResponse,
 } from "../shared/services";
 
 type DbConnection = {
@@ -79,53 +82,14 @@ export class AdbSqlService {
 
   public async connect(request: ConnectAdbRequest): Promise<ConnectAdbResponse> {
     const autonomousDatabaseId = request.autonomousDatabaseId.trim();
-    const walletPathRaw = request.walletPath.trim();
-    const username = request.username.trim();
-    const serviceName = request.serviceName.trim();
 
     if (!autonomousDatabaseId) {
       throw new Error("autonomousDatabaseId is required.");
     }
-    if (!walletPathRaw) {
-      throw new Error("walletPath is required.");
-    }
-    if (!username) {
-      throw new Error("username is required.");
-    }
-    if (!request.password) {
-      throw new Error("password is required.");
-    }
-    if (!serviceName) {
-      throw new Error("serviceName is required.");
-    }
-
-    const walletPath = normalizeWalletPath(walletPathRaw);
-    const stats = await fs.promises.stat(walletPath).catch(() => undefined);
-    if (!stats?.isDirectory()) {
-      throw new Error(`Wallet path not found or not a directory: ${walletPath}`);
-    }
-
-    const oracledb = loadOracleDb();
-    const walletPassword = request.walletPassword?.trim() || this.walletPasswords.get(walletPath);
-    if (!walletPassword) {
-      throw new Error("walletPassword is required for this wallet path.");
-    }
     // Keep exactly one active SQL connection to avoid session leaks and DB context mix-ups.
     await this.disconnectAll();
 
-    let connection: DbConnection;
-    try {
-      connection = (await oracledb.getConnection({
-        user: username,
-        password: request.password,
-        connectString: serviceName,
-        configDir: walletPath,
-        walletLocation: walletPath,
-        walletPassword,
-      })) as DbConnection;
-    } catch (error) {
-      throw enrichConnectError(error, autonomousDatabaseId, serviceName);
-    }
+    const { connection, serviceName, walletPath } = await this.openAdbConnection(request);
 
     const connectionId = randomUUID();
     this.connections.set(connectionId, {
@@ -155,27 +119,12 @@ export class AdbSqlService {
 
   public async connectDbSystem(request: ConnectDbSystemRequest): Promise<ConnectDbSystemResponse> {
     const dbSystemId = request.dbSystemId.trim();
-    const username = request.username.trim();
-    const serviceName = request.serviceName.trim();
 
     if (!dbSystemId) throw new Error("dbSystemId is required.");
-    if (!username) throw new Error("username is required.");
-    if (!request.password) throw new Error("password is required.");
-    if (!serviceName) throw new Error("serviceName (connection string) is required.");
 
-    const oracledb = loadOracleDb();
     await this.disconnectAll();
 
-    let connection: DbConnection;
-    try {
-      connection = (await oracledb.getConnection({
-        user: username,
-        password: request.password,
-        connectString: serviceName,
-      })) as DbConnection;
-    } catch (error) {
-      throw enrichConnectError(error, dbSystemId, serviceName);
-    }
+    const { connection, serviceName } = await this.openDbSystemConnection(request);
 
     const connectionId = randomUUID();
     this.connections.set(connectionId, {
@@ -199,6 +148,38 @@ export class AdbSqlService {
 
   public getOracleDbDiagnostics(): OracleDbDiagnosticsResponse {
     return getOracleDbDiagnostics();
+  }
+
+  public async testAdbConnection(request: ConnectAdbRequest): Promise<TestSqlConnectionResponse> {
+    const startedAt = Date.now();
+    const { connection } = await this.openAdbConnection(request);
+    try {
+      await this.pingConnection(connection);
+    } finally {
+      await connection.close().catch(() => undefined);
+    }
+
+    return {
+      success: true,
+      message: "ADB connection test succeeded.",
+      latencyMs: Date.now() - startedAt,
+    };
+  }
+
+  public async testDbSystemConnection(request: ConnectDbSystemRequest): Promise<TestSqlConnectionResponse> {
+    const startedAt = Date.now();
+    const { connection } = await this.openDbSystemConnection(request);
+    try {
+      await this.pingConnection(connection);
+    } finally {
+      await connection.close().catch(() => undefined);
+    }
+
+    return {
+      success: true,
+      message: "DB System connection test succeeded.",
+      latencyMs: Date.now() - startedAt,
+    };
   }
 
   public async executeSql(request: ExecuteAdbSqlRequest): Promise<ExecuteAdbSqlResponse> {
@@ -248,6 +229,44 @@ export class AdbSqlService {
     };
   }
 
+  public async explainSqlPlan(request: ExplainSqlPlanRequest): Promise<ExplainSqlPlanResponse> {
+    const connectionId = request.connectionId.trim();
+    const sql = stripTrailingSemicolon(request.sql);
+    if (!connectionId) {
+      throw new Error("connectionId is required.");
+    }
+    if (!sql) {
+      throw new Error("SQL is required.");
+    }
+    const entry = this.connections.get(connectionId);
+    if (!entry) {
+      throw new Error("Connection not found. Please connect again.");
+    }
+
+    const oracledb = loadOracleDb();
+    await entry.connection.execute(`EXPLAIN PLAN FOR ${sql}`, [], {
+      autoCommit: true,
+    });
+    const planResult = await entry.connection.execute(
+      "SELECT PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY())",
+      [],
+      {
+        outFormat: oracledb.OUT_FORMAT_OBJECT,
+        maxRows: 500,
+      },
+    );
+
+    const rows = normalizeRows(Array.isArray(planResult.rows) ? planResult.rows : [], ["PLAN_TABLE_OUTPUT"]);
+    const planLines = rows
+      .map((row) => row.PLAN_TABLE_OUTPUT)
+      .filter((value): value is string => typeof value === "string");
+
+    return {
+      planLines,
+      message: planLines.length > 0 ? "Explain plan generated successfully." : "No explain plan rows returned.",
+    };
+  }
+
   private async fetchServiceNames(
     client: database.DatabaseClient,
     autonomousDatabaseId: string,
@@ -272,6 +291,99 @@ export class AdbSqlService {
     }
 
     return Array.from(values).sort((a, b) => a.localeCompare(b));
+  }
+
+  private async openAdbConnection(request: ConnectAdbRequest): Promise<{
+    connection: DbConnection;
+    serviceName: string;
+    walletPath: string;
+  }> {
+    const autonomousDatabaseId = request.autonomousDatabaseId.trim();
+    const walletPathRaw = request.walletPath.trim();
+    const username = request.username.trim();
+    const serviceName = request.serviceName.trim();
+
+    if (!autonomousDatabaseId) {
+      throw new Error("autonomousDatabaseId is required.");
+    }
+    if (!walletPathRaw) {
+      throw new Error("walletPath is required.");
+    }
+    if (!username) {
+      throw new Error("username is required.");
+    }
+    if (!request.password) {
+      throw new Error("password is required.");
+    }
+    if (!serviceName) {
+      throw new Error("serviceName is required.");
+    }
+
+    const walletPath = normalizeWalletPath(walletPathRaw);
+    const stats = await fs.promises.stat(walletPath).catch(() => undefined);
+    if (!stats?.isDirectory()) {
+      throw new Error(`Wallet path not found or not a directory: ${walletPath}`);
+    }
+
+    const oracledb = loadOracleDb();
+    const walletPassword = request.walletPassword?.trim() || this.walletPasswords.get(walletPath);
+    if (!walletPassword) {
+      throw new Error("walletPassword is required for this wallet path.");
+    }
+
+    try {
+      const connection = (await oracledb.getConnection({
+        user: username,
+        password: request.password,
+        connectString: serviceName,
+        configDir: walletPath,
+        walletLocation: walletPath,
+        walletPassword,
+      })) as DbConnection;
+      return {
+        connection,
+        serviceName,
+        walletPath,
+      };
+    } catch (error) {
+      throw enrichConnectError(error, autonomousDatabaseId, serviceName);
+    }
+  }
+
+  private async openDbSystemConnection(request: ConnectDbSystemRequest): Promise<{
+    connection: DbConnection;
+    serviceName: string;
+  }> {
+    const dbSystemId = request.dbSystemId.trim();
+    const username = request.username.trim();
+    const serviceName = request.serviceName.trim();
+
+    if (!dbSystemId) throw new Error("dbSystemId is required.");
+    if (!username) throw new Error("username is required.");
+    if (!request.password) throw new Error("password is required.");
+    if (!serviceName) throw new Error("serviceName (connection string) is required.");
+
+    const oracledb = loadOracleDb();
+    try {
+      const connection = (await oracledb.getConnection({
+        user: username,
+        password: request.password,
+        connectString: serviceName,
+      })) as DbConnection;
+      return {
+        connection,
+        serviceName,
+      };
+    } catch (error) {
+      throw enrichConnectError(error, dbSystemId, serviceName);
+    }
+  }
+
+  private async pingConnection(connection: DbConnection): Promise<void> {
+    await connection.execute("SELECT 1 AS CONNECTION_OK FROM DUAL", [], {
+      autoCommit: false,
+      maxRows: 1,
+    });
   }
 
   private async disconnectAll(): Promise<void> {
@@ -364,6 +476,10 @@ function extractServiceAlias(connectString: string): string {
     return "";
   }
   return trimmed.slice(slashIdx + 1).trim();
+}
+
+function stripTrailingSemicolon(sql: string): string {
+  return sql.trim().replace(/;+\s*$/g, "");
 }
 
 function inferRegionFromAutonomousDatabaseId(autonomousDatabaseId: string): string {

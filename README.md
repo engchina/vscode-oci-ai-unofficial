@@ -40,7 +40,7 @@ Open the **OCI Settings** panel or use `vscode-oci-ai-unofficial: Configure Prof
 
 | Setting | Required | Description |
 |---------|----------|-------------|
-| `ociAi.profile` | Required | Profile name used to scope SecretStorage credentials (default: `DEFAULT`) |
+| `ociAi.activeProfile` | Required | Active profile name used to scope SecretStorage credentials (default: `DEFAULT`) |
 | `ociAi.authMode` | Fixed | `api-key` |
 | `ociAi.compartmentId` | Yes | Compartment OCID for Compute and ADB list/actions |
 | `ociAi.genAiLlmModelId` | Yes | LLM model name for AI chat (e.g. `meta.llama-3.1-70b-instruct`) |

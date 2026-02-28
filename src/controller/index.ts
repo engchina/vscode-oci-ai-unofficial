@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
@@ -15,6 +16,8 @@ import type {
   DownloadObjectStorageObjectResponse,
   DownloadAdbWalletRequest,
   DownloadAdbWalletResponse,
+  ExplainSqlPlanRequest,
+  ExplainSqlPlanResponse,
   ExecuteAdbSqlRequest,
   ExecuteAdbSqlResponse,
   AdbConnectionProfile,
@@ -23,11 +26,20 @@ import type {
   LoadAdbConnectionResponse,
   AppState,
   ChatImageData,
+  DeleteSqlFavoriteRequest,
   SavedCompartment,
   SaveSettingsRequest,
   SendMessageRequest,
   SettingsState,
+  SqlAssistantRequest,
+  SqlAssistantResponse,
+  SqlFavoriteEntry,
+  SqlHistoryEntry,
+  SqlWorkbenchConnectionType,
+  SqlWorkbenchState,
   StreamTokenResponse,
+  TestSqlConnectionResponse,
+  SaveSqlFavoriteRequest,
   UploadObjectStorageObjectResponse
 } from "../shared/services";
 import type { ExtensionMessage } from "../shared/messages";
@@ -44,7 +56,10 @@ export interface CodeContextPayload {
 }
 
 const CHAT_HISTORY_KEY = "ociAi.chatHistory";
+const SQL_WORKBENCH_STATE_KEY = "ociAi.sqlWorkbench";
 const MAX_PERSISTED_MESSAGES = 100;
+const MAX_SQL_HISTORY_ITEMS = 50;
+const MAX_SQL_FAVORITES = 30;
 const DEFAULT_SHELL_TIMEOUT_SEC = 4;
 const DEFAULT_CHAT_MAX_TOKENS = 16000;
 const MAX_CHAT_MAX_TOKENS = 128000;
@@ -68,6 +83,8 @@ type ActiveChatRequest = {
 
 export class Controller {
   private chatHistory: ChatMessage[] = [];
+  private sqlHistory: SqlHistoryEntry[] = [];
+  private sqlFavorites: SqlFavoriteEntry[] = [];
   private stateSubscribers: Map<string, StreamingResponseHandler<AppState>> = new Map();
   private settingsButtonSubscribers: Map<string, StreamingResponseHandler<unknown>> = new Map();
   private chatButtonSubscribers: Map<string, StreamingResponseHandler<unknown>> = new Map();
@@ -85,13 +102,19 @@ export class Controller {
     if (workspaceState) {
       const persisted = workspaceState.get<ChatMessage[]>(CHAT_HISTORY_KEY, []);
       this.chatHistory = Array.isArray(persisted) ? persisted : [];
+      const persistedSqlWorkbench = workspaceState.get<SqlWorkbenchState>(SQL_WORKBENCH_STATE_KEY, {
+        history: [],
+        favorites: [],
+      });
+      this.sqlHistory = Array.isArray(persistedSqlWorkbench?.history) ? persistedSqlWorkbench.history : [];
+      this.sqlFavorites = Array.isArray(persistedSqlWorkbench?.favorites) ? persistedSqlWorkbench.favorites : [];
     }
   }
 
   /** Get current app state */
   public async getState(): Promise<AppState> {
     const cfg = vscode.workspace.getConfiguration("ociAi");
-    const profile = cfg.get<string>("profile", "DEFAULT");
+    const activeProfile = String(cfg.get<string>("activeProfile", "DEFAULT") ?? "").trim() || "DEFAULT";
     const compartmentId = cfg.get<string>("compartmentId", "").trim();
     const genAiLlmModelIdRaw =
       cfg.get<string>("genAiLlmModelId", "").trim() || cfg.get<string>("genAiModelId", "").trim();
@@ -103,13 +126,12 @@ export class Controller {
     if (!hasModelName) warnings.push("LLM Model Name not set (OCI Settings → LLM Model Name).");
     const missingApiKeyFields = getMissingApiKeyFields(secrets);
     if (missingApiKeyFields.length > 0) {
-      warnings.push(`API Key Auth incomplete for profile "${profile}": ${missingApiKeyFields.join(", ")}.`);
+      warnings.push(`API Key Auth incomplete for profile "${activeProfile}": ${missingApiKeyFields.join(", ")}.`);
     }
 
     return {
-      activeProfile: cfg.get<string>("activeProfile", "DEFAULT"),
-      profile,
-      region: await this.authManager.getRegionForProfile(profile),
+      activeProfile,
+      region: await this.authManager.getRegionForProfile(activeProfile),
       compartmentId,
       computeCompartmentIds: Array.isArray(cfg.get("computeCompartmentIds")) ? cfg.get<string[]>("computeCompartmentIds") as string[] : [],
       chatCompartmentId: cfg.get<string>("chatCompartmentId", ""),
@@ -125,20 +147,23 @@ export class Controller {
       chatMessages: this.chatHistory.map(m => ({ role: m.role, text: m.text, images: m.images })),
       isStreaming: false,
       configWarning: warnings.join(" "),
+      sqlWorkbench: {
+        history: this.sqlHistory,
+        favorites: this.sqlFavorites,
+      },
     };
   }
 
   /** Get settings including secrets */
   public async getSettings(): Promise<SettingsState> {
     const cfg = vscode.workspace.getConfiguration("ociAi");
-    const profile = cfg.get<string>("profile", "DEFAULT");
-    const secrets = await this.authManager.getApiKeySecrets(profile);
+    const activeProfile = String(cfg.get<string>("activeProfile", "DEFAULT") ?? "").trim() || "DEFAULT";
+    const secrets = await this.authManager.getApiKeySecrets(activeProfile);
     const savedCompartments = cfg.get<SavedCompartment[]>("savedCompartments", []);
     const profilesConfig = cfg.get<any[]>("profilesConfig", []);
     return {
-      activeProfile: cfg.get<string>("activeProfile", "DEFAULT"),
-      profile,
-      region: await this.authManager.getRegionForProfile(profile),
+      activeProfile,
+      region: await this.authManager.getRegionForProfile(activeProfile),
       compartmentId: cfg.get<string>("compartmentId", ""),
       computeCompartmentIds: Array.isArray(cfg.get("computeCompartmentIds")) ? cfg.get<string[]>("computeCompartmentIds") as string[] : [],
       chatCompartmentId: cfg.get<string>("chatCompartmentId", ""),
@@ -159,6 +184,8 @@ export class Controller {
       authMode: "api-key",
       savedCompartments: Array.isArray(savedCompartments) ? savedCompartments : [],
       profilesConfig: Array.isArray(profilesConfig) ? profilesConfig : [],
+      extensionVersion: vscode.extensions.getExtension("local.vscode-oci-ai-unofficial")?.packageJSON?.version ?? "0.0.0",
+      extensionDescription: vscode.extensions.getExtension("local.vscode-oci-ai-unofficial")?.packageJSON?.description ?? "",
     };
   }
 
@@ -172,10 +199,9 @@ export class Controller {
   /** Save settings */
   public async saveSettings(payload: SaveSettingsRequest & { profilesConfig?: any[] }): Promise<void> {
     const cfg = vscode.workspace.getConfiguration("ociAi");
-    const runtimeProfile = String(payload.profile ?? "").trim() || "DEFAULT";
-    const targetProfile = String(payload.editingProfile ?? runtimeProfile).trim() || runtimeProfile;
-    await cfg.update("activeProfile", String(payload.activeProfile ?? "").trim() || "DEFAULT", vscode.ConfigurationTarget.Global);
-    await cfg.update("profile", runtimeProfile, vscode.ConfigurationTarget.Global);
+    const activeProfile = String(payload.activeProfile ?? "").trim() || "DEFAULT";
+    const targetProfile = String(payload.editingProfile ?? activeProfile).trim() || activeProfile;
+    await cfg.update("activeProfile", activeProfile, vscode.ConfigurationTarget.Global);
     await this.authManager.updateRegionForProfile(targetProfile, String(payload.region ?? ""));
     await this.authManager.updateCompartmentId(String(payload.compartmentId ?? ""));
     await cfg.update("computeCompartmentIds", Array.isArray(payload.computeCompartmentIds) ? payload.computeCompartmentIds : [], vscode.ConfigurationTarget.Global);
@@ -241,21 +267,15 @@ export class Controller {
     const updatedProfiles = profiles.filter((profile) => profile?.name !== trimmedProfile);
     const fallbackProfile = updatedProfiles[0]?.name?.trim() || "DEFAULT";
 
-    const currentProfile = String(cfg.get<string>("profile", "DEFAULT") ?? "").trim() || "DEFAULT";
     const currentActiveProfile = String(cfg.get<string>("activeProfile", "DEFAULT") ?? "").trim() || "DEFAULT";
-    const nextProfile = currentProfile === trimmedProfile ? fallbackProfile : currentProfile;
     const nextActiveProfile = currentActiveProfile === trimmedProfile ? fallbackProfile : currentActiveProfile;
 
     await cfg.update("profilesConfig", updatedProfiles, vscode.ConfigurationTarget.Global);
 
-    if (nextProfile !== currentProfile) {
-      await cfg.update("profile", nextProfile, vscode.ConfigurationTarget.Global);
-    }
-
-    if (currentProfile === trimmedProfile) {
-      const nextRegion = nextProfile === trimmedProfile
+    if (currentActiveProfile === trimmedProfile) {
+      const nextRegion = nextActiveProfile === trimmedProfile
         ? ""
-        : await this.authManager.getRegionForProfile(nextProfile);
+        : await this.authManager.getRegionForProfile(nextActiveProfile);
       await cfg.update("region", nextRegion, vscode.ConfigurationTarget.Global);
     }
 
@@ -423,6 +443,45 @@ export class Controller {
     this.workspaceState.update(CHAT_HISTORY_KEY, toSave);
   }
 
+  private async recordSqlHistory(entry: {
+    sql: string;
+    connectionType: SqlWorkbenchConnectionType;
+    targetId?: string;
+    targetName?: string;
+    serviceName?: string;
+    username?: string;
+  }): Promise<void> {
+    const sql = String(entry.sql ?? "").trim();
+    if (!sql) {
+      return;
+    }
+
+    const historyEntry: SqlHistoryEntry = {
+      id: randomUUID(),
+      sql,
+      executedAt: new Date().toISOString(),
+      connectionType: entry.connectionType,
+      targetId: String(entry.targetId ?? "").trim() || undefined,
+      targetName: String(entry.targetName ?? "").trim() || undefined,
+      serviceName: String(entry.serviceName ?? "").trim() || undefined,
+      username: String(entry.username ?? "").trim() || undefined,
+    };
+
+    this.sqlHistory = [historyEntry, ...this.sqlHistory.filter((item) => item.sql !== sql)].slice(0, MAX_SQL_HISTORY_ITEMS);
+    await this.persistSqlWorkbenchState();
+    await this.broadcastState();
+  }
+
+  private async persistSqlWorkbenchState(): Promise<void> {
+    if (!this.workspaceState) {
+      return;
+    }
+    await this.workspaceState.update(SQL_WORKBENCH_STATE_KEY, {
+      history: this.sqlHistory,
+      favorites: this.sqlFavorites,
+    } satisfies SqlWorkbenchState);
+  }
+
   /** Subscribe to code context injection events */
   public subscribeToCodeContext(requestId: string, stream: StreamingResponseHandler<CodeContextPayload>): void {
     this.codeContextSubscribers.set(requestId, stream);
@@ -550,7 +609,33 @@ export class Controller {
 
   /** Execute SQL against autonomous database */
   public async executeAdbSql(request: ExecuteAdbSqlRequest): Promise<ExecuteAdbSqlResponse> {
-    return this.adbSqlService.executeSql(request);
+    const response = await this.adbSqlService.executeSql(request);
+    await this.recordSqlHistory({
+      sql: request.sql,
+      connectionType: request.connectionType ?? "adb",
+      targetId: request.targetId,
+      targetName: request.targetName,
+      serviceName: request.serviceName,
+      username: request.username,
+    });
+    return response;
+  }
+
+  public async explainAdbSqlPlan(request: ExplainSqlPlanRequest): Promise<ExplainSqlPlanResponse> {
+    const response = await this.adbSqlService.explainSqlPlan(request);
+    await this.recordSqlHistory({
+      sql: request.sql,
+      connectionType: request.connectionType ?? "adb",
+      targetId: request.targetId,
+      targetName: request.targetName,
+      serviceName: request.serviceName,
+      username: request.username,
+    });
+    return response;
+  }
+
+  public async testAdbConnection(request: ConnectAdbRequest): Promise<TestSqlConnectionResponse> {
+    return this.adbSqlService.testAdbConnection(request);
   }
 
   /** Switch active compartment and broadcast updated state */
@@ -688,7 +773,33 @@ export class Controller {
   }
 
   public async executeDbSystemSql(request: import("../shared/services").ExecuteDbSystemSqlRequest): Promise<import("../shared/services").ExecuteAdbSqlResponse> {
-    return this.adbSqlService.executeDbSystemSql(request);
+    const response = await this.adbSqlService.executeDbSystemSql(request);
+    await this.recordSqlHistory({
+      sql: request.sql,
+      connectionType: request.connectionType ?? "dbSystem",
+      targetId: request.targetId,
+      targetName: request.targetName,
+      serviceName: request.serviceName,
+      username: request.username,
+    });
+    return response;
+  }
+
+  public async explainDbSystemSqlPlan(request: ExplainSqlPlanRequest): Promise<ExplainSqlPlanResponse> {
+    const response = await this.adbSqlService.explainSqlPlan(request);
+    await this.recordSqlHistory({
+      sql: request.sql,
+      connectionType: request.connectionType ?? "dbSystem",
+      targetId: request.targetId,
+      targetName: request.targetName,
+      serviceName: request.serviceName,
+      username: request.username,
+    });
+    return response;
+  }
+
+  public async testDbSystemConnection(request: import("../shared/services").ConnectDbSystemRequest): Promise<TestSqlConnectionResponse> {
+    return this.adbSqlService.testDbSystemConnection(request);
   }
 
   public async getOracleDbDiagnostics(): Promise<import("../shared/services").OracleDbDiagnosticsResponse> {
@@ -760,6 +871,93 @@ export class Controller {
 
     const secretStore = this.authManager["context"].secrets;
     await secretStore.delete(`ociAi.dbSystem.${dbId}.password`);
+  }
+
+  public async saveSqlFavorite(request: SaveSqlFavoriteRequest): Promise<void> {
+    const label = String(request.label ?? "").trim();
+    const sql = String(request.sql ?? "").trim();
+    if (!label) {
+      throw new Error("Favorite label is required.");
+    }
+    if (!sql) {
+      throw new Error("Favorite SQL is required.");
+    }
+
+    const id = String(request.id ?? "").trim() || randomUUID();
+    const favorite: SqlFavoriteEntry = {
+      id,
+      label,
+      sql,
+      description: String(request.description ?? "").trim() || undefined,
+      connectionType: request.connectionType,
+      targetId: String(request.targetId ?? "").trim() || undefined,
+      targetName: String(request.targetName ?? "").trim() || undefined,
+    };
+    this.sqlFavorites = [favorite, ...this.sqlFavorites.filter((entry) => entry.id !== id)].slice(0, MAX_SQL_FAVORITES);
+    await this.persistSqlWorkbenchState();
+    await this.broadcastState();
+  }
+
+  public async deleteSqlFavorite(request: DeleteSqlFavoriteRequest): Promise<void> {
+    const id = String(request.id ?? "").trim();
+    if (!id) {
+      return;
+    }
+    this.sqlFavorites = this.sqlFavorites.filter((entry) => entry.id !== id);
+    await this.persistSqlWorkbenchState();
+    await this.broadcastState();
+  }
+
+  public async clearSqlHistory(): Promise<void> {
+    this.sqlHistory = [];
+    await this.persistSqlWorkbenchState();
+    await this.broadcastState();
+  }
+
+  public async requestSqlAssistant(request: SqlAssistantRequest): Promise<SqlAssistantResponse> {
+    const mode = request.mode === "optimize" ? "optimize" : "generate";
+    const prompt = String(request.prompt ?? "").trim();
+    const currentSql = String(request.sql ?? "").trim();
+    const schemaContext = String(request.schemaContext ?? "").trim();
+    const targetName = String(request.targetName ?? "").trim();
+
+    if (!prompt && !currentSql) {
+      throw new Error("Please provide a request or SQL to analyze.");
+    }
+
+    const cfg = vscode.workspace.getConfiguration("ociAi");
+    const modelName = cfg.get<string>("genAiLlmModelId", "").trim() || cfg.get<string>("genAiModelId", "").trim();
+    if (!modelName) {
+      return {
+        content: "Configure `ociAi.genAiLlmModelId` before using the AI SQL assistant.",
+      };
+    }
+
+    let content = "";
+    await this.genAiService.chatStream(
+      [
+        {
+          role: "user",
+          text: buildSqlAssistantPrompt({
+            mode,
+            prompt,
+            currentSql,
+            schemaContext,
+            connectionType: request.connectionType,
+            targetName,
+          }),
+        },
+      ],
+      (token) => {
+        content += token;
+      },
+      undefined,
+    );
+
+    return {
+      content: content.trim(),
+      suggestedSql: extractFirstSqlBlock(content),
+    };
   }
 
   public async connectDbSystemSsh(request: import("../shared/services").ConnectDbSystemSshRequest): Promise<import("../shared/services").ConnectDbSystemSshResponse> {
@@ -1008,6 +1206,54 @@ function splitModelNames(rawValue: string): string[] {
     .split(",")
     .map((model) => model.trim())
     .filter((model) => model.length > 0);
+}
+
+function buildSqlAssistantPrompt(input: {
+  mode: "generate" | "optimize";
+  prompt: string;
+  currentSql: string;
+  schemaContext: string;
+  connectionType?: SqlWorkbenchConnectionType;
+  targetName?: string;
+}): string {
+  const scopeLabel = input.connectionType === "dbSystem" ? "Oracle Base Database Service" : "Autonomous Database";
+  const targetDetails = input.targetName ? `${scopeLabel} target: ${input.targetName}` : `Connection type: ${scopeLabel}`;
+  const modeInstructions = input.mode === "optimize"
+    ? [
+      "Optimize the provided Oracle SQL for clarity and performance.",
+      "Keep the result semantically equivalent unless you must call out a risky assumption.",
+      "Explain the main bottlenecks and tradeoffs briefly.",
+    ]
+    : [
+      "Convert the user's request into Oracle SQL.",
+      "Prefer a single statement unless the task clearly requires more.",
+      "If the schema is incomplete, state assumptions briefly before the SQL.",
+    ];
+
+  const sections = [
+    "You are an Oracle SQL copilot for VS Code.",
+    ...modeInstructions,
+    targetDetails,
+    "Respond with three sections in this order:",
+    "1. Assumptions",
+    "2. SQL in a single ```sql fenced block```",
+    "3. Notes",
+    `User request: ${input.prompt || "(none provided)"}`,
+  ];
+
+  if (input.currentSql) {
+    sections.push(`Current SQL:\n${input.currentSql}`);
+  }
+  if (input.schemaContext) {
+    sections.push(`Schema context:\n${input.schemaContext}`);
+  }
+  return sections.join("\n\n");
+}
+
+function extractFirstSqlBlock(content: string): string | undefined {
+  const match = content.match(/```sql\s*([\s\S]*?)```/i);
+  const sql = match?.[1]?.trim();
+  return sql || undefined;
 }
 
 function expandHomePath(input: string): string {

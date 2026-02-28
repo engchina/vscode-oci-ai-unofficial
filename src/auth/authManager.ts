@@ -31,7 +31,7 @@ export class AuthManager {
   }
 
   public getProfile(): string {
-    const raw = vscode.workspace.getConfiguration("ociAi").get<string>("profile", "DEFAULT");
+    const raw = vscode.workspace.getConfiguration("ociAi").get<string>("activeProfile", "DEFAULT");
     const normalized = String(raw ?? "").trim();
     return normalized.length > 0 ? normalized : "DEFAULT";
   }
@@ -94,7 +94,6 @@ export class AuthManager {
     }
 
     await cfg.update("activeProfile", targetProfile, vscode.ConfigurationTarget.Global);
-    await cfg.update("profile", targetProfile, vscode.ConfigurationTarget.Global);
 
     vscode.window.showInformationMessage(`Switched to profile: ${targetProfile}`);
   }
