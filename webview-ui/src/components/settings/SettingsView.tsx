@@ -624,7 +624,7 @@ function GenAiTab({
           onChange={(e) => updateField("genAiLlmModelId", e.target.value)}
         />
         <p className="-mt-1 text-xs text-description">
-          Use commas to configure multiple models. Chat page dropdown will show them in order and default to the first.
+          Comma-separated. Chat dropdown shows all models; SQL Assistant always uses the first.
         </p>
         <Input
           id="genAiEmbeddingModelId"
