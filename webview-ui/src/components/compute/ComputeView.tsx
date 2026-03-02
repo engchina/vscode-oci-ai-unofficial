@@ -482,7 +482,7 @@ export default function ComputeView() {
           </div>
         ) : (
           <div className="min-h-0 flex-1">
-            <section className="h-full overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_76%,white_24%)]">
+            <section className="h-full overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-shell)]">
               <div className="flex h-full min-h-0 flex-col p-2">
                 <WorkbenchInventorySummary
                   label="Instance inventory"

@@ -50,7 +50,7 @@ export function WorkbenchHero({
   metaItems = [],
 }: WorkbenchHeroProps) {
   return (
-    <div className="rounded-md border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_96%,white_4%)] px-2 py-2">
+    <div className="rounded-md border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)] px-2 py-2">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="text-[11px] uppercase tracking-[0.16em] text-[var(--vscode-descriptionForeground)]">{eyebrow}</div>
@@ -118,7 +118,7 @@ export function WorkbenchSection({
   className,
 }: WorkbenchSectionProps) {
   return (
-    <section className={clsx("flex min-h-0 flex-col rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)]", className)}>
+    <section className={clsx("flex min-h-0 flex-col rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)]", className)}>
       <div className="flex flex-col gap-2 border-b border-[var(--vscode-panel-border)] px-2 py-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="text-[13px] font-semibold text-[var(--vscode-foreground)]">{title}</div>
@@ -139,7 +139,7 @@ export function WorkbenchSurface({
   className?: string
 }) {
   return (
-    <div className={clsx("rounded-[2px] border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_97%,black_3%)] p-2", className)}>
+    <div className={clsx("rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface-subtle)] p-2", className)}>
       {children}
     </div>
   )

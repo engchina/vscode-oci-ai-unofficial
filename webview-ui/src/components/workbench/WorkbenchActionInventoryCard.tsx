@@ -40,7 +40,7 @@ export default function WorkbenchActionInventoryCard({
             ? "border-[var(--vscode-focusBorder)] bg-[var(--vscode-list-hoverBackground)]"
             : highlighted
               ? "border-[color-mix(in_srgb,var(--vscode-button-background)_45%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,var(--vscode-button-background)_18%)]"
-              : "border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] hover:bg-[var(--vscode-list-hoverBackground)]",
+              : "border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)] hover:bg-[var(--vscode-list-hoverBackground)]",
       )}
       onClick={(event) => {
         if (!onSelect) {

@@ -684,7 +684,7 @@ export default function AdbView() {
         ) : (
           <div className="min-h-0 flex-1">
             {showDatabaseWorkspace && selectedDatabase ? (
-              <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_76%,white_24%)]">
+              <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-shell)]">
                 <div className="flex items-center gap-2 border-b border-[var(--vscode-panel-border)] px-3 py-2">
                   <button
                     type="button"
@@ -906,7 +906,7 @@ export default function AdbView() {
                 </div>
               </section>
             ) : (
-              <section className="h-full min-h-0 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_76%,white_24%)]">
+              <section className="h-full min-h-0 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-shell)]">
                 <div className="h-full overflow-y-auto p-2">
                   <div className="flex flex-col gap-2">
                     <WorkbenchInventorySummary

@@ -901,7 +901,7 @@ export default function SqlWorkbenchView() {
 
           <div className="min-h-0 flex-1">
             {showSqlWorkspace && selectedTarget ? (
-              <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_76%,white_24%)]">
+              <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-shell)]">
                 <div className="flex items-center gap-2 border-b border-[var(--vscode-panel-border)] px-3 py-2">
                   <button
                     type="button"
@@ -979,7 +979,7 @@ export default function SqlWorkbenchView() {
                         subtitle="Switch between execution output, snippet library, and AI assistance without leaving the editor."
                         bodyClassName="min-h-0 gap-2"
                       >
-                        <div className="flex flex-col gap-2 rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_97%,black_3%)] p-2 md:flex-row md:items-center md:justify-between">
+                        <div className="flex flex-col gap-2 rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface-subtle)] p-2 md:flex-row md:items-center md:justify-between">
                           <div className="min-w-0">
                             <div className="text-[11px] uppercase tracking-[0.14em] text-[var(--vscode-descriptionForeground)]">Panel Selector</div>
                             <div className="mt-1 text-[11px] leading-5 text-[var(--vscode-descriptionForeground)]">
@@ -1002,7 +1002,7 @@ export default function SqlWorkbenchView() {
                         <div className="min-h-0 flex-1 overflow-y-auto">
                           {workspacePanel === "results" && (
                             <div className="grid gap-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
-                              <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2">
+                              <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)] p-2">
                                 <div className="mb-2 text-[12px] font-semibold text-[var(--vscode-foreground)]">Result Grid</div>
                                 {sqlResult ? (
                                   <WorkbenchQueryResult result={sqlResult} />
@@ -1013,7 +1013,7 @@ export default function SqlWorkbenchView() {
                                   />
                                 )}
                               </section>
-                              <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2">
+                              <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)] p-2">
                                 <div className="mb-2 text-[12px] font-semibold text-[var(--vscode-foreground)]">Explain Plan</div>
                                 {planResult ? (
                                   <WorkbenchSurface>
@@ -1035,7 +1035,7 @@ export default function SqlWorkbenchView() {
                           {workspacePanel === "library" && (
                             <div className="grid gap-2 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
                               <div className="flex flex-col gap-2">
-                                <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2">
+                                <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)] p-2">
                                   <div className="mb-2 text-[12px] font-semibold text-[var(--vscode-foreground)]">Save Current SQL</div>
                                   <div className="grid gap-2 sm:grid-cols-2">
                                     <Input
@@ -1059,7 +1059,7 @@ export default function SqlWorkbenchView() {
                                   </WorkbenchCompactActionCluster>
                                 </section>
 
-                                <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2">
+                                <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)] p-2">
                                   <div className="mb-2 text-[12px] font-semibold text-[var(--vscode-foreground)]">Favorites</div>
                                   <SqlSnippetList
                                     emptyLabel="No favorites yet."
@@ -1071,7 +1071,7 @@ export default function SqlWorkbenchView() {
                                 </section>
                               </div>
 
-                              <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2">
+                              <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)] p-2">
                                 <div className="mb-2 flex items-center justify-between gap-2">
                                   <div className="text-[12px] font-semibold text-[var(--vscode-foreground)]">History</div>
                                   <WorkbenchCompactActionCluster>
@@ -1092,7 +1092,7 @@ export default function SqlWorkbenchView() {
 
                           {workspacePanel === "assistant" && (
                             <div className="grid gap-2 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-                              <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2.5">
+                              <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)] p-2.5">
                                 <WorkbenchSegmentedControl
                                   className="mb-3"
                                   value={assistantMode}
@@ -1129,7 +1129,7 @@ export default function SqlWorkbenchView() {
                                 </WorkbenchInlineActionCluster>
                               </section>
 
-                              <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2.5">
+                              <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)] p-2.5">
                                 <div className="mb-2 text-[12px] font-semibold text-[var(--vscode-foreground)]">Assistant Output</div>
                                 {assistantResult ? (
                                   <div className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_96%,black_4%)] px-2 py-1.5">
@@ -1151,7 +1151,7 @@ export default function SqlWorkbenchView() {
                 </div>
               </section>
             ) : (
-              <section className="h-full min-h-0 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_76%,white_24%)]">
+              <section className="h-full min-h-0 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-shell)]">
                 <div className="h-full overflow-y-auto p-2">
                   <div className="flex flex-col gap-2">
                     <WorkbenchInventorySummary
@@ -1219,7 +1219,7 @@ export default function SqlWorkbenchView() {
                             </WorkbenchCompactActionCluster>
                           </Card>
                         ) : (
-                          <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-6 py-10 text-center">
+                          <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)] px-6 py-10 text-center">
                             <div className="max-w-sm">
                               <div className="text-[13px] font-semibold text-[var(--vscode-foreground)]">Select a target to open the SQL workbench</div>
                               <div className="mt-2 text-[11px] leading-5 text-[var(--vscode-descriptionForeground)]">

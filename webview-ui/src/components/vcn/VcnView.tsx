@@ -291,14 +291,14 @@ export default function VcnView() {
                 ) : (
                     <div className="min-h-0 flex-1">
                         {showSecurityListWorkspace && selectedVcn ? (
-                            <section className="h-full min-h-0 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_76%,white_24%)]">
+                            <section className="h-full min-h-0 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-shell)]">
                                 <SecurityListView
                                     vcn={selectedVcn}
                                     onBack={() => setShowSecurityListWorkspace(false)}
                                 />
                             </section>
                         ) : (
-                            <section className="h-full min-h-0 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_76%,white_24%)]">
+                            <section className="h-full min-h-0 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-shell)]">
                                 <div className="h-full overflow-y-auto p-2">
                                     <VcnInventoryPanel
                                         vcns={vcns}

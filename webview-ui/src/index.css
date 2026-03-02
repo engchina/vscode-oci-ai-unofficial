@@ -25,6 +25,13 @@ body {
   color: var(--vscode-foreground);
   background: var(--vscode-editor-background);
   overflow: hidden;
+  --workbench-panel-surface: color-mix(in srgb, var(--vscode-editor-background) 92%, white 8%);
+  --workbench-panel-surface-subtle: color-mix(in srgb, var(--vscode-editor-background) 95%, white 5%);
+  --workbench-panel-shell: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--vscode-editor-background) 94%, white 6%) 0%,
+    color-mix(in srgb, var(--vscode-editor-background) 90%, white 10%) 100%
+  );
 }
 
 #root {

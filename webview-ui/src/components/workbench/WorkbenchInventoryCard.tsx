@@ -39,8 +39,8 @@ export default function WorkbenchInventoryCard({
       : highlighted
         ? "border-[color-mix(in_srgb,var(--vscode-button-background)_45%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,var(--vscode-button-background)_18%)] text-[var(--vscode-foreground)]"
         : subtle
-          ? "border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_97%,black_3%)] text-[var(--vscode-foreground)] hover:bg-[var(--vscode-list-hoverBackground)]"
-          : "border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] text-[var(--vscode-foreground)] hover:bg-[var(--vscode-list-hoverBackground)]",
+          ? "border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface-subtle)] text-[var(--vscode-foreground)] hover:bg-[var(--vscode-list-hoverBackground)]"
+          : "border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)] text-[var(--vscode-foreground)] hover:bg-[var(--vscode-list-hoverBackground)]",
   )
 
   const content = (
