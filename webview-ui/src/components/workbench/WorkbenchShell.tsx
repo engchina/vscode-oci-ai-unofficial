@@ -55,14 +55,6 @@ export default function WorkbenchShell({
   aside,
   children,
 }: WorkbenchShellProps) {
-  const secondaryItems = secondaryGroups.flatMap((group) =>
-    group.items.map((item) => ({
-      ...item,
-      groupTitle: group.title,
-    })),
-  )
-  const activeSecondaryItem = secondaryItems.find((item) => item.id === activeViewId) ?? secondaryItems[0]
-
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--vscode-editor-background)] text-[var(--vscode-foreground)]">
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_88%,black_12%)] px-2">
@@ -155,19 +147,6 @@ export default function WorkbenchShell({
                     </section>
                   ))}
                 </div>
-
-                {activeSecondaryItem && (
-                  <div className="flex items-center gap-2 border-t border-[var(--vscode-panel-border)] px-3 py-1.5 text-[11px]">
-                    <span className="rounded-full border border-[var(--vscode-panel-border)] px-2 py-0.5 font-semibold uppercase tracking-[0.14em] text-[var(--vscode-descriptionForeground)]">
-                      {activeSecondaryItem.groupTitle}
-                    </span>
-                    {activeSecondaryItem.icon && (
-                      <span className="shrink-0 text-[var(--vscode-icon-foreground)]">{activeSecondaryItem.icon}</span>
-                    )}
-                    <span className="font-medium text-[var(--vscode-foreground)]">{activeSecondaryItem.label}</span>
-                    <span className="truncate text-[var(--vscode-descriptionForeground)]">{activeSecondaryItem.description}</span>
-                  </div>
-                )}
               </div>
             )}
 

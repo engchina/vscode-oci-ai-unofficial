@@ -97,6 +97,7 @@ export default function SettingsView({ activeTab: controlledActiveTab, onDone, s
   const refreshTimerRef = useRef<number | null>(null)
   const activeTab = controlledActiveTab ?? "api-config"
   const activeTabLabel = SETTINGS_TABS.find((tab) => tab.id === activeTab)?.label ?? "None"
+  const activeTabDescription = SETTINGS_TABS.find((tab) => tab.id === activeTab)?.description ?? ""
 
   const updateEditingProfile = useCallback((profileName: string | null) => {
     editingProfileRef.current = profileName
@@ -248,6 +249,7 @@ export default function SettingsView({ activeTab: controlledActiveTab, onDone, s
             <div className="flex min-w-0 flex-col">
               <span className="text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)]">Settings</span>
               <span className="mt-0.5 text-[10px] text-description uppercase tracking-wider">{activeTabLabel}</span>
+              {activeTabDescription && <span className="mt-1 text-[11px] text-description">{activeTabDescription}</span>}
             </div>
           </div>
           <WorkbenchInlineActionCluster className="shrink-0">

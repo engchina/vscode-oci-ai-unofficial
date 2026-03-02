@@ -531,7 +531,9 @@ export default function ObjectStorageView() {
   return (
     <FeaturePageLayout
       title="Object Storage"
-      description={selectedBucket?.name || "Buckets and objects"}
+      description={selectedBucket
+        ? `${selectedBucket.name} - Manage buckets and objects without leaving the current workspace.`
+        : "Manage buckets and objects without leaving the current workspace."}
       icon={<PackageOpen size={16} />}
       actions={(
         <WorkbenchRefreshButton

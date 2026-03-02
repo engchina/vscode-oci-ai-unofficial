@@ -250,7 +250,7 @@ export default function VcnView() {
     return (
         <FeaturePageLayout
             title="Virtual Cloud Networks"
-            description="Inspect network boundaries by compartment and jump into security list management."
+            description="Inspect VCNs, regions, and attached security lists by compartment, then jump into security list management."
             icon={<Network size={16} />}
             actions={(
                 <WorkbenchRefreshButton

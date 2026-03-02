@@ -72,8 +72,8 @@ export default function HomeView({
             One workspace for chat, infrastructure, and database operations.
           </h1>
           <p className="mt-2.5 max-w-3xl text-[14px] leading-6 text-[var(--vscode-descriptionForeground)]">
-            Navigate by domain on the left, keep your global OCI context at the top, and use the main workspace for the
-            task currently in focus.
+            Use this landing page for quick actions, environment context, and recent destinations, then navigate by
+            domain on the left while keeping your global OCI context at the top.
           </p>
 
           <div className="mt-5 flex flex-wrap gap-2">

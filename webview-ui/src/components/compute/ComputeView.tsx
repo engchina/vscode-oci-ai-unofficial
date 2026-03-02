@@ -422,7 +422,7 @@ export default function ComputeView() {
   return (
     <FeaturePageLayout
       title="Compute Instances"
-      description="Browse instances by compartment, manage lifecycle, and launch SSH sessions."
+      description="Browse instances by compartment, manage lifecycle, and launch SSH workflows from the workbench."
       icon={<Server size={16} />}
       status={isPolling ? <StatusBadge label="Auto-refreshing" tone="warning" className="animate-pulse" /> : undefined}
       actions={(

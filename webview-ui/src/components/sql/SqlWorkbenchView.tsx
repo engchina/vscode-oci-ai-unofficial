@@ -873,7 +873,7 @@ export default function SqlWorkbenchView() {
     <>
       <FeaturePageLayout
         title="SQL Workbench"
-        description="Target selection, connections, SQL execution, favorites, history, and AI assistance."
+        description="Connect, execute SQL, explain plans, and reuse history and favorites with target selection, saved connections, and AI assistance."
         icon={<Database size={16} />}
         actions={(
           <WorkbenchRefreshButton

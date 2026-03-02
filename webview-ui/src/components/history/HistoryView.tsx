@@ -41,6 +41,9 @@ export default function HistoryView({ messages, onBack, onClear }: HistoryViewPr
             <MessageSquareText size={14} className="text-[var(--vscode-icon-foreground)]" />
             <div className="flex min-w-0 flex-col">
               <span className="text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)]">History</span>
+              <span className="mt-0.5 text-[11px] text-description">
+                Review prior assistant responses and clear the current thread.
+              </span>
             </div>
           </div>
           <WorkbenchCompactActionCluster>

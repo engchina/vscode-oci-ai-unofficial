@@ -614,7 +614,7 @@ export default function AdbView() {
   return (
     <FeaturePageLayout
       title="Autonomous Database"
-      description="Browse ADB resources, connect through wallets, and run SQL from the same page."
+      description="Work with Autonomous Database resources and lifecycle actions, then connect through wallets and run SQL from the same page."
       icon={<Database size={16} />}
       status={isPolling ? <StatusBadge label="Auto-refreshing" tone="warning" className="animate-pulse" /> : undefined}
       actions={(

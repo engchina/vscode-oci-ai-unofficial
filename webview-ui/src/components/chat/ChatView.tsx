@@ -1,5 +1,5 @@
 import { clsx } from "clsx"
-import { AlertTriangle, Bot } from "lucide-react"
+import { AlertTriangle, Bot, MessageSquareText } from "lucide-react"
 import { useEffect, useRef } from "react"
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso"
 import { useExtensionState } from "../../context/ExtensionStateContext"
@@ -51,8 +51,19 @@ export default function ChatView({ isHidden = false }: ChatViewProps) {
           {configWarning}
         </InlineNotice>
       )}
-      <div className="px-3 pt-3 pb-1 border-b border-border-panel shrink-0">
-        <CompartmentSelector featureKey="chat" />
+      <div className="shrink-0 border-b border-border-panel bg-[var(--vscode-editor-background)]">
+        <div className="px-3 pt-3 pb-2">
+          <div className="flex items-center gap-2">
+            <MessageSquareText size={14} className="text-[var(--vscode-icon-foreground)]" />
+            <span className="text-[13px] font-semibold text-[var(--vscode-foreground)]">Chat</span>
+          </div>
+          <p className="mt-1 text-[12px] text-description">
+            Prompt the assistant with OCI-aware context and coding support.
+          </p>
+        </div>
+        <div className="px-3 pb-1">
+          <CompartmentSelector featureKey="chat" />
+        </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col">
         {totalItems === 0 ? (

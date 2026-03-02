@@ -651,7 +651,7 @@ export default function DbSystemsView() {
     return (
         <FeaturePageLayout
             title="DB Systems"
-            description="Operate Base Database Service systems, connect over SQL, and keep SSH context nearby."
+            description="Browse Base Database Service systems and related operations, then connect over SQL and keep SSH context nearby."
             icon={<Database size={16} />}
             status={isPolling ? <StatusBadge label="Auto-refreshing" tone="warning" className="animate-pulse" /> : undefined}
             actions={(
