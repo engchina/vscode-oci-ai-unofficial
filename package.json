@@ -2,7 +2,7 @@
   "name": "oci-ai-unofficial",
   "displayName": "oci-ai-unofficial",
   "description": "A comprehensive extension for Oracle Cloud Infrastructure (OCI) in VS Code, supporting AI services and diversified cloud management workflows.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "local",
   "icon": "icon.png",
   "engines": {

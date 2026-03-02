@@ -19,7 +19,6 @@ import {
     WorkbenchInventorySummary,
 } from "../workbench/WorkbenchInventoryScaffold"
 import { WorkbenchRefreshButton } from "../workbench/WorkbenchToolbar"
-import SplitWorkspaceLayout from "../workbench/SplitWorkspaceLayout"
 import SecurityListView from "./SecurityListView"
 
 export default function VcnView() {
@@ -292,32 +291,12 @@ export default function VcnView() {
                 ) : (
                     <div className="min-h-0 flex-1">
                         {showSecurityListWorkspace && selectedVcn ? (
-                            <SplitWorkspaceLayout
-                                sidebar={(
-                                    <VcnInventoryPanel
-                                        vcns={vcns}
-                                        filtered={filtered}
-                                        grouped={grouped}
-                                        selectedVcn={selectedVcn}
-                                        highlightedVcnId={highlightedVcnId}
-                                        compartmentNameById={compartmentNameById}
-                                        vcnItemRefs={vcnItemRefs}
-                                        onSelectVcn={setSelectedVcn}
-                                        onOpenSecurityLists={(vcn) => {
-                                            setSelectedVcn(vcn)
-                                            setShowSecurityListWorkspace(true)
-                                        }}
-                                    />
-                                )}
-                                main={(
-                                    <div className="flex h-full min-h-0 flex-col">
-                                        <SecurityListView
-                                            vcn={selectedVcn}
-                                            onBack={() => setShowSecurityListWorkspace(false)}
-                                        />
-                                    </div>
-                                )}
-                            />
+                            <section className="h-full min-h-0 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_76%,white_24%)]">
+                                <SecurityListView
+                                    vcn={selectedVcn}
+                                    onBack={() => setShowSecurityListWorkspace(false)}
+                                />
+                            </section>
                         ) : (
                             <section className="h-full min-h-0 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_76%,white_24%)]">
                                 <div className="h-full overflow-y-auto p-2">
