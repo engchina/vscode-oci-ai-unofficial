@@ -122,8 +122,8 @@ export class Controller {
     const secrets = await this.authManager.getApiKeySecrets();
 
     const warnings: string[] = [];
-    if (!compartmentId) warnings.push("Compartment ID not set (OCI Settings → Compartment ID).");
-    if (!hasModelName) warnings.push("LLM Model Name not set (OCI Settings → LLM Model Name).");
+    if (!compartmentId) warnings.push("Compartment ID not set (Settings → Compartment ID).");
+    if (!hasModelName) warnings.push("LLM Model Name not set (Settings → LLM Model Name).");
     const missingApiKeyFields = getMissingApiKeyFields(secrets);
     if (missingApiKeyFields.length > 0) {
       warnings.push(`API Key Auth incomplete for profile "${activeProfile}": ${missingApiKeyFields.join(", ")}.`);
@@ -249,7 +249,7 @@ export class Controller {
       privateKeyPassphrase: String(payload.privateKeyPassphrase ?? ""),
     }, targetProfile);
     if (!payload.suppressNotification) {
-      vscode.window.showInformationMessage("OCI settings saved.");
+      vscode.window.showInformationMessage("Settings saved.");
     }
     // Push updated state to subscribers
     await this.broadcastState();
@@ -642,6 +642,11 @@ export class Controller {
   public async switchCompartment(id: string): Promise<void> {
     await this.authManager.updateCompartmentId(id);
     await this.broadcastState();
+  }
+
+  /** Reuse the existing command flow so title, state, and resource refresh stay in sync. */
+  public async switchProfile(): Promise<void> {
+    await vscode.commands.executeCommand("ociAi.auth.configureProfile");
   }
 
   /** Save a named compartment to the saved list */

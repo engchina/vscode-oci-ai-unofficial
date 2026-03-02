@@ -1,4 +1,4 @@
-# vscode-oci-ai-unofficial
+# oci-ai-unofficial
 
 OCI の日常運用と AI 支援開発を、VS Code サイドバー内で完結させるための拡張機能です。  
 本プロジェクトは「チャット専用ツール」ではなく、**設定管理 / Chat / VCN / Compute / Object Storage / Autonomous DB / Oracle Base DB / SQL Workbench** を統合した、実運用志向のオールインワン UI を提供します。
@@ -77,11 +77,11 @@ VS Code で `F5` を押し、Extension Development Host を起動してくださ
 
 | Command | 説明 |
 |---|---|
-| `vscode-oci-ai-unofficial: Open Chat` | メインビューを表示（Chat を利用） |
-| `vscode-oci-ai-unofficial: Open OCI Settings` | メインビューを表示（Settings を利用） |
-| `vscode-oci-ai-unofficial: Switch Profile` | アクティブプロファイルを切替 |
-| `vscode-oci-ai-unofficial: Store API Key in Secret Storage` | API Key を SecretStorage に保存 |
-| `vscode-oci-ai-unofficial: Switch Compartment` | 保存済みコンパートメントを切替 |
+| `oci-ai-unofficial: Open Chat` | メインビューを表示（Chat を利用） |
+| `oci-ai-unofficial: Open Settings` | メインビューを表示（Settings を利用） |
+| `oci-ai-unofficial: Switch Profile` | アクティブプロファイルを切替 |
+| `oci-ai-unofficial: Store API Key in Secret Storage` | API Key を SecretStorage に保存 |
+| `oci-ai-unofficial: Switch Compartment` | 保存済みコンパートメントを切替 |
 | `OCI AI: Send to Chat` | 選択コード/ファイル内容を Chat へ送信 |
 | `OCI AI: Code Review` | 選択コードをレビュー依頼として送信 |
 | `OCI AI: Generate Documentation` | 選択コードをドキュメント生成依頼として送信 |

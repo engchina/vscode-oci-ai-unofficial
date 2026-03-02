@@ -10,13 +10,13 @@ export class SettingsProvider implements vscode.TreeDataProvider<vscode.TreeItem
       return [];
     }
 
-    const openSettings = new vscode.TreeItem("Open OCI Settings", vscode.TreeItemCollapsibleState.None);
+    const openSettings = new vscode.TreeItem("Open Settings", vscode.TreeItemCollapsibleState.None);
     openSettings.description = "Profile, model, and extension preferences";
-    openSettings.tooltip = "Open OCI settings";
+    openSettings.tooltip = "Open Settings";
     openSettings.iconPath = new vscode.ThemeIcon("settings-gear");
     openSettings.command = {
       command: "ociAi.openSettings",
-      title: "Open OCI Settings"
+      title: "Open Settings"
     };
 
     return [openSettings];

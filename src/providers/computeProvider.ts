@@ -15,7 +15,7 @@ export class ComputeProvider implements vscode.TreeDataProvider<ComputeTreeItem>
   private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<ComputeTreeItem | undefined>();
   public readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
 
-  constructor(private readonly ociService: OciService) {}
+  constructor(private readonly ociService: OciService) { }
 
   public refresh(): void {
     this.onDidChangeTreeDataEmitter.fire(undefined);
@@ -39,10 +39,10 @@ export class ComputeProvider implements vscode.TreeDataProvider<ComputeTreeItem>
       const item = new ComputeTreeItem({ id: "", name: `Error: ${message}`, lifecycleState: "" });
       item.contextValue = "message";
       if (message.includes("Missing setting: ociAi.compartmentId")) {
-        item.description = "Click to open OCI settings";
+        item.description = "Click to open Settings";
         item.command = {
           command: "ociAi.openSettings",
-          title: "Open OCI Settings"
+          title: "Open Settings"
         };
       }
       return [item];

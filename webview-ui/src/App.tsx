@@ -7,7 +7,7 @@ import DbSystemsView from "./components/dbsystems/DbSystemsView"
 import HistoryView from "./components/history/HistoryView"
 import Navbar from "./components/menu/Navbar"
 import ObjectStorageView from "./components/objectstorage/ObjectStorageView"
-import SettingsView from "./components/settings/SettingsView"
+import SettingsView, { SETTINGS_TABS, type SettingsTab } from "./components/settings/SettingsView"
 import SqlWorkbenchView from "./components/sql/SqlWorkbenchView"
 import Card from "./components/ui/Card"
 import StatusBadge from "./components/ui/StatusBadge"
@@ -27,6 +27,7 @@ import WorkbenchShell, {
 import { Providers } from "./Providers"
 import { useExtensionState, type ViewType } from "./context/ExtensionStateContext"
 import { useWorkbenchInsight, type WorkbenchInsightBadge, type WorkbenchInsightResource } from "./context/WorkbenchInsightContext"
+import { StateServiceClient } from "./services/grpc-client"
 
 type PrimarySection = "home" | "assistant" | "resources" | "databases" | "administration"
 type WorkbenchView = ViewType
@@ -171,7 +172,7 @@ const PRIMARY_GROUPS: Record<Exclude<PrimarySection, "home">, WorkbenchSecondary
   administration: [
     {
       title: "Administration",
-      items: [toSecondaryItem("settings")],
+      items: SETTINGS_TABS.map(toSettingsSecondaryItem),
     },
   ],
 }
@@ -340,6 +341,7 @@ function AppContent() {
   const [navQuery, setNavQuery] = useState("")
   const [recentViews, setRecentViews] = useState<WorkbenchView[]>(["chat", "sqlWorkbench", "settings"])
   const [lastViewByPrimary, setLastViewByPrimary] = useState<Record<PrimarySection, WorkbenchView>>(DEFAULT_VIEW_BY_PRIMARY)
+  const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>("api-config")
 
   const hasProfiles = Array.isArray(profilesConfig) && profilesConfig.length > 0
   const activeView = currentView
@@ -400,6 +402,12 @@ function AppContent() {
   }
 
   const handleSelectView = (viewId: string) => {
+    if (viewId.startsWith("settings:")) {
+      const settingsTab = viewId.slice("settings:".length) as SettingsTab
+      setActiveSettingsTab(settingsTab)
+      navigateToView("settings")
+      return
+    }
     navigateToView(viewId as WorkbenchView)
   }
 
@@ -413,7 +421,7 @@ function AppContent() {
       activePrimaryId={activePrimary}
       onSelectPrimary={handleSelectPrimary}
       secondaryGroups={secondaryGroups}
-      activeViewId={activeView}
+      activeViewId={activeView === "settings" ? toSettingsNavId(activeSettingsTab) : activeView}
       onSelectView={handleSelectView}
       headerMeta={
         <>
@@ -426,6 +434,7 @@ function AppContent() {
         <>
           <TopActionButton label="Home" onClick={() => navigateToView("home")} />
           <TopActionButton label="Chat" onClick={() => navigateToView("chat")} />
+          <TopActionButton label="Profile" onClick={() => void StateServiceClient.switchProfile()} />
           <TopActionButton label="Settings" onClick={() => navigateToView("settings")} />
         </>
       }
@@ -485,6 +494,7 @@ function AppContent() {
         onOpenHistory: () => navigateToView("history"),
         onReturnToChat: () => navigateToView("chat"),
         messages: chatMessages,
+        activeSettingsTab,
       })}
     </WorkbenchShell>
   )
@@ -506,6 +516,7 @@ function renderActiveView({
   onOpenHistory,
   onReturnToChat,
   messages,
+  activeSettingsTab,
 }: {
   activeView: WorkbenchView
   hasProfiles: boolean
@@ -522,6 +533,7 @@ function renderActiveView({
   onOpenHistory: () => void
   onReturnToChat: () => void
   messages: Array<{ role: "user" | "model"; text: string }>
+  activeSettingsTab: SettingsTab
 }) {
   switch (activeView) {
     case "home":
@@ -561,7 +573,7 @@ function renderActiveView({
     case "sqlWorkbench":
       return <SqlWorkbenchView />
     case "settings":
-      return <SettingsView showDone={false} />
+      return <SettingsView activeTab={activeSettingsTab} showDone={false} />
     default:
       return null
   }
@@ -1138,6 +1150,19 @@ function toSecondaryItem(view: WorkbenchView): WorkbenchSecondaryItem {
     description: definition.description,
     icon: definition.icon,
   }
+}
+
+function toSettingsSecondaryItem(tab: (typeof SETTINGS_TABS)[number]): WorkbenchSecondaryItem {
+  return {
+    id: toSettingsNavId(tab.id),
+    label: tab.label,
+    description: tab.description,
+    icon: tab.icon,
+  }
+}
+
+function toSettingsNavId(tab: SettingsTab): string {
+  return `settings:${tab}`
 }
 
 export default function App() {

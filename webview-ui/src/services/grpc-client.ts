@@ -86,6 +86,10 @@ export class StateServiceClient extends ProtoBusClient {
     return this.makeUnaryRequest<ProfileSecretsResponse>("getProfileSecrets", { profile })
   }
 
+  static switchProfile(): Promise<void> {
+    return this.makeUnaryRequest<void>("switchProfile", {})
+  }
+
   static switchCompartment(id: string): Promise<void> {
     return this.makeUnaryRequest<void>("switchCompartment", { id })
   }

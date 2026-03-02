@@ -67,8 +67,8 @@
       },
       {
         "command": "ociAi.openSettings",
-        "title": "oci-ai-unofficial: Open OCI Settings",
-        "shortTitle": "OCI Settings"
+        "title": "oci-ai-unofficial: Open Settings",
+        "shortTitle": "Settings"
       },
       {
         "command": "ociAi.editor.sendToChat",
@@ -103,13 +103,6 @@
           "command": "ociAi.editor.generateDocs",
           "group": "ociAi@3",
           "when": "editorTextFocus"
-        }
-      ],
-      "view/title": [
-        {
-          "command": "ociAi.auth.configureProfile",
-          "when": "view == ociAi.mainView",
-          "group": "navigation"
         }
       ],
       "view/item/context": [

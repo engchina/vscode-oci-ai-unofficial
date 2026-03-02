@@ -32,7 +32,7 @@ export function registerCommands(
     vscode.commands.registerCommand("ociAi.auth.configureApiKey", async () => {
       await authManager.configureApiKeyInteractive();
     }),
-    // Open settings: reveal OCI Settings view
+    // Open settings: reveal Settings view
     vscode.commands.registerCommand("ociAi.openSettings", async () => {
       await vscode.commands.executeCommand("ociAi.mainView.focus");
     }),

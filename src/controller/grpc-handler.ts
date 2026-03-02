@@ -144,6 +144,10 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
       return {};
     },
     getProfileSecrets: async (c, msg) => c.getProfileSecrets(String(msg.profile ?? "DEFAULT")),
+    switchProfile: async (c) => {
+      await c.switchProfile();
+      return {};
+    },
     switchCompartment: async (c, msg) => {
       await c.switchCompartment(msg.id);
       return {};

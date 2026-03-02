@@ -27,19 +27,20 @@ import {
 
 
 interface SettingsViewProps {
+  activeTab?: SettingsTab
   onDone?: () => void
   showDone?: boolean
 }
 
-type SettingsTab = "api-config" | "profiles" | "genai" | "terminal" | "about"
+export type SettingsTab = "api-config" | "profiles" | "genai" | "terminal" | "about"
 type UpdateFieldFn = <K extends keyof SettingsState>(field: K, value: SettingsState[K]) => void
 
-const TABS: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
-  { id: "api-config", label: "Profiles", icon: <Settings2 size={16} /> },
-  { id: "profiles", label: "Compartments", icon: <Users size={16} /> },
-  { id: "terminal", label: "Terminal", icon: <Terminal size={16} /> },
-  { id: "genai", label: "Generative AI", icon: <Bot size={16} /> },
-  { id: "about", label: "About", icon: <Info size={16} /> },
+export const SETTINGS_TABS: Array<{ id: SettingsTab; label: string; description: string; icon: React.ReactNode }> = [
+  { id: "api-config", label: "Profiles", description: "Manage OCI profiles and API key credentials.", icon: <Settings2 size={16} /> },
+  { id: "profiles", label: "Compartments", description: "Map feature scopes and saved OCI compartments.", icon: <Users size={16} /> },
+  { id: "terminal", label: "Terminal", description: "Tune shell execution and SSH defaults.", icon: <Terminal size={16} /> },
+  { id: "genai", label: "Generative AI", description: "Configure GenAI regions, models, and prompt behavior.", icon: <Bot size={16} /> },
+  { id: "about", label: "About", description: "View extension package metadata.", icon: <Info size={16} /> },
 ]
 
 const EMPTY_SETTINGS: SettingsState = {
@@ -84,21 +85,18 @@ function getMissingApiKeyFields(s: Pick<SettingsState, "tenancyOcid" | "userOcid
   return missing
 }
 
-export default function SettingsView({ onDone, showDone = true }: SettingsViewProps) {
+export default function SettingsView({ activeTab: controlledActiveTab, onDone, showDone = true }: SettingsViewProps) {
   const [settings, setSettings] = useState<SettingsState>(EMPTY_SETTINGS)
   const [sshConfig, setSshConfig] = useState<SshConfig>(loadSshConfig)
   const [saving, setSaving] = useState(false)
   const [loaded, setLoaded] = useState(false)
-  const [activeTab, setActiveTab] = useState<SettingsTab>("api-config")
   const [editingProfileName, setEditingProfileName] = useState<string | null>(null)
   const [guardrail, setGuardrail] = useState<WorkbenchGuardrailState>(null)
   const fetchIdRef = useRef(0)
   const editingProfileRef = useRef<string | null>(null)
   const refreshTimerRef = useRef<number | null>(null)
-  const activeTabLabel = TABS.find((tab) => tab.id === activeTab)?.label ?? "None"
-  const toggleTab = useCallback((tab: SettingsTab) => {
-    setActiveTab(tab)
-  }, [])
+  const activeTab = controlledActiveTab ?? "api-config"
+  const activeTabLabel = SETTINGS_TABS.find((tab) => tab.id === activeTab)?.label ?? "None"
 
   const updateEditingProfile = useCallback((profileName: string | null) => {
     editingProfileRef.current = profileName
@@ -248,7 +246,7 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
           <div className="flex min-w-0 items-center gap-2">
             <Settings2 size={14} className="text-[var(--vscode-icon-foreground)]" />
             <div className="flex min-w-0 flex-col">
-              <span className="text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)]">OCI Settings</span>
+              <span className="text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)]">Settings</span>
               <span className="mt-0.5 text-[10px] text-description uppercase tracking-wider">{activeTabLabel}</span>
             </div>
           </div>
@@ -268,26 +266,6 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
         </div>
 
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          <div className="flex w-48 shrink-0 flex-col gap-0.5 border-r border-[var(--vscode-panel-border)] bg-[var(--vscode-sideBar-background)] py-2">
-            {TABS.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => toggleTab(tab.id)}
-                title={tab.label}
-                aria-label={tab.label}
-                className={clsx(
-                  "flex h-8 w-full items-center justify-start gap-2 px-3 transition-colors outline-none",
-                  activeTab === tab.id
-                    ? "bg-[var(--vscode-list-activeSelectionBackground)] text-[var(--vscode-list-activeSelectionForeground)]"
-                    : "text-[var(--vscode-foreground)] hover:bg-[var(--vscode-list-hoverBackground)] hover:text-[var(--vscode-list-hoverForeground)]",
-                )}
-              >
-                <div className="shrink-0 opacity-80">{tab.icon}</div>
-                <span className="text-[12px] truncate">{tab.label}</span>
-              </button>
-            ))}
-          </div>
-
           <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-4">
             <div className="flex w-full flex-col gap-4">
               {activeTab === "api-config" && (

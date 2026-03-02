@@ -15,7 +15,7 @@ export class AdbProvider implements vscode.TreeDataProvider<AdbTreeItem> {
   private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<AdbTreeItem | undefined>();
   public readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
 
-  constructor(private readonly ociService: OciService) {}
+  constructor(private readonly ociService: OciService) { }
 
   public refresh(): void {
     this.onDidChangeTreeDataEmitter.fire(undefined);
@@ -39,10 +39,10 @@ export class AdbProvider implements vscode.TreeDataProvider<AdbTreeItem> {
       const item = new AdbTreeItem({ id: "", name: `Error: ${message}`, lifecycleState: "" });
       item.contextValue = "message";
       if (message.includes("Missing setting: ociAi.compartmentId")) {
-        item.description = "Click to open OCI settings";
+        item.description = "Click to open Settings";
         item.command = {
           command: "ociAi.openSettings",
-          title: "Open OCI Settings"
+          title: "Open Settings"
         };
       }
       return [item];

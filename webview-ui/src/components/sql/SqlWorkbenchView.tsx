@@ -1103,12 +1103,13 @@ export default function SqlWorkbenchView() {
                   ]}
                 />
 
-                <div className="grid min-h-0 flex-1 gap-3 xl:grid-rows-[minmax(260px,0.95fr)_minmax(260px,1.05fr)]">
+                <div className="flex min-h-0 flex-1 flex-col gap-3">
                   <WorkbenchSection
+                    className="shrink-0"
                     title="SQL Editor"
                     subtitle="Write SQL once, then execute, inspect plans, or save the current statement."
                     actions={(
-                      <WorkbenchInlineActionCluster>
+                      <WorkbenchInlineActionCluster className="w-full sm:w-auto sm:justify-end">
                         <WorkbenchActionButton type="button" onClick={() => void handleRunSql()} disabled={!connectionId || !sql.trim() || busyAction !== null}>
                           {busyAction === "execute" ? <Loader2 size={12} className="animate-spin" /> : <SquareTerminal size={12} />}
                           Run SQL
@@ -1135,27 +1136,36 @@ export default function SqlWorkbenchView() {
                       label="SQL"
                       value={sql}
                       onChange={(event) => setSql(event.target.value)}
-                      className="min-h-[220px] flex-1 font-mono text-[12px]"
+                      className="min-h-[240px] flex-1 font-mono text-[12px]"
                       placeholder="SELECT * FROM your_table FETCH FIRST 20 ROWS ONLY"
                     />
                   </WorkbenchSection>
 
                   <WorkbenchSection
+                    className="min-h-[320px] flex-1"
                     title="Workspace Panels"
                     subtitle="Switch between execution output, snippet library, and AI assistance without leaving the editor."
-                    bodyClassName="min-h-0"
+                    bodyClassName="min-h-0 gap-4"
                   >
-                    <WorkbenchCompactActionCluster>
-                      <WorkbenchActionToggleButton active={workspacePanel === "results"} onClick={() => setWorkspacePanel("results")}>
-                        Results
-                      </WorkbenchActionToggleButton>
-                      <WorkbenchActionToggleButton active={workspacePanel === "library"} onClick={() => setWorkspacePanel("library")}>
-                        Library
-                      </WorkbenchActionToggleButton>
-                      <WorkbenchActionToggleButton active={workspacePanel === "assistant"} onClick={() => setWorkspacePanel("assistant")}>
-                        AI Assistant
-                      </WorkbenchActionToggleButton>
-                    </WorkbenchCompactActionCluster>
+                    <div className="flex flex-col gap-3 rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_97%,black_3%)] p-3 md:flex-row md:items-center md:justify-between">
+                      <div className="min-w-0">
+                        <div className="text-[11px] uppercase tracking-[0.14em] text-[var(--vscode-descriptionForeground)]">Panel Selector</div>
+                        <div className="mt-1 text-[11px] leading-5 text-[var(--vscode-descriptionForeground)]">
+                          Keep execution results, saved snippets, and AI guidance in one place.
+                        </div>
+                      </div>
+                      <WorkbenchCompactActionCluster className="w-full flex-wrap gap-2 md:w-auto md:justify-end">
+                        <WorkbenchActionToggleButton active={workspacePanel === "results"} onClick={() => setWorkspacePanel("results")}>
+                          Results
+                        </WorkbenchActionToggleButton>
+                        <WorkbenchActionToggleButton active={workspacePanel === "library"} onClick={() => setWorkspacePanel("library")}>
+                          Library
+                        </WorkbenchActionToggleButton>
+                        <WorkbenchActionToggleButton active={workspacePanel === "assistant"} onClick={() => setWorkspacePanel("assistant")}>
+                          AI Assistant
+                        </WorkbenchActionToggleButton>
+                      </WorkbenchCompactActionCluster>
+                    </div>
 
                     <div className="min-h-0 flex-1 overflow-y-auto">
                       {workspacePanel === "results" && (

@@ -39,6 +39,7 @@ interface WorkbenchSectionProps {
   actions?: ReactNode
   children: ReactNode
   bodyClassName?: string
+  className?: string
 }
 
 export function WorkbenchHero({
@@ -92,7 +93,7 @@ export function DatabaseWorkbenchHero({
 
 export function WorkbenchKeyValueStrip({ items, className }: WorkbenchKeyValueStripProps) {
   return (
-    <WorkbenchSurface className={clsx("px-2.5 py-2 text-[11px] text-description", className)}>
+    <WorkbenchSurface className={clsx("grid gap-1.5 px-2.5 py-2 text-[11px] leading-5 text-description", className)}>
       {items.map((item) => (
         <div key={item.label} className={clsx(item.breakAll && "break-all")}>
           <span className="font-semibold text-foreground">{item.label}:</span> <code>{item.value}</code>
@@ -114,15 +115,16 @@ export function WorkbenchSection({
   actions,
   children,
   bodyClassName,
+  className,
 }: WorkbenchSectionProps) {
   return (
-    <section className="flex min-h-0 flex-col rounded-xl border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)]">
-      <div className="flex items-start justify-between gap-3 border-b border-[var(--vscode-panel-border)] px-3 py-3">
+    <section className={clsx("flex min-h-0 flex-col rounded-xl border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)]", className)}>
+      <div className="flex flex-col gap-3 border-b border-[var(--vscode-panel-border)] px-3 py-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="text-[13px] font-semibold text-[var(--vscode-foreground)]">{title}</div>
           {subtitle && <div className="mt-1 text-[11px] text-[var(--vscode-descriptionForeground)]">{subtitle}</div>}
         </div>
-        {actions && <div className="shrink-0">{actions}</div>}
+        {actions && <div className="min-w-0 sm:shrink-0">{actions}</div>}
       </div>
       <div className={clsx("flex min-h-0 flex-1 flex-col gap-3 p-3", bodyClassName)}>{children}</div>
     </section>
