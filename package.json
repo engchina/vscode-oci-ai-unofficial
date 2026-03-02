@@ -59,7 +59,7 @@
         "command": "ociAi.auth.configureProfile",
         "title": "vscode-oci-ai-unofficial: Switch Profile",
         "shortTitle": "Profile",
-        "icon": "$(chevron-down)"
+        "icon": "$(account)"
       },
       {
         "command": "ociAi.auth.configureApiKey",

@@ -9,6 +9,7 @@ import HistoryView from "./components/history/HistoryView"
 import Navbar from "./components/menu/Navbar"
 import ObjectStorageView from "./components/objectstorage/ObjectStorageView"
 import SettingsView from "./components/settings/SettingsView"
+import WelcomeGuide from "./components/ui/WelcomeGuide"
 import { useExtensionState } from "./context/ExtensionStateContext"
 import { Providers } from "./Providers"
 import { AccordionItem } from "./components/ui/Accordion"
@@ -21,7 +22,8 @@ function AppContent() {
     navigateToChat,
     newChat,
     clearHistory,
-    chatMessages
+    chatMessages,
+    profilesConfig,
   } = useExtensionState()
 
   // Keep the default expanded section aligned with the default chat landing view.
@@ -39,8 +41,14 @@ function AppContent() {
     setOpenSection(prev => prev === section ? "" : section)
   }
 
+  const hasProfiles = Array.isArray(profilesConfig) && profilesConfig.length > 0
+
   return (
     <div className="flex h-full w-full flex-col bg-[var(--vscode-sideBar-background)] overflow-hidden">
+      {!hasProfiles && (
+        <WelcomeGuide onOpenSettings={() => setOpenSection("settings")} />
+      )}
+
       <AccordionItem
         title="Settings"
         isOpen={openSection === "settings"}
