@@ -32,16 +32,19 @@ interface HomeViewProps {
 
 const FEATURE_HIGHLIGHTS = [
   {
+    id: "chat",
     icon: <Bot size={16} />,
     title: "Assistant",
     description: "Chat with OCI context, code context injection, and conversation history.",
   },
   {
+    id: "vcn",
     icon: <Network size={16} />,
     title: "Resources",
     description: "Browse VCNs, compute instances, and object storage with task-focused filters.",
   },
   {
+    id: "sqlWorkbench",
     icon: <Database size={16} />,
     title: "Databases",
     description: "Switch from infrastructure discovery to SQL operations without leaving the workbench.",
@@ -136,11 +139,16 @@ export default function HomeView({
             <Card title="Capability Areas">
               <div className="grid gap-3 md:grid-cols-3">
                 {FEATURE_HIGHLIGHTS.map((item) => (
-                  <div key={item.title} className={FEATURE_CARD_CLASSNAME}>
+                  <button
+                    key={item.title}
+                    type="button"
+                    onClick={() => onOpenAction(item.id)}
+                    className={`${FEATURE_CARD_CLASSNAME} transition-colors hover:bg-[var(--vscode-list-hoverBackground)]`}
+                  >
                     <div className={FEATURE_ICON_CLASSNAME}>{item.icon}</div>
                     <div className="mt-2.5 text-[13px] font-semibold text-[var(--vscode-foreground)]">{item.title}</div>
                     <p className="mt-1.5 text-[12px] leading-5 text-[var(--vscode-descriptionForeground)]">{item.description}</p>
-                  </div>
+                  </button>
                 ))}
               </div>
             </Card>
