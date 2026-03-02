@@ -1092,7 +1092,7 @@ export default function SqlWorkbenchView() {
 
                           {workspacePanel === "assistant" && (
                             <div className="grid gap-2 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-                              <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)] p-2.5">
+                              <section className="flex flex-col gap-2 rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)] p-2.5">
                                 <WorkbenchSegmentedControl
                                   className="mb-3"
                                   value={assistantMode}
@@ -1102,31 +1102,33 @@ export default function SqlWorkbenchView() {
                                     { value: "optimize", label: "Optimize SQL" },
                                   ]}
                                 />
-                                <Textarea
-                                  label="Prompt"
-                                  value={assistantPrompt}
-                                  onChange={(event) => setAssistantPrompt(event.target.value)}
-                                  className="min-h-[100px]"
-                                  placeholder={assistantMode === "generate" ? "List top 10 tables by segment size." : "Optimize the query for high-cardinality join predicates."}
-                                />
-                                <Textarea
-                                  label="Schema Context"
-                                  value={schemaContext}
-                                  onChange={(event) => setSchemaContext(event.target.value)}
-                                  className="min-h-[120px] font-mono text-[12px]"
-                                  placeholder="tables: orders(order_id, customer_id, status, created_at)..."
-                                />
-                                <WorkbenchInlineActionCluster>
-                                  <WorkbenchActionButton type="button" onClick={() => void handleAskAssistant()} disabled={busyAction !== null || (!assistantPrompt.trim() && !sql.trim())}>
-                                    {busyAction === "assistant" ? <Loader2 size={12} className="animate-spin" /> : <SquareTerminal size={12} />}
-                                    Ask Assistant
-                                  </WorkbenchActionButton>
-                                  {assistantResult?.suggestedSql && (
-                                    <WorkbenchActionButton type="button" variant="secondary" onClick={() => setSql(assistantResult.suggestedSql ?? "")}>
-                                      Use Suggested SQL
+                                <div className="flex flex-col gap-2">
+                                  <Textarea
+                                    label="Prompt"
+                                    value={assistantPrompt}
+                                    onChange={(event) => setAssistantPrompt(event.target.value)}
+                                    className="min-h-[100px]"
+                                    placeholder={assistantMode === "generate" ? "List top 10 tables by segment size." : "Optimize the query for high-cardinality join predicates."}
+                                  />
+                                  <Textarea
+                                    label="Schema Context"
+                                    value={schemaContext}
+                                    onChange={(event) => setSchemaContext(event.target.value)}
+                                    className="min-h-[120px] font-mono text-[12px]"
+                                    placeholder="tables: orders(order_id, customer_id, status, created_at)..."
+                                  />
+                                  <WorkbenchInlineActionCluster className="pt-0.5">
+                                    <WorkbenchActionButton type="button" onClick={() => void handleAskAssistant()} disabled={busyAction !== null || (!assistantPrompt.trim() && !sql.trim())}>
+                                      {busyAction === "assistant" ? <Loader2 size={12} className="animate-spin" /> : <SquareTerminal size={12} />}
+                                      Ask Assistant
                                     </WorkbenchActionButton>
-                                  )}
-                                </WorkbenchInlineActionCluster>
+                                    {assistantResult?.suggestedSql && (
+                                      <WorkbenchActionButton type="button" variant="secondary" onClick={() => setSql(assistantResult.suggestedSql ?? "")}>
+                                        Use Suggested SQL
+                                      </WorkbenchActionButton>
+                                    )}
+                                  </WorkbenchInlineActionCluster>
+                                </div>
                               </section>
 
                               <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)] p-2.5">
