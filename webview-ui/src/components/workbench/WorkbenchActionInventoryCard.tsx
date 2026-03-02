@@ -14,6 +14,8 @@ interface WorkbenchActionInventoryCardProps {
   children?: ReactNode
 }
 
+const INTERACTIVE_SELECTOR = "button, input, select, textarea, a, label, summary, [role='button'], [role='link'], [role='radio'], [data-card-interactive='true']"
+
 export default function WorkbenchActionInventoryCard({
   title,
   subtitle,
@@ -40,10 +42,15 @@ export default function WorkbenchActionInventoryCard({
               ? "border-[color-mix(in_srgb,var(--vscode-button-background)_45%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,var(--vscode-button-background)_18%)]"
               : "border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] hover:bg-[var(--vscode-list-hoverBackground)]",
       )}
-      onClick={() => {
-        if (!selected) {
-          onSelect?.()
+      onClick={(event) => {
+        if (!onSelect) {
+          return
         }
+        const target = event.target
+        if (target instanceof Element && target.closest(INTERACTIVE_SELECTOR)) {
+          return
+        }
+        onSelect()
       }}
     >
       <div className="flex items-start justify-between gap-1.5">
