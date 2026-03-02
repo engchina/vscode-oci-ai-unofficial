@@ -704,7 +704,7 @@ function SecurityRuleTable({
             </div>
             <div className="overflow-x-auto border border-border-panel rounded-lg">
                 <table className="w-full text-left text-xs whitespace-nowrap">
-                    <thead className="bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,black_8%)] border-b border-border-panel">
+                    <thead className="bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,black_8%)] border-b border-border-panel text-foreground">
                         <tr>
                             <th className="px-3 py-2 font-semibold">Stateless</th>
                             <th className="px-3 py-2 font-semibold">{type === "ingress" ? "Source" : "Destination"}</th>
@@ -717,7 +717,7 @@ function SecurityRuleTable({
                             <th className="px-3 py-2 font-semibold text-right">Actions</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-border-panel bg-input-background">
+                    <tbody className="divide-y divide-border-panel bg-input-background text-foreground">
                         {rules.length === 0 ? (
                             <tr>
                                 <td colSpan={9} className="px-3 py-6 text-center text-description">No {type} rules</td>
@@ -742,7 +742,7 @@ function SecurityRuleTable({
                                 </td>
                                 <td className="px-3 py-2">
                                     <select
-                                        className="bg-transparent border border-input-border rounded px-2 py-1 focus:border-button-primary-background outline-none"
+                                        className="bg-input-background text-input-foreground border border-input-border rounded px-2 py-1 focus:border-button-primary-background outline-none"
                                         value={rule.protocol}
                                         onChange={e => onUpdateRule(idx, "protocol", e.target.value)}
                                     >
@@ -785,7 +785,7 @@ function SecurityRuleTable({
                                         placeholder="Type, Code"
                                     />
                                 </td>
-                                <td className="px-3 py-2 text-[11px] text-description font-medium">
+                                <td className="px-3 py-2 text-[11px] text-foreground font-medium">
                                     {getAllowsText(rule)}
                                 </td>
                                 <td className="px-3 py-2">
@@ -801,7 +801,7 @@ function SecurityRuleTable({
                                         icon={<Trash2 size={14} />}
                                         onClick={() => onRemoveRule(idx)}
                                         title="Delete Rule"
-                                        className="h-7 w-7 rounded"
+                                        className="h-7 w-7"
                                     />
                                 </td>
                             </tr>

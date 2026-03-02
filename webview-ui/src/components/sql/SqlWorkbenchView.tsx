@@ -1,4 +1,5 @@
 import {
+  ChevronLeft,
   Database,
   Download,
   Loader2,
@@ -68,7 +69,6 @@ import {
   createSaveResourceGuardrail,
   type WorkbenchGuardrailState,
 } from "../workbench/guardrail"
-import SplitWorkspaceLayout from "../workbench/SplitWorkspaceLayout"
 
 type BusyAction =
   | "load"
@@ -132,6 +132,7 @@ export default function SqlWorkbenchView() {
   const [schemaContext, setSchemaContext] = useState("")
   const [assistantResult, setAssistantResult] = useState<SqlAssistantResponse | null>(null)
   const [workspacePanel, setWorkspacePanel] = useState<WorkspacePanel>("results")
+  const [showSqlWorkspace, setShowSqlWorkspace] = useState(false)
 
   const previousTargetKeyRef = useRef("")
   const guardrailBusy = busyAction === "saveProfile"
@@ -269,8 +270,15 @@ export default function SqlWorkbenchView() {
       targetId: pendingSelection.targetId,
       targetType: pendingSelection.targetType,
     })
+    setShowSqlWorkspace(true)
     setPendingSelection(null)
   }, [pendingSelection, setPendingSelection])
+
+  useEffect(() => {
+    if (!selectedTarget) {
+      setShowSqlWorkspace(false)
+    }
+  }, [selectedTarget])
 
   useEffect(() => {
     void loadTargets()
@@ -892,441 +900,472 @@ export default function SqlWorkbenchView() {
           )}
 
           <div className="min-h-0 flex-1">
-            <SplitWorkspaceLayout
-              sidebar={(
-                <div className="flex flex-col gap-2">
-                  <WorkbenchInventorySummary
-                    label="Target inventory"
-                    count={filteredTargets.length === targets.length
-                      ? `${targets.length} ${targetType === "adb" ? "databases" : "systems"}`
-                      : `${filteredTargets.length} of ${targets.length} visible`}
-                    description="Keep connection controls on the left, then edit and inspect SQL in the main workbench."
-                  />
+            {showSqlWorkspace && selectedTarget ? (
+              <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_76%,white_24%)]">
+                <div className="flex items-center gap-2 border-b border-[var(--vscode-panel-border)] px-3 py-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowSqlWorkspace(false)}
+                    className="flex h-6 w-6 items-center justify-center rounded-[2px] hover:bg-[var(--vscode-toolbar-hoverBackground)]"
+                    title="Back to target inventory"
+                  >
+                    <ChevronLeft size={14} />
+                  </button>
+                  <div className="min-w-0">
+                    <div className="truncate text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)]">
+                      SQL Workspace
+                    </div>
+                    <div className="truncate text-[10px] text-description">{selectedTarget.name}</div>
+                  </div>
+                </div>
 
-                  <Card title="Target Inventory">
-                    <WorkbenchSegmentedControl
-                      value={targetType}
-                      onChange={setTargetType}
-                      items={[
-                        { value: "adb", label: "Autonomous DB" },
-                        { value: "dbSystem", label: "DB System" },
+                <div className="min-h-0 flex-1 overflow-y-auto p-2">
+                  <div className="flex h-full min-h-0 flex-col gap-2">
+                    <DatabaseWorkbenchHero
+                      eyebrow={targetTypeLabel}
+                      title={selectedTarget.name}
+                      resourceId={selectedTarget.id}
+                      connected={isConnectedToSelection}
+                      metaItems={[
+                        { label: "Target", value: selectedTarget.name },
+                        { label: "Region", value: selectedTarget.region || "default" },
+                        { label: "Lifecycle", value: selectedTarget.lifecycleState || "Unknown" },
+                        { label: "Service", value: serviceName || "Not set" },
+                        { label: "User", value: username || "Not set" },
                       ]}
                     />
 
-                    <FeatureSearchInput
-                      value={targetFilter}
-                      onChange={setTargetFilter}
-                      placeholder={`Filter ${targetType === "adb" ? "databases" : "systems"}...`}
-                    />
-
-                    {filteredTargets.length === 0 ? (
-                      <WorkbenchInventoryFilterEmpty message="No targets match the current filter." />
-                    ) : (
-                      <div className="max-h-[420px] overflow-y-auto pr-1">
-                        <div className="flex flex-col gap-2">
-                          {filteredTargets.map((target) => (
-                            <SqlTargetListItem
-                              key={target.id}
-                              target={target}
-                              selected={target.id === selectedTargetId}
-                              connected={Boolean(connectionSummary && connectionSummary.targetId === target.id)}
-                              onSelect={() => setSelectedTargetId(target.id)}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </Card>
-
-                  {selectedTarget && (
-                    <Card title="Selected Target">
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <SummaryMetaCard label="Name" value={selectedTarget.name} />
-                        <SummaryMetaCard label="Type" value={targetTypeLabel} />
-                        <SummaryMetaCard label="Region" value={selectedTarget.region || "default"} />
-                        <SummaryMetaCard label="Lifecycle" value={selectedTarget.lifecycleState || "Unknown"} />
-                      </div>
-                      {connectionSummary && connectionSummary.targetId === selectedTarget.id && (
-                        <InlineNotice tone="success">
-                          Connected via {connectionSummary.serviceName}
-                        </InlineNotice>
-                      )}
-                    </Card>
-                  )}
-
-                  <Card title="Connection Profile">
-                    {targetType === "adb" && (
-                      <>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          <Input
-                            type="password"
-                            label="Wallet Password"
-                            value={walletPassword}
-                            onChange={(event) => setWalletPassword(event.target.value)}
-                            placeholder="At least 8 chars"
-                          />
-                          <div className="flex items-end">
-                            <WorkbenchActionButton
-                              type="button"
-                              variant="secondary"
-                              className="w-full"
-                              onClick={() => void handleDownloadWallet()}
-                              disabled={!selectedTargetId || walletPassword.trim().length < 8 || busyAction !== null}
-                            >
-                              {busyAction === "wallet" ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-                              Download Wallet
+                    <div className="flex min-h-0 flex-1 flex-col gap-2">
+                      <WorkbenchSection
+                        className="shrink-0"
+                        title="SQL Editor"
+                        subtitle="Write SQL once, then execute, inspect plans, or save the current statement."
+                        actions={(
+                          <WorkbenchInlineActionCluster className="w-full sm:w-auto sm:justify-end">
+                            <WorkbenchActionButton type="button" onClick={() => void handleRunSql()} disabled={!connectionId || !sql.trim() || busyAction !== null}>
+                              {busyAction === "execute" ? <Loader2 size={12} className="animate-spin" /> : <SquareTerminal size={12} />}
+                              Run SQL
                             </WorkbenchActionButton>
-                          </div>
-                        </div>
-                        <Input
-                          label="Wallet Path"
-                          value={walletPath}
-                          onChange={(event) => setWalletPath(event.target.value)}
-                          placeholder="Wallet directory path"
-                        />
-                      </>
-                    )}
-
-                    <div className="grid gap-2 sm:grid-cols-3">
-                      <Input
-                        label="Username"
-                        value={username}
-                        onChange={(event) => setUsername(event.target.value)}
-                        placeholder={targetType === "adb" ? "ADMIN" : "SYSTEM"}
-                      />
-                      <Input
-                        type="password"
-                        label="Password"
-                        value={password}
-                        onChange={(event) => setPassword(event.target.value)}
-                        placeholder="Database password"
-                      />
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-[13px] leading-none text-foreground">Service Name</label>
-                        <input
-                          value={serviceName}
-                          onChange={(event) => setServiceName(event.target.value)}
-                          list={targetType === "adb" ? "sql-workbench-adb-services" : "sql-workbench-db-services"}
-                          placeholder={targetType === "adb" ? "dbname_high" : "host:1521/service"}
-                          className="h-[26px] rounded-[2px] border border-input-border bg-input-background px-2 text-[13px] text-input-foreground outline-none focus:border-border focus:outline focus:outline-1 focus:outline-[var(--vscode-focusBorder)] focus:-outline-offset-1"
-                        />
-                        <datalist id="sql-workbench-adb-services">
-                          {serviceNames.map((item) => <option key={item} value={item} />)}
-                        </datalist>
-                        <datalist id="sql-workbench-db-services">
-                          {connectionStrings.map((item) => <option key={item.value} value={item.value}>{item.name}</option>)}
-                        </datalist>
-                      </div>
-                    </div>
-
-                    {targetType === "dbSystem" && connectionStrings.length > 0 && (
-                      <div className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_96%,black_4%)] px-2.5 py-2 text-[11px] text-description">
-                        {connectionStrings.slice(0, 4).map((item) => (
-                          <div key={item.value}>
-                            <span className="text-foreground">{item.name}:</span> {item.value}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    <WorkbenchToolbarGroup>
-                      <WorkbenchCompactActionCluster>
-                        <WorkbenchActionButton
-                          type="button"
-                          variant="secondary"
-                          onClick={() => void handleTestConnection()}
-                          disabled={!canManageConnection || busyAction !== null}
-                        >
-                          {busyAction === "test" ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
-                          Test Connection
-                        </WorkbenchActionButton>
-                        <WorkbenchActionButton
-                          type="button"
-                          onClick={() => void handleConnect()}
-                          disabled={!canManageConnection || Boolean(connectionId) || busyAction !== null}
-                        >
-                          {busyAction === "connect" ? <Loader2 size={12} className="animate-spin" /> : <Plug size={12} />}
-                          Connect
-                        </WorkbenchActionButton>
-                        <WorkbenchActionButton
-                          type="button"
-                          variant="secondary"
-                          onClick={() => void handleDisconnect()}
-                          disabled={!connectionId || busyAction !== null}
-                        >
-                          {busyAction === "disconnect" ? <Loader2 size={12} className="animate-spin" /> : <Unplug size={12} />}
-                          Disconnect
-                        </WorkbenchActionButton>
-                        <WorkbenchActionButton
-                          type="button"
-                          variant="secondary"
-                          onClick={requestSaveProfile}
-                          disabled={!selectedTargetId || !serviceName.trim() || !username.trim() || busyAction !== null}
-                        >
-                          {busyAction === "saveProfile" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                          {hasSavedProfile ? "Saved" : "Save Profile"}
-                        </WorkbenchActionButton>
-                        {hasSavedProfile && (
-                          <WorkbenchDestructiveButton
-                            type="button"
-                            onClick={requestDeleteProfile}
-                            disabled={busyAction !== null}
-                          >
-                            {busyAction === "deleteProfile" ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                            Delete Profile
-                          </WorkbenchDestructiveButton>
+                            <WorkbenchActionButton type="button" variant="secondary" onClick={() => void handleExplainPlan()} disabled={!connectionId || !sql.trim() || busyAction !== null}>
+                              {busyAction === "plan" ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+                              Explain Plan
+                            </WorkbenchActionButton>
+                          </WorkbenchInlineActionCluster>
                         )}
-                      </WorkbenchCompactActionCluster>
-                    </WorkbenchToolbarGroup>
+                      >
+                        <DatabaseContextStrip
+                          items={connectionId
+                            ? [
+                              { label: "Session", value: connectionId.slice(0, 12) },
+                              { label: "Service", value: connectionSummary?.serviceName ?? serviceName },
+                              { label: "Mode", value: targetTypeLabel },
+                            ]
+                            : [
+                              { label: "Status", value: "Connect to the selected target before running SQL or generating a plan." },
+                            ]}
+                        />
+                        <Textarea
+                          label="SQL"
+                          value={sql}
+                          onChange={(event) => setSql(event.target.value)}
+                          className="min-h-[240px] flex-1 font-mono text-[12px]"
+                          placeholder="SELECT * FROM your_table FETCH FIRST 20 ROWS ONLY"
+                        />
+                      </WorkbenchSection>
 
-                    {testResult && (
-                      <div className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_96%,green_4%)] px-2.5 py-2 text-[11px] text-description">
-                        {testResult.message} {testResult.latencyMs > 0 ? `(${testResult.latencyMs} ms)` : ""}
-                      </div>
-                    )}
-                  </Card>
-                </div>
-              )}
-              main={selectedTarget ? (
-                <div className="flex h-full min-h-0 flex-col gap-2">
-                  <DatabaseWorkbenchHero
-                    eyebrow={targetTypeLabel}
-                    title={selectedTarget.name}
-                    resourceId={selectedTarget.id}
-                    connected={isConnectedToSelection}
-                    metaItems={[
-                      { label: "Target", value: selectedTarget.name },
-                      { label: "Region", value: selectedTarget.region || "default" },
-                      { label: "Lifecycle", value: selectedTarget.lifecycleState || "Unknown" },
-                      { label: "Service", value: serviceName || "Not set" },
-                      { label: "User", value: username || "Not set" },
-                    ]}
-                  />
-
-                  <div className="flex min-h-0 flex-1 flex-col gap-2">
-                    <WorkbenchSection
-                      className="shrink-0"
-                      title="SQL Editor"
-                      subtitle="Write SQL once, then execute, inspect plans, or save the current statement."
-                      actions={(
-                        <WorkbenchInlineActionCluster className="w-full sm:w-auto sm:justify-end">
-                          <WorkbenchActionButton type="button" onClick={() => void handleRunSql()} disabled={!connectionId || !sql.trim() || busyAction !== null}>
-                            {busyAction === "execute" ? <Loader2 size={12} className="animate-spin" /> : <SquareTerminal size={12} />}
-                            Run SQL
-                          </WorkbenchActionButton>
-                          <WorkbenchActionButton type="button" variant="secondary" onClick={() => void handleExplainPlan()} disabled={!connectionId || !sql.trim() || busyAction !== null}>
-                            {busyAction === "plan" ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
-                            Explain Plan
-                          </WorkbenchActionButton>
-                        </WorkbenchInlineActionCluster>
-                      )}
-                    >
-                      <DatabaseContextStrip
-                        items={connectionId
-                          ? [
-                            { label: "Session", value: connectionId.slice(0, 12) },
-                            { label: "Service", value: connectionSummary?.serviceName ?? serviceName },
-                            { label: "Mode", value: targetTypeLabel },
-                          ]
-                          : [
-                            { label: "Status", value: "Connect to the selected target before running SQL or generating a plan." },
-                          ]}
-                      />
-                      <Textarea
-                        label="SQL"
-                        value={sql}
-                        onChange={(event) => setSql(event.target.value)}
-                        className="min-h-[240px] flex-1 font-mono text-[12px]"
-                        placeholder="SELECT * FROM your_table FETCH FIRST 20 ROWS ONLY"
-                      />
-                    </WorkbenchSection>
-
-                    <WorkbenchSection
-                      className="min-h-[320px] flex-1"
-                      title="Workspace Panels"
-                      subtitle="Switch between execution output, snippet library, and AI assistance without leaving the editor."
-                      bodyClassName="min-h-0 gap-2"
-                    >
-                      <div className="flex flex-col gap-2 rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_97%,black_3%)] p-2 md:flex-row md:items-center md:justify-between">
-                        <div className="min-w-0">
-                          <div className="text-[11px] uppercase tracking-[0.14em] text-[var(--vscode-descriptionForeground)]">Panel Selector</div>
-                          <div className="mt-1 text-[11px] leading-5 text-[var(--vscode-descriptionForeground)]">
-                            Keep execution results, saved snippets, and AI guidance in one place.
+                      <WorkbenchSection
+                        className="min-h-[320px] flex-1"
+                        title="Workspace Panels"
+                        subtitle="Switch between execution output, snippet library, and AI assistance without leaving the editor."
+                        bodyClassName="min-h-0 gap-2"
+                      >
+                        <div className="flex flex-col gap-2 rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_97%,black_3%)] p-2 md:flex-row md:items-center md:justify-between">
+                          <div className="min-w-0">
+                            <div className="text-[11px] uppercase tracking-[0.14em] text-[var(--vscode-descriptionForeground)]">Panel Selector</div>
+                            <div className="mt-1 text-[11px] leading-5 text-[var(--vscode-descriptionForeground)]">
+                              Keep execution results, saved snippets, and AI guidance in one place.
+                            </div>
                           </div>
+                          <WorkbenchCompactActionCluster className="w-full flex-wrap gap-2 md:w-auto md:justify-end">
+                            <WorkbenchActionToggleButton active={workspacePanel === "results"} onClick={() => setWorkspacePanel("results")}>
+                              Results
+                            </WorkbenchActionToggleButton>
+                            <WorkbenchActionToggleButton active={workspacePanel === "library"} onClick={() => setWorkspacePanel("library")}>
+                              Library
+                            </WorkbenchActionToggleButton>
+                            <WorkbenchActionToggleButton active={workspacePanel === "assistant"} onClick={() => setWorkspacePanel("assistant")}>
+                              AI Assistant
+                            </WorkbenchActionToggleButton>
+                          </WorkbenchCompactActionCluster>
                         </div>
-                        <WorkbenchCompactActionCluster className="w-full flex-wrap gap-2 md:w-auto md:justify-end">
-                          <WorkbenchActionToggleButton active={workspacePanel === "results"} onClick={() => setWorkspacePanel("results")}>
-                            Results
-                          </WorkbenchActionToggleButton>
-                          <WorkbenchActionToggleButton active={workspacePanel === "library"} onClick={() => setWorkspacePanel("library")}>
-                            Library
-                          </WorkbenchActionToggleButton>
-                          <WorkbenchActionToggleButton active={workspacePanel === "assistant"} onClick={() => setWorkspacePanel("assistant")}>
-                            AI Assistant
-                          </WorkbenchActionToggleButton>
-                        </WorkbenchCompactActionCluster>
-                      </div>
 
-                      <div className="min-h-0 flex-1 overflow-y-auto">
-                        {workspacePanel === "results" && (
-                          <div className="grid gap-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
-                            <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2">
-                              <div className="mb-2 text-[12px] font-semibold text-[var(--vscode-foreground)]">Result Grid</div>
-                              {sqlResult ? (
-                                <WorkbenchQueryResult result={sqlResult} />
-                              ) : (
-                                <WorkbenchEmptyState
-                                  title="No result set yet"
-                                  description="Run the current statement to populate rows or affected row counts here."
-                                />
-                              )}
-                            </section>
-                            <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2">
-                              <div className="mb-2 text-[12px] font-semibold text-[var(--vscode-foreground)]">Explain Plan</div>
-                              {planResult ? (
-                                <WorkbenchSurface>
-                                  <div className="mb-2 text-[12px] text-description">{planResult.message}</div>
-                                  <pre className="overflow-x-auto whitespace-pre-wrap text-[11px] leading-5 text-[var(--vscode-editor-foreground)]">
-                                    {planResult.planLines.join("\n")}
-                                  </pre>
-                                </WorkbenchSurface>
-                              ) : (
-                                <WorkbenchEmptyState
-                                  title="No plan captured"
-                                  description="Generate an explain plan to inspect scan choices, cardinality, and join order."
-                                />
-                              )}
-                            </section>
-                          </div>
-                        )}
-
-                        {workspacePanel === "library" && (
-                          <div className="grid gap-2 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-                            <div className="flex flex-col gap-2">
+                        <div className="min-h-0 flex-1 overflow-y-auto">
+                          {workspacePanel === "results" && (
+                            <div className="grid gap-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
                               <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2">
-                                <div className="mb-2 text-[12px] font-semibold text-[var(--vscode-foreground)]">Save Current SQL</div>
-                                <div className="grid gap-2 sm:grid-cols-2">
-                                  <Input
-                                    label="Favorite Name"
-                                    value={favoriteLabel}
-                                    onChange={(event) => setFavoriteLabel(event.target.value)}
-                                    placeholder="Top slow sessions"
+                                <div className="mb-2 text-[12px] font-semibold text-[var(--vscode-foreground)]">Result Grid</div>
+                                {sqlResult ? (
+                                  <WorkbenchQueryResult result={sqlResult} />
+                                ) : (
+                                  <WorkbenchEmptyState
+                                    title="No result set yet"
+                                    description="Run the current statement to populate rows or affected row counts here."
                                   />
-                                  <Input
-                                    label="Description"
-                                    value={favoriteDescription}
-                                    onChange={(event) => setFavoriteDescription(event.target.value)}
-                                    placeholder="Optional note"
-                                  />
-                                </div>
-                                <WorkbenchCompactActionCluster className="mt-2">
-                                  <WorkbenchActionButton type="button" variant="secondary" onClick={() => void handleSaveFavorite()} disabled={!sql.trim() || busyAction !== null}>
-                                    {busyAction === "saveFavorite" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                                    Save Current SQL
-                                  </WorkbenchActionButton>
-                                </WorkbenchCompactActionCluster>
+                                )}
                               </section>
+                              <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2">
+                                <div className="mb-2 text-[12px] font-semibold text-[var(--vscode-foreground)]">Explain Plan</div>
+                                {planResult ? (
+                                  <WorkbenchSurface>
+                                    <div className="mb-2 text-[12px] text-description">{planResult.message}</div>
+                                    <pre className="overflow-x-auto whitespace-pre-wrap text-[11px] leading-5 text-[var(--vscode-editor-foreground)]">
+                                      {planResult.planLines.join("\n")}
+                                    </pre>
+                                  </WorkbenchSurface>
+                                ) : (
+                                  <WorkbenchEmptyState
+                                    title="No plan captured"
+                                    description="Generate an explain plan to inspect scan choices, cardinality, and join order."
+                                  />
+                                )}
+                              </section>
+                            </div>
+                          )}
+
+                          {workspacePanel === "library" && (
+                            <div className="grid gap-2 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+                              <div className="flex flex-col gap-2">
+                                <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2">
+                                  <div className="mb-2 text-[12px] font-semibold text-[var(--vscode-foreground)]">Save Current SQL</div>
+                                  <div className="grid gap-2 sm:grid-cols-2">
+                                    <Input
+                                      label="Favorite Name"
+                                      value={favoriteLabel}
+                                      onChange={(event) => setFavoriteLabel(event.target.value)}
+                                      placeholder="Top slow sessions"
+                                    />
+                                    <Input
+                                      label="Description"
+                                      value={favoriteDescription}
+                                      onChange={(event) => setFavoriteDescription(event.target.value)}
+                                      placeholder="Optional note"
+                                    />
+                                  </div>
+                                  <WorkbenchCompactActionCluster className="mt-2">
+                                    <WorkbenchActionButton type="button" variant="secondary" onClick={() => void handleSaveFavorite()} disabled={!sql.trim() || busyAction !== null}>
+                                      {busyAction === "saveFavorite" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                                      Save Current SQL
+                                    </WorkbenchActionButton>
+                                  </WorkbenchCompactActionCluster>
+                                </section>
+
+                                <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2">
+                                  <div className="mb-2 text-[12px] font-semibold text-[var(--vscode-foreground)]">Favorites</div>
+                                  <SqlSnippetList
+                                    emptyLabel="No favorites yet."
+                                    items={sqlWorkbench.favorites}
+                                    onApply={applySqlSnippet}
+                                    onDelete={requestDeleteFavorite}
+                                    deleteBusy={busyAction === "deleteFavorite"}
+                                  />
+                                </section>
+                              </div>
 
                               <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2">
-                                <div className="mb-2 text-[12px] font-semibold text-[var(--vscode-foreground)]">Favorites</div>
+                                <div className="mb-2 flex items-center justify-between gap-2">
+                                  <div className="text-[12px] font-semibold text-[var(--vscode-foreground)]">History</div>
+                                  <WorkbenchCompactActionCluster>
+                                    <WorkbenchActionButton type="button" variant="ghost" onClick={requestClearHistory} disabled={sqlWorkbench.history.length === 0 || busyAction !== null}>
+                                      {busyAction === "clearHistory" ? "Clearing..." : "Clear History"}
+                                    </WorkbenchActionButton>
+                                  </WorkbenchCompactActionCluster>
+                                </div>
                                 <SqlSnippetList
-                                  emptyLabel="No favorites yet."
-                                  items={sqlWorkbench.favorites}
+                                  emptyLabel="No SQL history yet."
+                                  items={sqlWorkbench.history}
                                   onApply={applySqlSnippet}
-                                  onDelete={requestDeleteFavorite}
-                                  deleteBusy={busyAction === "deleteFavorite"}
+                                  deleteBusy={false}
                                 />
                               </section>
                             </div>
+                          )}
 
-                            <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2">
-                              <div className="mb-2 flex items-center justify-between gap-2">
-                                <div className="text-[12px] font-semibold text-[var(--vscode-foreground)]">History</div>
-                                <WorkbenchCompactActionCluster>
-                                  <WorkbenchActionButton type="button" variant="ghost" onClick={requestClearHistory} disabled={sqlWorkbench.history.length === 0 || busyAction !== null}>
-                                    {busyAction === "clearHistory" ? "Clearing..." : "Clear History"}
-                                  </WorkbenchActionButton>
-                                </WorkbenchCompactActionCluster>
-                              </div>
-                              <SqlSnippetList
-                                emptyLabel="No SQL history yet."
-                                items={sqlWorkbench.history}
-                                onApply={applySqlSnippet}
-                                deleteBusy={false}
-                              />
-                            </section>
-                          </div>
-                        )}
-
-                        {workspacePanel === "assistant" && (
-                          <div className="grid gap-2 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-                            <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2.5">
-                              <WorkbenchSegmentedControl
-                                className="mb-3"
-                                value={assistantMode}
-                                onChange={setAssistantMode}
-                                items={[
-                                  { value: "generate", label: "NL to SQL" },
-                                  { value: "optimize", label: "Optimize SQL" },
-                                ]}
-                              />
-                              <Textarea
-                                label="Prompt"
-                                value={assistantPrompt}
-                                onChange={(event) => setAssistantPrompt(event.target.value)}
-                                className="min-h-[100px]"
-                                placeholder={assistantMode === "generate" ? "List top 10 tables by segment size." : "Optimize the query for high-cardinality join predicates."}
-                              />
-                              <Textarea
-                                label="Schema Context"
-                                value={schemaContext}
-                                onChange={(event) => setSchemaContext(event.target.value)}
-                                className="min-h-[120px] font-mono text-[12px]"
-                                placeholder="tables: orders(order_id, customer_id, status, created_at)..."
-                              />
-                              <WorkbenchInlineActionCluster>
-                                <WorkbenchActionButton type="button" onClick={() => void handleAskAssistant()} disabled={busyAction !== null || (!assistantPrompt.trim() && !sql.trim())}>
-                                  {busyAction === "assistant" ? <Loader2 size={12} className="animate-spin" /> : <SquareTerminal size={12} />}
-                                  Ask Assistant
-                                </WorkbenchActionButton>
-                                {assistantResult?.suggestedSql && (
-                                  <WorkbenchActionButton type="button" variant="secondary" onClick={() => setSql(assistantResult.suggestedSql ?? "")}>
-                                    Use Suggested SQL
-                                  </WorkbenchActionButton>
-                                )}
-                              </WorkbenchInlineActionCluster>
-                            </section>
-
-                            <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2.5">
-                              <div className="mb-2 text-[12px] font-semibold text-[var(--vscode-foreground)]">Assistant Output</div>
-                              {assistantResult ? (
-                                <div className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_96%,black_4%)] px-2 py-1.5">
-                                  <pre className="whitespace-pre-wrap text-[11px] leading-5 text-[var(--vscode-editor-foreground)]">{assistantResult.content}</pre>
-                                </div>
-                              ) : (
-                                <WorkbenchEmptyState
-                                  title="No assistant output yet"
-                                  description="Ask for SQL generation or optimization advice to get an explanation and suggested statement."
+                          {workspacePanel === "assistant" && (
+                            <div className="grid gap-2 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+                              <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2.5">
+                                <WorkbenchSegmentedControl
+                                  className="mb-3"
+                                  value={assistantMode}
+                                  onChange={setAssistantMode}
+                                  items={[
+                                    { value: "generate", label: "NL to SQL" },
+                                    { value: "optimize", label: "Optimize SQL" },
+                                  ]}
                                 />
-                              )}
-                            </section>
-                          </div>
-                        )}
-                      </div>
-                    </WorkbenchSection>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-6 py-10 text-center">
-                  <div className="max-w-sm">
-                    <div className="text-[13px] font-semibold text-[var(--vscode-foreground)]">Select a target to open the SQL workbench</div>
-                    <div className="mt-2 text-[11px] leading-5 text-[var(--vscode-descriptionForeground)]">
-                      Choose an Autonomous Database or DB System from the inventory to configure a connection and start editing SQL.
+                                <Textarea
+                                  label="Prompt"
+                                  value={assistantPrompt}
+                                  onChange={(event) => setAssistantPrompt(event.target.value)}
+                                  className="min-h-[100px]"
+                                  placeholder={assistantMode === "generate" ? "List top 10 tables by segment size." : "Optimize the query for high-cardinality join predicates."}
+                                />
+                                <Textarea
+                                  label="Schema Context"
+                                  value={schemaContext}
+                                  onChange={(event) => setSchemaContext(event.target.value)}
+                                  className="min-h-[120px] font-mono text-[12px]"
+                                  placeholder="tables: orders(order_id, customer_id, status, created_at)..."
+                                />
+                                <WorkbenchInlineActionCluster>
+                                  <WorkbenchActionButton type="button" onClick={() => void handleAskAssistant()} disabled={busyAction !== null || (!assistantPrompt.trim() && !sql.trim())}>
+                                    {busyAction === "assistant" ? <Loader2 size={12} className="animate-spin" /> : <SquareTerminal size={12} />}
+                                    Ask Assistant
+                                  </WorkbenchActionButton>
+                                  {assistantResult?.suggestedSql && (
+                                    <WorkbenchActionButton type="button" variant="secondary" onClick={() => setSql(assistantResult.suggestedSql ?? "")}>
+                                      Use Suggested SQL
+                                    </WorkbenchActionButton>
+                                  )}
+                                </WorkbenchInlineActionCluster>
+                              </section>
+
+                              <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2.5">
+                                <div className="mb-2 text-[12px] font-semibold text-[var(--vscode-foreground)]">Assistant Output</div>
+                                {assistantResult ? (
+                                  <div className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_96%,black_4%)] px-2 py-1.5">
+                                    <pre className="whitespace-pre-wrap text-[11px] leading-5 text-[var(--vscode-editor-foreground)]">{assistantResult.content}</pre>
+                                  </div>
+                                ) : (
+                                  <WorkbenchEmptyState
+                                    title="No assistant output yet"
+                                    description="Ask for SQL generation or optimization advice to get an explanation and suggested statement."
+                                  />
+                                )}
+                              </section>
+                            </div>
+                          )}
+                        </div>
+                      </WorkbenchSection>
                     </div>
                   </div>
                 </div>
-              )}
-            />
+              </section>
+            ) : (
+              <section className="h-full min-h-0 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_76%,white_24%)]">
+                <div className="h-full overflow-y-auto p-2">
+                  <div className="flex flex-col gap-2">
+                    <WorkbenchInventorySummary
+                      label="Target inventory"
+                      count={filteredTargets.length === targets.length
+                        ? `${targets.length} ${targetType === "adb" ? "databases" : "systems"}`
+                        : `${filteredTargets.length} of ${targets.length} visible`}
+                      description="Choose a target, configure the connection profile, then open the SQL workspace."
+                    />
+
+                    <div className="grid gap-2 xl:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.1fr)]">
+                      <Card title="Target Inventory">
+                        <WorkbenchSegmentedControl
+                          value={targetType}
+                          onChange={setTargetType}
+                          items={[
+                            { value: "adb", label: "Autonomous DB" },
+                            { value: "dbSystem", label: "DB System" },
+                          ]}
+                        />
+
+                        <FeatureSearchInput
+                          value={targetFilter}
+                          onChange={setTargetFilter}
+                          placeholder={`Filter ${targetType === "adb" ? "databases" : "systems"}...`}
+                        />
+
+                        {filteredTargets.length === 0 ? (
+                          <WorkbenchInventoryFilterEmpty message="No targets match the current filter." />
+                        ) : (
+                          <div className="max-h-[520px] overflow-y-auto pr-1">
+                            <div className="flex flex-col gap-2">
+                              {filteredTargets.map((target) => (
+                                <SqlTargetListItem
+                                  key={target.id}
+                                  target={target}
+                                  selected={target.id === selectedTargetId}
+                                  connected={Boolean(connectionSummary && connectionSummary.targetId === target.id)}
+                                  onSelect={() => setSelectedTargetId(target.id)}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </Card>
+
+                      <div className="flex flex-col gap-2">
+                        {selectedTarget ? (
+                          <Card title="Selected Target">
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <SummaryMetaCard label="Name" value={selectedTarget.name} />
+                              <SummaryMetaCard label="Type" value={targetTypeLabel} />
+                              <SummaryMetaCard label="Region" value={selectedTarget.region || "default"} />
+                              <SummaryMetaCard label="Lifecycle" value={selectedTarget.lifecycleState || "Unknown"} />
+                            </div>
+                            {connectionSummary && connectionSummary.targetId === selectedTarget.id && (
+                              <InlineNotice tone="success">
+                                Connected via {connectionSummary.serviceName}
+                              </InlineNotice>
+                            )}
+                            <WorkbenchCompactActionCluster>
+                              <WorkbenchActionButton type="button" onClick={() => setShowSqlWorkspace(true)}>
+                                Open SQL Workspace
+                              </WorkbenchActionButton>
+                            </WorkbenchCompactActionCluster>
+                          </Card>
+                        ) : (
+                          <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-6 py-10 text-center">
+                            <div className="max-w-sm">
+                              <div className="text-[13px] font-semibold text-[var(--vscode-foreground)]">Select a target to open the SQL workbench</div>
+                              <div className="mt-2 text-[11px] leading-5 text-[var(--vscode-descriptionForeground)]">
+                                Choose an Autonomous Database or DB System from the inventory to configure a connection and start editing SQL.
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        <Card title="Connection Profile">
+                          {targetType === "adb" && (
+                            <>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                <Input
+                                  type="password"
+                                  label="Wallet Password"
+                                  value={walletPassword}
+                                  onChange={(event) => setWalletPassword(event.target.value)}
+                                  placeholder="At least 8 chars"
+                                />
+                                <div className="flex items-end">
+                                  <WorkbenchActionButton
+                                    type="button"
+                                    variant="secondary"
+                                    className="w-full"
+                                    onClick={() => void handleDownloadWallet()}
+                                    disabled={!selectedTargetId || walletPassword.trim().length < 8 || busyAction !== null}
+                                  >
+                                    {busyAction === "wallet" ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                                    Download Wallet
+                                  </WorkbenchActionButton>
+                                </div>
+                              </div>
+                              <Input
+                                label="Wallet Path"
+                                value={walletPath}
+                                onChange={(event) => setWalletPath(event.target.value)}
+                                placeholder="Wallet directory path"
+                              />
+                            </>
+                          )}
+
+                          <div className="grid gap-2 sm:grid-cols-3">
+                            <Input
+                              label="Username"
+                              value={username}
+                              onChange={(event) => setUsername(event.target.value)}
+                              placeholder={targetType === "adb" ? "ADMIN" : "SYSTEM"}
+                            />
+                            <Input
+                              type="password"
+                              label="Password"
+                              value={password}
+                              onChange={(event) => setPassword(event.target.value)}
+                              placeholder="Database password"
+                            />
+                            <div className="flex flex-col gap-1.5">
+                              <label className="text-[13px] leading-none text-foreground">Service Name</label>
+                              <input
+                                value={serviceName}
+                                onChange={(event) => setServiceName(event.target.value)}
+                                list={targetType === "adb" ? "sql-workbench-adb-services" : "sql-workbench-db-services"}
+                                placeholder={targetType === "adb" ? "dbname_high" : "host:1521/service"}
+                                className="h-[26px] rounded-[2px] border border-input-border bg-input-background px-2 text-[13px] text-input-foreground outline-none focus:border-border focus:outline focus:outline-1 focus:outline-[var(--vscode-focusBorder)] focus:-outline-offset-1"
+                              />
+                              <datalist id="sql-workbench-adb-services">
+                                {serviceNames.map((item) => <option key={item} value={item} />)}
+                              </datalist>
+                              <datalist id="sql-workbench-db-services">
+                                {connectionStrings.map((item) => <option key={item.value} value={item.value}>{item.name}</option>)}
+                              </datalist>
+                            </div>
+                          </div>
+
+                          {targetType === "dbSystem" && connectionStrings.length > 0 && (
+                            <div className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_96%,black_4%)] px-2.5 py-2 text-[11px] text-description">
+                              {connectionStrings.slice(0, 4).map((item) => (
+                                <div key={item.value}>
+                                  <span className="text-foreground">{item.name}:</span> {item.value}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <WorkbenchToolbarGroup>
+                            <WorkbenchCompactActionCluster>
+                              <WorkbenchActionButton
+                                type="button"
+                                variant="secondary"
+                                onClick={() => void handleTestConnection()}
+                                disabled={!canManageConnection || busyAction !== null}
+                              >
+                                {busyAction === "test" ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+                                Test Connection
+                              </WorkbenchActionButton>
+                              <WorkbenchActionButton
+                                type="button"
+                                onClick={() => void handleConnect()}
+                                disabled={!canManageConnection || Boolean(connectionId) || busyAction !== null}
+                              >
+                                {busyAction === "connect" ? <Loader2 size={12} className="animate-spin" /> : <Plug size={12} />}
+                                Connect
+                              </WorkbenchActionButton>
+                              <WorkbenchActionButton
+                                type="button"
+                                variant="secondary"
+                                onClick={() => void handleDisconnect()}
+                                disabled={!connectionId || busyAction !== null}
+                              >
+                                {busyAction === "disconnect" ? <Loader2 size={12} className="animate-spin" /> : <Unplug size={12} />}
+                                Disconnect
+                              </WorkbenchActionButton>
+                              <WorkbenchActionButton
+                                type="button"
+                                variant="secondary"
+                                onClick={requestSaveProfile}
+                                disabled={!selectedTargetId || !serviceName.trim() || !username.trim() || busyAction !== null}
+                              >
+                                {busyAction === "saveProfile" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                                {hasSavedProfile ? "Saved" : "Save Profile"}
+                              </WorkbenchActionButton>
+                              {hasSavedProfile && (
+                                <WorkbenchDestructiveButton
+                                  type="button"
+                                  onClick={requestDeleteProfile}
+                                  disabled={busyAction !== null}
+                                >
+                                  {busyAction === "deleteProfile" ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                                  Delete Profile
+                                </WorkbenchDestructiveButton>
+                              )}
+                            </WorkbenchCompactActionCluster>
+                          </WorkbenchToolbarGroup>
+
+                          {testResult && (
+                            <div className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_96%,green_4%)] px-2.5 py-2 text-[11px] text-description">
+                              {testResult.message} {testResult.latencyMs > 0 ? `(${testResult.latencyMs} ms)` : ""}
+                            </div>
+                          )}
+                        </Card>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
           </div>
         </div>
       </FeaturePageLayout>

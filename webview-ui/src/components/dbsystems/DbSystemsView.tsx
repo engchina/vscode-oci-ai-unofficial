@@ -2,6 +2,7 @@ import { clsx } from "clsx"
 import {
     AlertCircle,
     CheckCircle2,
+    ChevronLeft,
     Database,
     Loader2,
     MonitorPlay,
@@ -69,7 +70,6 @@ import type { WorkbenchGuardrailState } from "../workbench/guardrail"
 import { buildWorkbenchResourceGuardrailDetails, createStartResourceGuardrail, createStopResourceGuardrail } from "../workbench/guardrail"
 import WorkbenchQueryResult from "../workbench/WorkbenchQueryResult"
 import { WorkbenchRefreshButton, WorkbenchToolbarGroup, WorkbenchToolbarSpacer } from "../workbench/WorkbenchToolbar"
-import SplitWorkspaceLayout from "../workbench/SplitWorkspaceLayout"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/Tabs"
 
 type ActionState = { id: string; action: "starting" | "stopping" } | null
@@ -122,6 +122,7 @@ export default function DbSystemsView() {
     const [guardrail, setGuardrail] = useState<WorkbenchGuardrailState>(null)
     const [recentAction, setRecentAction] = useState<RecentActionState>(null)
     const [highlightedDbSystemId, setHighlightedDbSystemId] = useState<string | null>(null)
+    const [showDbSystemWorkspace, setShowDbSystemWorkspace] = useState(false)
     const actionTimerRef = useRef<number | null>(null)
     const highlightTimerRef = useRef<number | null>(null)
     const dbSystemItemRefs = useRef(new Map<string, HTMLDivElement>())
@@ -215,8 +216,15 @@ export default function DbSystemsView() {
             return
         }
         setSelectedDbId(pendingSelection.targetId)
+        setShowDbSystemWorkspace(true)
         setPendingSelection(null)
     }, [pendingSelection, setPendingSelection])
+
+    useEffect(() => {
+        if (!selectedDatabase) {
+            setShowDbSystemWorkspace(false)
+        }
+    }, [selectedDatabase])
 
     const load = useCallback(async () => {
         setLoading(true)
@@ -645,6 +653,7 @@ export default function DbSystemsView() {
     const revealDbSystem = useCallback((dbSystemId: string) => {
         setQuery("")
         setSelectedDbId(dbSystemId)
+        setShowDbSystemWorkspace(false)
         setHighlightedDbSystemId(dbSystemId)
     }, [])
 
@@ -711,80 +720,36 @@ export default function DbSystemsView() {
                     </div>
                 ) : (
                     <div className="min-h-0 flex-1">
-                        <SplitWorkspaceLayout
-                            sidebar={(
-                                <div className="flex flex-col gap-2">
-                                    <WorkbenchInventorySummary
-                                        label="System inventory"
-                                        count={filtered.length === dbSystems.length
-                                            ? `${dbSystems.length} DB system${dbSystems.length !== 1 ? "s" : ""}`
-                                            : `${filtered.length} of ${dbSystems.length} DB systems`}
-                                        description="Select a DB system to manage lifecycle, SSH access, and SQL connectivity."
-                                    />
-
-                                    {filtered.length === 0 ? (
-                                        <WorkbenchInventoryFilterEmpty message="No DB Systems match your filter." />
-                                    ) : (
-                                        grouped.map((compartmentGroup) => (
-                                            <div key={compartmentGroup.compartmentId} className="mb-1">
-                                                <WorkbenchInventoryGroupHeading>
-                                                    {compartmentNameById.get(compartmentGroup.compartmentId) ?? compartmentGroup.compartmentId}
-                                                </WorkbenchInventoryGroupHeading>
-                                                <div className="flex flex-col gap-2">
-                                                    {compartmentGroup.regions.map((regionGroup) => (
-                                                        <div key={`${compartmentGroup.compartmentId}-${regionGroup.region}`} className="flex flex-col gap-2">
-                                                            <WorkbenchInventoryRegionHeading>
-                                                                {regionGroup.region}
-                                                            </WorkbenchInventoryRegionHeading>
-                                                            {regionGroup.dbSystems.map((db) => (
-                                                                <DatabaseCard
-                                                                    key={`${db.id}-${db.region ?? "default"}`}
-                                                                    dbSystem={db}
-                                                                    selected={db.id === selectedDbId}
-                                                                    highlighted={highlightedDbSystemId === db.id}
-                                                                    onRegisterRef={(node) => {
-                                                                        if (node) {
-                                                                            dbSystemItemRefs.current.set(db.id, node)
-                                                                        } else {
-                                                                            dbSystemItemRefs.current.delete(db.id)
-                                                                        }
-                                                                    }}
-                                                                    actionState={actionState}
-                                                                    connectingId={connectingId}
-                                                                    sshConfig={sshConfig}
-                                                                    sshUserOverride={sshUserOverrides[db.id] || ""}
-                                                                    sshKeyOverride={sshKeyOverrides[db.id] || ""}
-                                                                    selectedIp={sshSelectedIp[db.id] || db.publicIp || db.privateIp || ""}
-                                                                    onStart={handleStart}
-                                                                    onStop={handleStop}
-                                                                    onRequestGuardrail={setGuardrail}
-                                                                    onSelect={setSelectedDbId}
-                                                                    onConnectSsh={handleSshConnect}
-                                                                    onChangeSshSelectedIp={(id, ip) => setSshSelectedIp((prev) => ({ ...prev, [id]: ip }))}
-                                                                    onChangeSshUserOverride={(id, username) => setSshUserOverrides((prev) => ({ ...prev, [id]: username }))}
-                                                                    onChangeSshKeyOverride={(id, keyPath) => setSshKeyOverrides((prev) => ({ ...prev, [id]: keyPath }))}
-                                                                />
-                                                            ))}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
+                        {showDbSystemWorkspace && selectedDatabase ? (
+                            <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_76%,white_24%)]">
+                                <div className="flex items-center gap-2 border-b border-[var(--vscode-panel-border)] px-3 py-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowDbSystemWorkspace(false)}
+                                        className="flex h-6 w-6 items-center justify-center rounded-[2px] hover:bg-[var(--vscode-toolbar-hoverBackground)]"
+                                        title="Back to DB Systems"
+                                    >
+                                        <ChevronLeft size={14} />
+                                    </button>
+                                    <div className="min-w-0">
+                                        <div className="truncate text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)]">
+                                            DB System
+                                        </div>
+                                        <div className="truncate text-[10px] text-description">{selectedDatabase.name}</div>
+                                    </div>
                                 </div>
-                            )}
-                            main={(
-                                <div className="flex flex-col h-full min-h-0 gap-2">
+
+                                <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
                                     <DatabaseWorkbenchHero
                                         eyebrow="DB System"
-                                        title={selectedDatabase?.name ?? "No Database Selected"}
-                                        resourceId={selectedDatabase?.id}
+                                        title={selectedDatabase.name}
+                                        resourceId={selectedDatabase.id}
                                         connected={Boolean(connectionId)}
-                                        metaItems={selectedDatabase ? [
+                                        metaItems={[
                                             { label: "DB System", value: selectedDatabase.name },
                                             { label: "Region", value: selectedDatabase.region || "default" },
                                             { label: "Lifecycle", value: selectedDatabase.lifecycleState },
-                                        ] : []}
+                                        ]}
                                     />
 
                                     {connectionTarget && (
@@ -967,8 +932,75 @@ export default function DbSystemsView() {
                                         </Tabs>
                                     </div>
                                 </div>
-                            )}
-                        />
+                            </section>
+                        ) : (
+                            <section className="h-full min-h-0 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_76%,white_24%)]">
+                                <div className="h-full overflow-y-auto p-2">
+                                    <div className="flex flex-col gap-2">
+                                        <WorkbenchInventorySummary
+                                            label="System inventory"
+                                            count={filtered.length === dbSystems.length
+                                                ? `${dbSystems.length} DB system${dbSystems.length !== 1 ? "s" : ""}`
+                                                : `${filtered.length} of ${dbSystems.length} DB systems`}
+                                            description="Select a DB system to manage lifecycle, SSH access, and SQL connectivity."
+                                        />
+
+                                        {filtered.length === 0 ? (
+                                            <WorkbenchInventoryFilterEmpty message="No DB Systems match your filter." />
+                                        ) : (
+                                            grouped.map((compartmentGroup) => (
+                                                <div key={compartmentGroup.compartmentId} className="mb-1">
+                                                    <WorkbenchInventoryGroupHeading>
+                                                        {compartmentNameById.get(compartmentGroup.compartmentId) ?? compartmentGroup.compartmentId}
+                                                    </WorkbenchInventoryGroupHeading>
+                                                    <div className="flex flex-col gap-2">
+                                                        {compartmentGroup.regions.map((regionGroup) => (
+                                                            <div key={`${compartmentGroup.compartmentId}-${regionGroup.region}`} className="flex flex-col gap-2">
+                                                                <WorkbenchInventoryRegionHeading>
+                                                                    {regionGroup.region}
+                                                                </WorkbenchInventoryRegionHeading>
+                                                                {regionGroup.dbSystems.map((db) => (
+                                                                    <DatabaseCard
+                                                                        key={`${db.id}-${db.region ?? "default"}`}
+                                                                        dbSystem={db}
+                                                                        selected={db.id === selectedDbId}
+                                                                        highlighted={highlightedDbSystemId === db.id}
+                                                                        onRegisterRef={(node) => {
+                                                                            if (node) {
+                                                                                dbSystemItemRefs.current.set(db.id, node)
+                                                                            } else {
+                                                                                dbSystemItemRefs.current.delete(db.id)
+                                                                            }
+                                                                        }}
+                                                                        actionState={actionState}
+                                                                        connectingId={connectingId}
+                                                                        sshConfig={sshConfig}
+                                                                        sshUserOverride={sshUserOverrides[db.id] || ""}
+                                                                        sshKeyOverride={sshKeyOverrides[db.id] || ""}
+                                                                        selectedIp={sshSelectedIp[db.id] || db.publicIp || db.privateIp || ""}
+                                                                        onStart={handleStart}
+                                                                        onStop={handleStop}
+                                                                        onRequestGuardrail={setGuardrail}
+                                                                        onSelect={(id) => {
+                                                                            setSelectedDbId(id)
+                                                                            setShowDbSystemWorkspace(true)
+                                                                        }}
+                                                                        onConnectSsh={handleSshConnect}
+                                                                        onChangeSshSelectedIp={(id, ip) => setSshSelectedIp((prev) => ({ ...prev, [id]: ip }))}
+                                                                        onChangeSshUserOverride={(id, username) => setSshUserOverrides((prev) => ({ ...prev, [id]: username }))}
+                                                                        onChangeSshKeyOverride={(id, keyPath) => setSshKeyOverrides((prev) => ({ ...prev, [id]: keyPath }))}
+                                                                    />
+                                                                ))}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                            </section>
+                        )}
                     </div>
                 )}
             </div>

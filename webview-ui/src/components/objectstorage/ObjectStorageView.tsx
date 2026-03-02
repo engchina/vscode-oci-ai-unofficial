@@ -3,6 +3,7 @@ import {
   AlertCircle,
   ArrowDownToLine,
   CheckCircle2,
+  ChevronLeft,
   Copy,
   Folder,
   HardDriveDownload,
@@ -47,7 +48,6 @@ import {
   WorkbenchInventorySummary,
 } from "../workbench/WorkbenchInventoryScaffold"
 import { WorkbenchRefreshButton } from "../workbench/WorkbenchToolbar"
-import SplitWorkspaceLayout from "../workbench/SplitWorkspaceLayout"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/Tabs"
 
 type BucketStatOverride = {
@@ -117,6 +117,13 @@ export default function ObjectStorageView() {
   }, [recentlyUploadedObjectName])
 
   const [showObjectBrowserWorkspace, setShowObjectBrowserWorkspace] = useState(false)
+  const [showBucketWorkspace, setShowBucketWorkspace] = useState(false)
+
+  useEffect(() => {
+    if (!selectedBucket) {
+      setShowBucketWorkspace(false)
+    }
+  }, [selectedBucket])
 
   useEffect(() => {
     if (recentActionTimerRef.current !== null) {
@@ -531,7 +538,7 @@ export default function ObjectStorageView() {
   return (
     <FeaturePageLayout
       title="Object Storage"
-      description={selectedBucket
+      description={selectedBucket && showBucketWorkspace
         ? `${selectedBucket.name} - Manage buckets and objects without leaving the current workspace.`
         : "Manage buckets and objects without leaving the current workspace."}
       icon={<PackageOpen size={16} />}
@@ -546,35 +553,39 @@ export default function ObjectStorageView() {
       controls={(
         <div className="flex flex-col gap-1.5">
           <CompartmentSelector featureKey="objectStorage" multiple />
-          <FeatureSearchInput
-            value={query}
-            onChange={setQuery}
-            placeholder="Filter folders and objects..."
-          />
-          <WorkbenchCompactActionCluster>
-            <WorkbenchActionButton
-              onClick={() => void handleUpload()}
-              disabled={actionBusy}
-              title={uploading ? "Uploading file to Object Storage" : "Choose a local file to upload"}
-            >
-              {uploading ? <Loader2 size={12} className="mr-1.5 animate-spin" /> : <Upload size={12} className="mr-1.5" />}
-              {uploading ? "Uploading..." : "Upload"}
-            </WorkbenchActionButton>
-            <div className="min-w-0 flex-1 rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-sideBar-background)] px-1.5 py-0.5">
-              <div className="flex flex-wrap items-center gap-1 text-[11px] text-description">
-                <WorkbenchMicroOptionButton onClick={() => setPrefix("")} title="Reset to bucket root">/</WorkbenchMicroOptionButton>
-                {breadcrumbSegments.map((segment) => (
-                  <WorkbenchMicroOptionButton
-                    key={segment.prefix}
-                    onClick={() => setPrefix(segment.prefix)}
-                    title={`Open ${segment.label}`}
-                  >
-                    {segment.label}
-                  </WorkbenchMicroOptionButton>
-                ))}
-              </div>
-            </div>
-          </WorkbenchCompactActionCluster>
+          {showBucketWorkspace && selectedBucket && (
+            <>
+              <FeatureSearchInput
+                value={query}
+                onChange={setQuery}
+                placeholder="Filter folders and objects..."
+              />
+              <WorkbenchCompactActionCluster>
+                <WorkbenchActionButton
+                  onClick={() => void handleUpload()}
+                  disabled={actionBusy}
+                  title={uploading ? "Uploading file to Object Storage" : "Choose a local file to upload"}
+                >
+                  {uploading ? <Loader2 size={12} className="mr-1.5 animate-spin" /> : <Upload size={12} className="mr-1.5" />}
+                  {uploading ? "Uploading..." : "Upload"}
+                </WorkbenchActionButton>
+                <div className="min-w-0 flex-1 rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-sideBar-background)] px-1.5 py-0.5">
+                  <div className="flex flex-wrap items-center gap-1 text-[11px] text-description">
+                    <WorkbenchMicroOptionButton onClick={() => setPrefix("")} title="Reset to bucket root">/</WorkbenchMicroOptionButton>
+                    {breadcrumbSegments.map((segment) => (
+                      <WorkbenchMicroOptionButton
+                        key={segment.prefix}
+                        onClick={() => setPrefix(segment.prefix)}
+                        title={`Open ${segment.label}`}
+                      >
+                        {segment.label}
+                      </WorkbenchMicroOptionButton>
+                    ))}
+                  </div>
+                </div>
+              </WorkbenchCompactActionCluster>
+            </>
+          )}
         </div>
       )}
     >
@@ -589,233 +600,261 @@ export default function ObjectStorageView() {
           />
         ) : (
           <div className="min-h-0 flex-1">
-            <SplitWorkspaceLayout
-              sidebar={(
-                <div className="flex flex-col gap-2">
-                  <WorkbenchInventorySummary
-                    label="Bucket inventory"
-                    count={`${buckets.length} bucket${buckets.length === 1 ? "" : "s"}`}
-                    description="Select a bucket to browse folders, objects, and pre-authenticated links."
-                  />
-                  <BucketList
-                    groupedBuckets={groupedBuckets}
-                    compartmentNameById={compartmentNameById}
-                    selectedBucket={selectedBucket}
-                    onSelect={setSelectedBucket}
-                  />
-                </div>
-              )}
-              main={selectedBucket ? (
-                showObjectBrowserWorkspace ? (
-                  <div className="flex h-full min-h-0 flex-col">
-                    <WorkbenchSection
-                      title="Object Browser"
-                      subtitle="Browse prefixes, inspect object metadata, and create download or PAR actions without leaving the selected bucket."
-                      actions={(
-                        <WorkbenchActionButton onClick={() => setShowObjectBrowserWorkspace(false)} variant="secondary">
-                          {"< Back to Overview"}
-                        </WorkbenchActionButton>
-                      )}
-                      className="flex-1 flex flex-col min-h-0"
+            {showBucketWorkspace && selectedBucket ? (
+              <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_76%,white_24%)]">
+                <div className="flex items-center justify-between gap-2 border-b border-[var(--vscode-panel-border)] px-3 py-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowObjectBrowserWorkspace(false)
+                        setShowBucketWorkspace(false)
+                      }}
+                      className="flex h-6 w-6 items-center justify-center rounded-[2px] hover:bg-[var(--vscode-toolbar-hoverBackground)]"
+                      title="Back to buckets"
                     >
-                      <div className="min-h-0 flex-1 overflow-auto rounded-[2px] border border-[var(--vscode-panel-border)] mt-1.5">
-                        {loadingObjects ? (
-                          <WorkbenchLoadingState label="Loading objects..." />
-                        ) : filteredFolders.length === 0 && filteredObjects.length === 0 ? (
-                          <EmptyState title="No objects found" description="This prefix is empty or does not match your filter." />
-                        ) : (
-                          <div className="flex flex-col gap-1 p-1.5">
-                            {filteredFolders.map((folderPrefix) => (
-                              <button
-                                key={folderPrefix}
-                                onClick={() => setPrefix(folderPrefix)}
-                                className="flex items-center gap-2 rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-2.5 py-1.5 text-left hover:bg-[var(--vscode-list-hoverBackground)]"
-                              >
-                                <Folder size={14} className="shrink-0 text-[var(--vscode-icon-foreground)]" />
-                                <div className="min-w-0 flex-1">
-                                  <div className="truncate text-[12px] font-medium text-[var(--vscode-foreground)]">
-                                    {displayFolderName(folderPrefix, prefix)}
-                                  </div>
-                                  <div className="truncate text-[10px] text-description">{folderPrefix}</div>
-                                </div>
-                                <ArrowDownToLine size={12} className="shrink-0 rotate-[-90deg] text-description" />
-                              </button>
-                            ))}
+                      <ChevronLeft size={14} />
+                    </button>
+                    <div className="min-w-0">
+                      <div className="truncate text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)]">
+                        {showObjectBrowserWorkspace ? "Object Browser" : "Bucket Workspace"}
+                      </div>
+                      <div className="truncate text-[10px] text-description">{selectedBucket.name}</div>
+                    </div>
+                  </div>
+                </div>
 
-                            {filteredObjects.map((object) => (
-                              <div
-                                key={object.name}
-                                ref={(node) => {
-                                  if (node) {
-                                    objectItemRefs.current.set(object.name, node)
-                                  } else {
-                                    objectItemRefs.current.delete(object.name)
-                                  }
-                                }}
-                                className={clsx(
-                                  "rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-2.5 py-1.5 transition-colors duration-700",
-                                  object.name === recentlyUploadedObjectName &&
-                                  "border-[color-mix(in_srgb,var(--vscode-button-background)_45%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,var(--vscode-button-background)_18%)]",
+                <div className="min-h-0 flex-1 overflow-hidden p-2">
+                  {showObjectBrowserWorkspace ? (
+                    <div className="flex h-full min-h-0 flex-col">
+                      <WorkbenchSection
+                        title="Object Browser"
+                        subtitle="Browse prefixes, inspect object metadata, and create download or PAR actions without leaving the selected bucket."
+                        actions={(
+                          <WorkbenchActionButton onClick={() => setShowObjectBrowserWorkspace(false)} variant="secondary">
+                            {"< Back to Overview"}
+                          </WorkbenchActionButton>
+                        )}
+                        className="flex-1 flex flex-col min-h-0"
+                      >
+                        <div className="min-h-0 flex-1 overflow-auto rounded-[2px] border border-[var(--vscode-panel-border)] mt-1.5">
+                          {loadingObjects ? (
+                            <WorkbenchLoadingState label="Loading objects..." />
+                          ) : filteredFolders.length === 0 && filteredObjects.length === 0 ? (
+                            <EmptyState title="No objects found" description="This prefix is empty or does not match your filter." />
+                          ) : (
+                            <div className="flex flex-col gap-1 p-1.5">
+                              {filteredFolders.map((folderPrefix) => (
+                                <button
+                                  key={folderPrefix}
+                                  onClick={() => setPrefix(folderPrefix)}
+                                  className="flex items-center gap-2 rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-2.5 py-1.5 text-left hover:bg-[var(--vscode-list-hoverBackground)]"
+                                >
+                                  <Folder size={14} className="shrink-0 text-[var(--vscode-icon-foreground)]" />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="truncate text-[12px] font-medium text-[var(--vscode-foreground)]">
+                                      {displayFolderName(folderPrefix, prefix)}
+                                    </div>
+                                    <div className="truncate text-[10px] text-description">{folderPrefix}</div>
+                                  </div>
+                                  <ArrowDownToLine size={12} className="shrink-0 rotate-[-90deg] text-description" />
+                                </button>
+                              ))}
+
+                              {filteredObjects.map((object) => (
+                                <div
+                                  key={object.name}
+                                  ref={(node) => {
+                                    if (node) {
+                                      objectItemRefs.current.set(object.name, node)
+                                    } else {
+                                      objectItemRefs.current.delete(object.name)
+                                    }
+                                  }}
+                                  className={clsx(
+                                    "rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-2.5 py-1.5 transition-colors duration-700",
+                                    object.name === recentlyUploadedObjectName &&
+                                    "border-[color-mix(in_srgb,var(--vscode-button-background)_45%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,var(--vscode-button-background)_18%)]",
+                                  )}
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <div className="truncate text-[12px] font-medium text-[var(--vscode-foreground)]">{pathTail(object.name)}</div>
+                                      <div className="truncate text-[10px] text-description">{object.name}</div>
+                                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-description">
+                                        <span>{formatBytes(object.size)}</span>
+                                        <span>{object.storageTier || "Standard"}</span>
+                                        <span>{formatDateTime(object.timeModified || object.timeCreated)}</span>
+                                      </div>
+                                    </div>
+                                    <WorkbenchCompactActionCluster className="shrink-0">
+                                      <WorkbenchIconActionButton
+                                        icon={<HardDriveDownload size={12} />}
+                                        onClick={() => void handleDownload(object.name)}
+                                        disabled={actionBusy}
+                                        title={downloadingObjectName === object.name ? "Saving object locally" : "Save this object to a local path"}
+                                        busy={downloadingObjectName === object.name}
+                                      />
+                                      <WorkbenchIconActionButton
+                                        icon={<KeyRound size={12} />}
+                                        onClick={() => handleCreatePar(object.name)}
+                                        disabled={actionBusy}
+                                        title="Create a 24-hour pre-authenticated download link"
+                                      />
+                                    </WorkbenchCompactActionCluster>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </WorkbenchSection>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col h-full min-h-0 gap-2">
+                      <WorkbenchHero
+                        eyebrow="Object Storage Bucket"
+                        title={selectedBucket.name}
+                        resourceId={`${selectedBucket.namespaceName} • ${selectedBucket.region}`}
+                        badge={selectedBucket.publicAccessType ? (
+                          <span className="rounded-[2px] border border-[var(--vscode-panel-border)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--vscode-descriptionForeground)]">
+                            {selectedBucket.publicAccessType}
+                          </span>
+                        ) : undefined}
+                        metaItems={[
+                          { label: "Namespace", value: selectedBucket.namespaceName },
+                          { label: "Region", value: selectedBucket.region },
+                        ]}
+                      />
+
+                      <div className="flex-1 min-h-0 flex flex-col">
+                        <Tabs defaultValue="overview" className="flex-1 min-h-0">
+                          <TabsList>
+                            <TabsTrigger value="overview">Overview</TabsTrigger>
+                            <TabsTrigger value="object-browser">Object Browser</TabsTrigger>
+                          </TabsList>
+                          <TabsContent value="overview" className="flex-1 overflow-auto pt-1.5 flex flex-col gap-2">
+                            {latestPar && (
+                              <InlineNotice
+                                tone="warning"
+                                title="Latest PAR"
+                                actions={(
+                                  <WorkbenchActionButton variant="secondary" onClick={() => void copyLatestPar()}>
+                                    <Copy size={12} />
+                                  </WorkbenchActionButton>
                                 )}
                               >
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <div className="truncate text-[12px] font-medium text-[var(--vscode-foreground)]">{pathTail(object.name)}</div>
-                                    <div className="truncate text-[10px] text-description">{object.name}</div>
-                                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-description">
-                                      <span>{formatBytes(object.size)}</span>
-                                      <span>{object.storageTier || "Standard"}</span>
-                                      <span>{formatDateTime(object.timeModified || object.timeCreated)}</span>
-                                    </div>
-                                  </div>
-                                  <WorkbenchCompactActionCluster className="shrink-0">
-                                    <WorkbenchIconActionButton
-                                      icon={<HardDriveDownload size={12} />}
-                                      onClick={() => void handleDownload(object.name)}
-                                      disabled={actionBusy}
-                                      title={downloadingObjectName === object.name ? "Saving object locally" : "Save this object to a local path"}
-                                      busy={downloadingObjectName === object.name}
-                                    />
-                                    <WorkbenchIconActionButton
-                                      icon={<KeyRound size={12} />}
-                                      onClick={() => handleCreatePar(object.name)}
-                                      disabled={actionBusy}
-                                      title="Create a 24-hour pre-authenticated download link"
-                                    />
-                                  </WorkbenchCompactActionCluster>
+                                <div className="break-all">{latestPar.fullUrl}</div>
+                                <div className="mt-1 text-[10px]">Expires {formatDateTime(latestPar.timeExpires)}</div>
+                              </InlineNotice>
+                            )}
+
+                            {uploadedObjectHiddenByFilter && recentlyUploadedObjectName && (
+                              <InlineNotice
+                                tone="info"
+                                actions={(
+                                  <WorkbenchActionButton variant="secondary" onClick={() => setQuery("")}>
+                                    Clear Filter
+                                  </WorkbenchActionButton>
+                                )}
+                              >
+                                <div className="min-w-0">
+                                  Uploaded <span className="text-[var(--vscode-foreground)]">{pathTail(recentlyUploadedObjectName)}</span>, but it is hidden by the current filter.
+                                </div>
+                              </InlineNotice>
+                            )}
+
+                            {recentAction && (
+                              <InlineNotice
+                                tone="info"
+                                icon={<CheckCircle2 size={14} className="text-[var(--vscode-testing-iconPassed)]" />}
+                                actions={(
+                                  <>
+                                    {recentAction.kind === "upload" && (
+                                      <WorkbenchRevealButton
+                                        onClick={() => {
+                                          setShowObjectBrowserWorkspace(true)
+                                          revealObject(recentAction.objectName)
+                                        }}
+                                        title="Show and highlight this object in the list"
+                                        label="Show Object"
+                                      />
+                                    )}
+                                    <WorkbenchDismissButton onClick={() => setRecentAction(null)} title="Dismiss" />
+                                  </>
+                                )}
+                              >
+                                <div className="min-w-0">
+                                  {recentAction.kind === "upload" ? "Uploaded" : "Saved locally"}{" "}
+                                  <span className="text-[var(--vscode-foreground)]">{pathTail(recentAction.objectName)}</span>{" "}
+                                  {formatRecentActionAge(recentAction.timestamp)}
+                                </div>
+                              </InlineNotice>
+                            )}
+
+                            <WorkbenchSection title="Size & Capacity">
+                              <div className="grid grid-cols-2 gap-2.5 rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2.5 shadow-sm">
+                                <div className="flex flex-col gap-1">
+                                  <span className="text-[11px] text-description uppercase tracking-wider font-semibold">Total Objects</span>
+                                  <span className="text-[20px] font-medium text-[var(--vscode-foreground)]">{formatCount(selectedBucket.approximateCount)}</span>
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                  <span className="text-[11px] text-description uppercase tracking-wider font-semibold">Approximate Size</span>
+                                  <span className="text-[20px] font-medium text-[var(--vscode-foreground)]">{formatBytes(selectedBucket.approximateSize)}</span>
                                 </div>
                               </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </WorkbenchSection>
-                  </div>
-                ) : (
-                  <div className="flex flex-col h-full min-h-0 gap-2">
-                    <WorkbenchHero
-                      eyebrow="Object Storage Bucket"
-                      title={selectedBucket.name}
-                      resourceId={`${selectedBucket.namespaceName} • ${selectedBucket.region}`}
-                      badge={selectedBucket.publicAccessType ? (
-                        <span className="rounded-[2px] border border-[var(--vscode-panel-border)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--vscode-descriptionForeground)]">
-                          {selectedBucket.publicAccessType}
-                        </span>
-                      ) : undefined}
-                      metaItems={[
-                        { label: "Namespace", value: selectedBucket.namespaceName },
-                        { label: "Region", value: selectedBucket.region },
-                      ]}
-                    />
-
-                    <div className="flex-1 min-h-0 flex flex-col">
-                      <Tabs defaultValue="overview" className="flex-1 min-h-0">
-                        <TabsList>
-                          <TabsTrigger value="overview">Overview</TabsTrigger>
-                          <TabsTrigger value="object-browser">Object Browser</TabsTrigger>
-                        </TabsList>
-                        <TabsContent value="overview" className="flex-1 overflow-auto pt-1.5 flex flex-col gap-2">
-                          {latestPar && (
-                            <InlineNotice
-                              tone="warning"
-                              title="Latest PAR"
+                            </WorkbenchSection>
+                          </TabsContent>
+                          <TabsContent value="object-browser" className="min-h-0 flex-1 flex flex-col pt-1.5">
+                            <WorkbenchSection
+                              title="Object Browser"
+                              subtitle="Browse prefixes, inspect object metadata, and create download or PAR actions without leaving the selected bucket."
                               actions={(
-                                <WorkbenchActionButton variant="secondary" onClick={() => void copyLatestPar()}>
-                                  <Copy size={12} />
-                                </WorkbenchActionButton>
-                              )}
-                            >
-                              <div className="break-all">{latestPar.fullUrl}</div>
-                              <div className="mt-1 text-[10px]">Expires {formatDateTime(latestPar.timeExpires)}</div>
-                            </InlineNotice>
-                          )}
-
-                          {uploadedObjectHiddenByFilter && recentlyUploadedObjectName && (
-                            <InlineNotice
-                              tone="info"
-                              actions={(
-                                <WorkbenchActionButton variant="secondary" onClick={() => setQuery("")}>
-                                  Clear Filter
-                                </WorkbenchActionButton>
-                              )}
-                            >
-                              <div className="min-w-0">
-                                Uploaded <span className="text-[var(--vscode-foreground)]">{pathTail(recentlyUploadedObjectName)}</span>, but it is hidden by the current filter.
-                              </div>
-                            </InlineNotice>
-                          )}
-
-                          {recentAction && (
-                            <InlineNotice
-                              tone="info"
-                              icon={<CheckCircle2 size={14} className="text-[var(--vscode-testing-iconPassed)]" />}
-                              actions={(
-                                <>
-                                  {recentAction.kind === "upload" && (
-                                    <WorkbenchRevealButton
-                                      onClick={() => {
-                                        setShowObjectBrowserWorkspace(true)
-                                        revealObject(recentAction.objectName)
-                                      }}
-                                      title="Show and highlight this object in the list"
-                                      label="Show Object"
-                                    />
-                                  )}
-                                  <WorkbenchDismissButton onClick={() => setRecentAction(null)} title="Dismiss" />
-                                </>
-                              )}
-                            >
-                              <div className="min-w-0">
-                                {recentAction.kind === "upload" ? "Uploaded" : "Saved locally"}{" "}
-                                <span className="text-[var(--vscode-foreground)]">{pathTail(recentAction.objectName)}</span>{" "}
-                                {formatRecentActionAge(recentAction.timestamp)}
-                              </div>
-                            </InlineNotice>
-                          )}
-
-                          <WorkbenchSection title="Size & Capacity">
-                            <div className="grid grid-cols-2 gap-2.5 rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2.5 shadow-sm">
-                              <div className="flex flex-col gap-1">
-                                <span className="text-[11px] text-description uppercase tracking-wider font-semibold">Total Objects</span>
-                                <span className="text-[20px] font-medium text-[var(--vscode-foreground)]">{formatCount(selectedBucket.approximateCount)}</span>
-                              </div>
-                              <div className="flex flex-col gap-1">
-                                <span className="text-[11px] text-description uppercase tracking-wider font-semibold">Approximate Size</span>
-                                <span className="text-[20px] font-medium text-[var(--vscode-foreground)]">{formatBytes(selectedBucket.approximateSize)}</span>
-                              </div>
-                            </div>
-                          </WorkbenchSection>
-                        </TabsContent>
-                        <TabsContent value="object-browser" className="min-h-0 flex-1 flex flex-col pt-1.5">
-                          <WorkbenchSection
-                            title="Object Browser"
-                            subtitle="Browse prefixes, inspect object metadata, and create download or PAR actions without leaving the selected bucket."
-                            actions={(
-                              <WorkbenchActionButton onClick={() => setShowObjectBrowserWorkspace(true)}>
-                                Open Workspace
-                              </WorkbenchActionButton>
-                            )}
-                            className="flex-1 flex flex-col min-h-0"
-                          >
-                            <div className="min-h-0 flex-1 overflow-auto rounded-[2px] border border-[var(--vscode-panel-border)] flex items-center justify-center p-4 text-center mt-1.5 bg-[var(--vscode-editor-background)]">
-                              <div className="flex flex-col items-center gap-2">
-                                <PackageOpen size={32} className="text-[var(--vscode-icon-foreground)] opacity-50" />
-                                <div className="text-[13px] text-[var(--vscode-foreground)]">Explore objects in a dedicated workspace view</div>
                                 <WorkbenchActionButton onClick={() => setShowObjectBrowserWorkspace(true)}>
                                   Open Workspace
                                 </WorkbenchActionButton>
+                              )}
+                              className="flex-1 flex flex-col min-h-0"
+                            >
+                              <div className="min-h-0 flex-1 overflow-auto rounded-[2px] border border-[var(--vscode-panel-border)] flex items-center justify-center p-4 text-center mt-1.5 bg-[var(--vscode-editor-background)]">
+                                <div className="flex flex-col items-center gap-2">
+                                  <PackageOpen size={32} className="text-[var(--vscode-icon-foreground)] opacity-50" />
+                                  <div className="text-[13px] text-[var(--vscode-foreground)]">Explore objects in a dedicated workspace view</div>
+                                  <WorkbenchActionButton onClick={() => setShowObjectBrowserWorkspace(true)}>
+                                    Open Workspace
+                                  </WorkbenchActionButton>
+                                </div>
                               </div>
-                            </div>
-                          </WorkbenchSection>
-                        </TabsContent>
-                      </Tabs>
+                            </WorkbenchSection>
+                          </TabsContent>
+                        </Tabs>
+                      </div>
                     </div>
+                  )}
+                </div>
+              </section>
+            ) : (
+              <section className="h-full min-h-0 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_76%,white_24%)]">
+                <div className="h-full overflow-y-auto p-2">
+                  <div className="flex flex-col gap-2">
+                    <WorkbenchInventorySummary
+                      label="Bucket inventory"
+                      count={`${buckets.length} bucket${buckets.length === 1 ? "" : "s"}`}
+                      description="Select a bucket to browse folders, objects, and pre-authenticated links."
+                    />
+                    <BucketList
+                      groupedBuckets={groupedBuckets}
+                      compartmentNameById={compartmentNameById}
+                      selectedBucket={selectedBucket}
+                      onSelect={(bucket) => {
+                        setSelectedBucket(bucket)
+                        setShowBucketWorkspace(true)
+                      }}
+                    />
                   </div>
-                )
-              ) : (
-                <EmptyState title="No bucket selected" description="Select a bucket from the inventory to start browsing objects." />
-              )}
-            />
+                </div>
+              </section>
+            )}
           </div>
         )}
       </div>

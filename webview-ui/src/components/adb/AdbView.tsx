@@ -2,6 +2,7 @@ import { clsx } from "clsx"
 import {
   AlertCircle,
   CheckCircle2,
+  ChevronLeft,
   Database,
   Download,
   Loader2,
@@ -61,7 +62,6 @@ import type { WorkbenchGuardrailState } from "../workbench/guardrail"
 import { buildWorkbenchResourceGuardrailDetails, createStartResourceGuardrail, createStopResourceGuardrail } from "../workbench/guardrail"
 import WorkbenchQueryResult from "../workbench/WorkbenchQueryResult"
 import { WorkbenchRefreshButton, WorkbenchToolbarGroup, WorkbenchToolbarSpacer } from "../workbench/WorkbenchToolbar"
-import SplitWorkspaceLayout from "../workbench/SplitWorkspaceLayout"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/Tabs"
 
 type ActionState = { id: string; action: "starting" | "stopping" } | null
@@ -107,6 +107,7 @@ export default function AdbView() {
   const [guardrail, setGuardrail] = useState<WorkbenchGuardrailState>(null)
   const [recentAction, setRecentAction] = useState<RecentActionState>(null)
   const [highlightedDatabaseId, setHighlightedDatabaseId] = useState<string | null>(null)
+  const [showDatabaseWorkspace, setShowDatabaseWorkspace] = useState(false)
   const actionTimerRef = useRef<number | null>(null)
   const highlightTimerRef = useRef<number | null>(null)
   const databaseItemRefs = useRef(new Map<string, HTMLDivElement>())
@@ -198,8 +199,15 @@ export default function AdbView() {
       return
     }
     setSelectedAdbId(pendingSelection.targetId)
+    setShowDatabaseWorkspace(true)
     setPendingSelection(null)
   }, [pendingSelection, setPendingSelection])
+
+  useEffect(() => {
+    if (!selectedDatabase) {
+      setShowDatabaseWorkspace(false)
+    }
+  }, [selectedDatabase])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -608,6 +616,7 @@ export default function AdbView() {
   const revealDatabase = useCallback((databaseId: string) => {
     setQuery("")
     setSelectedAdbId(databaseId)
+    setShowDatabaseWorkspace(false)
     setHighlightedDatabaseId(databaseId)
   }, [])
 
@@ -674,71 +683,36 @@ export default function AdbView() {
           </div>
         ) : (
           <div className="min-h-0 flex-1">
-            <SplitWorkspaceLayout
-              sidebar={(
-                <div className="flex flex-col gap-2">
-                  <WorkbenchInventorySummary
-                    label="Database inventory"
-                    count={filtered.length === databases.length
-                      ? `${databases.length} database${databases.length !== 1 ? "s" : ""}`
-                      : `${filtered.length} of ${databases.length} databases`}
-                    description="Select a database to manage lifecycle, wallet download, and SQL execution."
-                  />
-
-                  {filtered.length === 0 ? (
-                    <WorkbenchInventoryFilterEmpty message="No databases match your filter." />
-                  ) : (
-                    grouped.map((compartmentGroup) => (
-                      <div key={compartmentGroup.compartmentId} className="mb-1">
-                        <WorkbenchInventoryGroupHeading>
-                          {compartmentNameById.get(compartmentGroup.compartmentId) ?? compartmentGroup.compartmentId}
-                        </WorkbenchInventoryGroupHeading>
-                        <div className="flex flex-col gap-2">
-                          {compartmentGroup.regions.map((regionGroup) => (
-                            <div key={`${compartmentGroup.compartmentId}-${regionGroup.region}`} className="flex flex-col gap-2">
-                              <WorkbenchInventoryRegionHeading>
-                                {regionGroup.region}
-                              </WorkbenchInventoryRegionHeading>
-                              {regionGroup.databases.map((db) => (
-                                <DatabaseCard
-                                  key={`${db.id}-${db.region ?? "default"}`}
-                                  database={db}
-                                  selected={db.id === selectedAdbId}
-                                  highlighted={highlightedDatabaseId === db.id}
-                                  onRegisterRef={(node) => {
-                                    if (node) {
-                                      databaseItemRefs.current.set(db.id, node)
-                                    } else {
-                                      databaseItemRefs.current.delete(db.id)
-                                    }
-                                  }}
-                                  actionState={actionState}
-                                  onStart={handleStart}
-                                  onStop={handleStop}
-                                  onRequestGuardrail={setGuardrail}
-                                  onSelect={setSelectedAdbId}
-                                />
-                              ))}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))
-                  )}
+            {showDatabaseWorkspace && selectedDatabase ? (
+              <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_76%,white_24%)]">
+                <div className="flex items-center gap-2 border-b border-[var(--vscode-panel-border)] px-3 py-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowDatabaseWorkspace(false)}
+                    className="flex h-6 w-6 items-center justify-center rounded-[2px] hover:bg-[var(--vscode-toolbar-hoverBackground)]"
+                    title="Back to databases"
+                  >
+                    <ChevronLeft size={14} />
+                  </button>
+                  <div className="min-w-0">
+                    <div className="truncate text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)]">
+                      Autonomous Database
+                    </div>
+                    <div className="truncate text-[10px] text-description">{selectedDatabase.name}</div>
+                  </div>
                 </div>
-              )}
-              main={(
-                <div className="flex flex-col h-full min-h-0 gap-2">
+
+                <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
                   <DatabaseWorkbenchHero
                     eyebrow="Autonomous Database"
-                    title={selectedDatabase?.name ?? "No Database Selected"}
-                    resourceId={selectedDatabase?.id}
+                    title={selectedDatabase.name}
+                    resourceId={selectedDatabase.id}
                     connected={Boolean(connectionId)}
-                    metaItems={selectedDatabase ? [
+                    metaItems={[
                       { label: "Database", value: selectedDatabase.name },
                       { label: "Region", value: selectedDatabase.region || "default" },
                       { label: "Lifecycle", value: selectedDatabase.lifecycleState },
-                    ] : []}
+                    ]}
                   />
 
                   {connectionTarget && (
@@ -930,8 +904,66 @@ export default function AdbView() {
                     </Tabs>
                   </div>
                 </div>
-              )}
-            />
+              </section>
+            ) : (
+              <section className="h-full min-h-0 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_76%,white_24%)]">
+                <div className="h-full overflow-y-auto p-2">
+                  <div className="flex flex-col gap-2">
+                    <WorkbenchInventorySummary
+                      label="Database inventory"
+                      count={filtered.length === databases.length
+                        ? `${databases.length} database${databases.length !== 1 ? "s" : ""}`
+                        : `${filtered.length} of ${databases.length} databases`}
+                      description="Select a database to manage lifecycle, wallet download, and SQL execution."
+                    />
+
+                    {filtered.length === 0 ? (
+                      <WorkbenchInventoryFilterEmpty message="No databases match your filter." />
+                    ) : (
+                      grouped.map((compartmentGroup) => (
+                        <div key={compartmentGroup.compartmentId} className="mb-1">
+                          <WorkbenchInventoryGroupHeading>
+                            {compartmentNameById.get(compartmentGroup.compartmentId) ?? compartmentGroup.compartmentId}
+                          </WorkbenchInventoryGroupHeading>
+                          <div className="flex flex-col gap-2">
+                            {compartmentGroup.regions.map((regionGroup) => (
+                              <div key={`${compartmentGroup.compartmentId}-${regionGroup.region}`} className="flex flex-col gap-2">
+                                <WorkbenchInventoryRegionHeading>
+                                  {regionGroup.region}
+                                </WorkbenchInventoryRegionHeading>
+                                {regionGroup.databases.map((db) => (
+                                  <DatabaseCard
+                                    key={`${db.id}-${db.region ?? "default"}`}
+                                    database={db}
+                                    selected={db.id === selectedAdbId}
+                                    highlighted={highlightedDatabaseId === db.id}
+                                    onRegisterRef={(node) => {
+                                      if (node) {
+                                        databaseItemRefs.current.set(db.id, node)
+                                      } else {
+                                        databaseItemRefs.current.delete(db.id)
+                                      }
+                                    }}
+                                    actionState={actionState}
+                                    onStart={handleStart}
+                                    onStop={handleStop}
+                                    onRequestGuardrail={setGuardrail}
+                                    onSelect={(id) => {
+                                      setSelectedAdbId(id)
+                                      setShowDatabaseWorkspace(true)
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </section>
+            )}
           </div>
         )}
       </div>
