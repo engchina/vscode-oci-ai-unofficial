@@ -180,11 +180,11 @@ const PRIMARY_GROUPS: Record<Exclude<PrimarySection, "home">, WorkbenchSecondary
 const HOME_GROUPS: WorkbenchSecondaryGroup[] = [
   {
     title: "Start Here",
-    items: [toSecondaryItem("home"), toSecondaryItem("settings"), toSecondaryItem("chat")],
+    items: [toSecondaryItem("home"), toSecondaryItem("chat"), toSecondaryItem("settings")],
   },
   {
     title: "Explore",
-    items: [toSecondaryItem("vcn"), toSecondaryItem("compute"), toSecondaryItem("sqlWorkbench")],
+    items: [toSecondaryItem("vcn"), toSecondaryItem("compute"), toSecondaryItem("adb")],
   },
 ]
 
@@ -193,7 +193,7 @@ const HOME_ACTIONS = [
   "vcn",
   "compute",
   "objectStorage",
-  "sqlWorkbench",
+  "adb",
   "settings",
 ] as const satisfies readonly WorkbenchView[]
 
@@ -228,7 +228,7 @@ const VIEW_WORKFLOWS: Record<WorkbenchView, { workflowTitle: string; workflow: s
       "Jump into the feature you use most often from quick actions or recent views.",
       "Use Settings when a profile, compartment mapping, or model region is missing.",
     ],
-    related: ["chat", "vcn", "sqlWorkbench"],
+    related: ["chat", "vcn", "adb"],
   },
   chat: {
     workflowTitle: "Assistant flow",
@@ -339,7 +339,7 @@ function AppContent() {
     sqlWorkbench,
   } = useExtensionState()
   const [navQuery, setNavQuery] = useState("")
-  const [recentViews, setRecentViews] = useState<WorkbenchView[]>(["chat", "sqlWorkbench", "settings"])
+  const [recentViews, setRecentViews] = useState<WorkbenchView[]>(["chat", "adb", "settings"])
   const [lastViewByPrimary, setLastViewByPrimary] = useState<Record<PrimarySection, WorkbenchView>>(DEFAULT_VIEW_BY_PRIMARY)
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>("api-config")
 
@@ -434,8 +434,8 @@ function AppContent() {
         <>
           <TopActionButton label="Home" onClick={() => navigateToView("home")} />
           <TopActionButton label="Chat" onClick={() => navigateToView("chat")} />
-          <TopActionButton label="Profile" onClick={() => void StateServiceClient.switchProfile()} />
           <TopActionButton label="Settings" onClick={() => navigateToView("settings")} />
+          <TopActionButton label="Profile" onClick={() => void StateServiceClient.switchProfile()} />
         </>
       }
       aside={
@@ -581,7 +581,7 @@ function renderActiveView({
 
 function HeaderBadge({ label, value }: { label: string; value: string }) {
   return (
-    <div className="inline-flex items-center gap-2 rounded-full border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_90%,white_10%)] px-3 py-1.5 text-[11px]">
+    <div className="inline-flex items-center gap-1.5 rounded-full border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_90%,white_10%)] px-2.5 py-1 text-[10px]">
       <span className="uppercase tracking-[0.16em] text-[var(--vscode-descriptionForeground)]">{label}</span>
       <span className="max-w-32 truncate text-[var(--vscode-foreground)]">{value}</span>
     </div>

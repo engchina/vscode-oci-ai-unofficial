@@ -225,7 +225,7 @@ export default function SecurityListView({
 
     return (
         <div className="flex h-full min-h-0 flex-col">
-            <div className="flex items-center justify-between gap-3 border-b border-[var(--vscode-panel-border)] px-3 py-2 bg-[var(--vscode-editor-background)]">
+            <div className="flex items-center justify-between gap-2.5 border-b border-[var(--vscode-panel-border)] px-3 py-2 bg-[var(--vscode-editor-background)]">
                 <div className="flex min-w-0 items-center gap-2">
                     {onBack && !embedded && (
                         <button
@@ -257,7 +257,7 @@ export default function SecurityListView({
             </div>
 
             {securityLists.length > 0 && (
-                <div className="border-b border-[var(--vscode-panel-border)] px-3 pt-3 pb-2 bg-[var(--vscode-editor-background)]">
+                <div className="border-b border-[var(--vscode-panel-border)] px-3 py-2.5 bg-[var(--vscode-editor-background)]">
                     <div className="flex items-center gap-2 rounded-[2px] border border-input-border bg-input-background px-2 py-1">
                         <Search size={12} className="shrink-0 text-[var(--vscode-icon-foreground)]" />
                         <input
@@ -281,9 +281,9 @@ export default function SecurityListView({
                 </div>
             )}
 
-            <div className="flex-1 overflow-y-auto px-3 py-3">
+            <div className="flex-1 overflow-y-auto px-2.5 py-2.5">
                 {error && (
-                    <InlineNotice tone="danger" icon={<AlertCircle size={13} />} className="mb-4">
+                    <InlineNotice tone="danger" icon={<AlertCircle size={13} />} className="mb-3">
                         {error}
                     </InlineNotice>
                 )}
@@ -292,7 +292,7 @@ export default function SecurityListView({
                     <InlineNotice
                         tone="info"
                         icon={<CheckCircle2 size={14} className="text-[var(--vscode-testing-iconPassed)]" />}
-                        className="mb-4"
+                        className="mb-3"
                         actions={(
                             <>
                                 {recentAction.securityListId && recentAction.kind !== "deleted" && (
@@ -319,7 +319,7 @@ export default function SecurityListView({
                 {highlightedListHiddenByFilter && recentAction?.securityListName && (
                     <InlineNotice
                         tone="info"
-                        className="mb-4"
+                        className="mb-3"
                         actions={(
                             <Button variant="secondary" size="sm" onClick={() => setQuery("")}>
                                 Clear Filter
@@ -345,7 +345,7 @@ export default function SecurityListView({
                         description="No security lists match the current filter."
                     />
                 ) : (
-                    <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-2.5">
                         {filteredSecurityLists.map(sl => (
                             <div
                                 key={sl.id}
@@ -357,7 +357,7 @@ export default function SecurityListView({
                                     }
                                 }}
                                 className={clsx(
-                                    "rounded-[2px] border p-3 transition-colors",
+                                    "rounded-[2px] border p-2.5 transition-colors",
                                     sl.id === highlightedSecurityListId
                                         ? "border-[color-mix(in_srgb,var(--vscode-button-background)_45%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,var(--vscode-button-background)_18%)]"
                                         : "border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] hover:bg-[var(--vscode-list-hoverBackground)]",
@@ -383,7 +383,7 @@ export default function SecurityListView({
                                     </WorkbenchInlineActionCluster>
                                 </div>
 
-                                <div className="mt-3 grid grid-cols-2 gap-4 border-t border-[var(--vscode-panel-border)] pt-2">
+                                <div className="mt-2.5 grid grid-cols-2 gap-3 border-t border-[var(--vscode-panel-border)] pt-2">
                                     <div>
                                         <h5 className="text-[11px] font-semibold text-[var(--vscode-foreground)] mb-1">Ingress Rules ({sl.ingressSecurityRules?.length || 0})</h5>
                                     </div>
@@ -520,7 +520,7 @@ function SecurityListForm({
 
     return (
         <div className="flex h-full min-h-0 flex-col">
-            <div className="flex items-center gap-3 border-b border-border-panel px-4 py-3">
+            <div className="flex items-center gap-2.5 border-b border-border-panel px-3 py-2.5">
                 <button
                     onClick={onCancel}
                     className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-list-background-hover hover:text-foreground"
@@ -537,7 +537,7 @@ function SecurityListForm({
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+            <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
                 {error && (
                     <InlineNotice tone="danger" size="md" icon={<AlertCircle size={13} />}>
                         {error}
@@ -695,7 +695,7 @@ function SecurityRuleTable({
     onAddRule: () => void
 }) {
     return (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2.5">
             <div className="flex items-center justify-between">
                 <h4 className="text-sm font-semibold">{type === "ingress" ? "Ingress Rules" : "Egress Rules"}</h4>
                 <WorkbenchInlineActionCluster>

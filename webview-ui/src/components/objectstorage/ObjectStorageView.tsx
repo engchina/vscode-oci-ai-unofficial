@@ -533,7 +533,7 @@ export default function ObjectStorageView() {
         />
       )}
       controls={(
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-1.5">
           <CompartmentSelector featureKey="objectStorage" multiple />
           <FeatureSearchInput
             value={query}
@@ -711,7 +711,7 @@ export default function ObjectStorageView() {
                               "border-[color-mix(in_srgb,var(--vscode-button-background)_45%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,var(--vscode-button-background)_18%)]",
                             )}
                           >
-                            <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start justify-between gap-2.5">
                               <div className="min-w-0">
                                 <div className="truncate text-[12px] font-medium text-[var(--vscode-foreground)]">{pathTail(object.name)}</div>
                                 <div className="truncate text-[10px] text-description">{object.name}</div>
@@ -772,7 +772,7 @@ export default function ObjectStorageView() {
 
 function InlineError({ message }: { message: string }) {
   return (
-    <InlineNotice tone="danger" icon={<AlertCircle size={13} />} className="mb-4">
+    <InlineNotice tone="danger" icon={<AlertCircle size={13} />} className="mb-3">
       {message}
     </InlineNotice>
   )
@@ -800,13 +800,13 @@ function BucketList({
   onSelect: (bucket: ObjectStorageBucketResource) => void
 }) {
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2.5">
       {groupedBuckets.map((group) => (
         <div key={group.compartmentId}>
           <WorkbenchInventoryGroupHeading>
             {compartmentNameById.get(group.compartmentId) ?? group.compartmentId}
           </WorkbenchInventoryGroupHeading>
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2.5">
             {group.regions.map((regionGroup) => (
               <div key={`${group.compartmentId}-${regionGroup.region}`} className="flex flex-col gap-2">
                 <WorkbenchInventoryRegionHeading>

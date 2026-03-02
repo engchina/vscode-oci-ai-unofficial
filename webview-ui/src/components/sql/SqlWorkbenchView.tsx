@@ -1088,7 +1088,7 @@ export default function SqlWorkbenchView() {
               </div>
             )}
             main={selectedTarget ? (
-              <div className="flex h-full min-h-0 flex-col gap-3">
+              <div className="flex h-full min-h-0 flex-col gap-2.5">
                 <DatabaseWorkbenchHero
                   eyebrow={targetTypeLabel}
                   title={selectedTarget.name}
@@ -1103,7 +1103,7 @@ export default function SqlWorkbenchView() {
                   ]}
                 />
 
-                <div className="flex min-h-0 flex-1 flex-col gap-3">
+                <div className="flex min-h-0 flex-1 flex-col gap-2.5">
                   <WorkbenchSection
                     className="shrink-0"
                     title="SQL Editor"
@@ -1145,9 +1145,9 @@ export default function SqlWorkbenchView() {
                     className="min-h-[320px] flex-1"
                     title="Workspace Panels"
                     subtitle="Switch between execution output, snippet library, and AI assistance without leaving the editor."
-                    bodyClassName="min-h-0 gap-4"
+                    bodyClassName="min-h-0 gap-3"
                   >
-                    <div className="flex flex-col gap-3 rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_97%,black_3%)] p-3 md:flex-row md:items-center md:justify-between">
+                    <div className="flex flex-col gap-2.5 rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_97%,black_3%)] p-2.5 md:flex-row md:items-center md:justify-between">
                       <div className="min-w-0">
                         <div className="text-[11px] uppercase tracking-[0.14em] text-[var(--vscode-descriptionForeground)]">Panel Selector</div>
                         <div className="mt-1 text-[11px] leading-5 text-[var(--vscode-descriptionForeground)]">
@@ -1169,8 +1169,8 @@ export default function SqlWorkbenchView() {
 
                     <div className="min-h-0 flex-1 overflow-y-auto">
                       {workspacePanel === "results" && (
-                        <div className="grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
-                          <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-3">
+                        <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
+                          <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2.5">
                             <div className="mb-2 text-[12px] font-semibold text-[var(--vscode-foreground)]">Result Grid</div>
                             {sqlResult ? (
                               <WorkbenchQueryResult result={sqlResult} />
@@ -1181,7 +1181,7 @@ export default function SqlWorkbenchView() {
                               />
                             )}
                           </section>
-                          <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-3">
+                          <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2.5">
                             <div className="mb-2 text-[12px] font-semibold text-[var(--vscode-foreground)]">Explain Plan</div>
                             {planResult ? (
                               <WorkbenchSurface>
@@ -1201,10 +1201,10 @@ export default function SqlWorkbenchView() {
                       )}
 
                       {workspacePanel === "library" && (
-                        <div className="grid gap-3 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-                          <div className="flex flex-col gap-3">
-                            <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-3">
-                              <div className="mb-3 text-[12px] font-semibold text-[var(--vscode-foreground)]">Save Current SQL</div>
+                        <div className="grid gap-2.5 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+                          <div className="flex flex-col gap-2.5">
+                            <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2.5">
+                              <div className="mb-2.5 text-[12px] font-semibold text-[var(--vscode-foreground)]">Save Current SQL</div>
                               <div className="grid gap-2 sm:grid-cols-2">
                                 <Input
                                   label="Favorite Name"
@@ -1219,7 +1219,7 @@ export default function SqlWorkbenchView() {
                                   placeholder="Optional note"
                                 />
                               </div>
-                              <WorkbenchCompactActionCluster className="mt-3">
+                              <WorkbenchCompactActionCluster className="mt-2.5">
                                 <WorkbenchActionButton type="button" variant="secondary" onClick={() => void handleSaveFavorite()} disabled={!sql.trim() || busyAction !== null}>
                                   {busyAction === "saveFavorite" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
                                   Save Current SQL
@@ -1227,8 +1227,8 @@ export default function SqlWorkbenchView() {
                               </WorkbenchCompactActionCluster>
                             </section>
 
-                            <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-3">
-                              <div className="mb-3 text-[12px] font-semibold text-[var(--vscode-foreground)]">Favorites</div>
+                            <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2.5">
+                              <div className="mb-2.5 text-[12px] font-semibold text-[var(--vscode-foreground)]">Favorites</div>
                               <SqlSnippetList
                                 emptyLabel="No favorites yet."
                                 items={sqlWorkbench.favorites}
@@ -1239,8 +1239,8 @@ export default function SqlWorkbenchView() {
                             </section>
                           </div>
 
-                          <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-3">
-                            <div className="mb-3 flex items-center justify-between gap-2">
+                          <section className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2.5">
+                            <div className="mb-2.5 flex items-center justify-between gap-2">
                               <div className="text-[12px] font-semibold text-[var(--vscode-foreground)]">History</div>
                               <WorkbenchCompactActionCluster>
                                 <WorkbenchActionButton type="button" variant="ghost" onClick={requestClearHistory} disabled={sqlWorkbench.history.length === 0 || busyAction !== null}>

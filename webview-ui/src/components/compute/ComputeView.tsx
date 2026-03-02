@@ -437,7 +437,7 @@ export default function ComputeView() {
         />
       )}
       controls={(
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-1.5">
           <CompartmentSelector featureKey="compute" multiple />
           {instances.length > 0 && (
             <FeatureSearchInput
@@ -451,7 +451,7 @@ export default function ComputeView() {
     >
       <div className="flex h-full min-h-0 flex-col px-3 py-3">
         {error && (
-          <InlineNotice tone="danger" size="md" icon={<AlertCircle size={13} />} className="mb-4">
+          <InlineNotice tone="danger" size="md" icon={<AlertCircle size={13} />} className="mb-3">
             {error}
           </InlineNotice>
         )}
@@ -460,7 +460,7 @@ export default function ComputeView() {
           <InlineNotice
             tone="info"
             icon={<CheckCircle2 size={14} className="text-[var(--vscode-testing-iconPassed)]" />}
-            className="mb-4"
+            className="mb-3"
             actions={(
               <>
                 <WorkbenchRevealButton onClick={() => revealInstance(recentAction.resourceId)} title="Show this instance in the list" label="Show Instance" />
@@ -682,7 +682,7 @@ function InstanceCard({
     <div
       ref={onRegisterRef}
       className={clsx(
-        "flex flex-col gap-3 rounded-[2px] border bg-[var(--vscode-editor-background)] p-2.5 transition-colors",
+        "flex flex-col gap-2.5 rounded-[2px] border bg-[var(--vscode-editor-background)] p-2.5 transition-colors",
         highlighted
           ? "border-[color-mix(in_srgb,var(--vscode-button-background)_45%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,var(--vscode-button-background)_18%)]"
           : "border-[var(--vscode-panel-border)] hover:bg-[var(--vscode-list-hoverBackground)]",

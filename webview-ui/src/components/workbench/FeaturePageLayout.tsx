@@ -96,7 +96,7 @@ export function FeatureSearchInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="flex-1 bg-transparent text-[13px] text-[var(--vscode-input-foreground)] outline-none placeholder:text-[var(--vscode-input-placeholderForeground)]"
+        className="flex-1 appearance-none border-0 bg-transparent p-0 text-[13px] text-[var(--vscode-input-foreground)] shadow-none outline-none ring-0 placeholder:text-[var(--vscode-input-placeholderForeground)] focus:outline-none focus-visible:outline-none"
       />
       {value && (
         <WorkbenchIconActionButton

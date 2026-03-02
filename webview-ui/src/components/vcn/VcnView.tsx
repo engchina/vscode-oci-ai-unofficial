@@ -260,7 +260,7 @@ export default function VcnView() {
                 />
             )}
             controls={(
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-1.5">
                     <CompartmentSelector featureKey="vcn" multiple />
                     {vcns.length > 0 && (
                         <FeatureSearchInput
@@ -274,7 +274,7 @@ export default function VcnView() {
         >
             <div className="flex h-full min-h-0 flex-col px-3 py-3">
                 {error && (
-                    <InlineNotice tone="danger" size="md" icon={<AlertCircle size={13} />} className="mb-4">
+                    <InlineNotice tone="danger" size="md" icon={<AlertCircle size={13} />} className="mb-3">
                         {error}
                     </InlineNotice>
                 )}

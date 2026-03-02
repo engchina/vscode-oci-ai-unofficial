@@ -81,9 +81,9 @@ export default function HomeView({
               <MessageSquareText size={14} className="mr-1.5" />
               Open Chat
             </Button>
-            <Button variant="secondary" size="md" onClick={() => onOpenAction("sqlWorkbench")}>
+            <Button variant="secondary" size="md" onClick={() => onOpenAction("adb")}>
               <Database size={14} className="mr-1.5" />
-              SQL Workbench
+              Autonomous DB
             </Button>
             <Button variant="secondary" size="md" onClick={onOpenSettings}>
               <Settings2 size={14} className="mr-1.5" />
