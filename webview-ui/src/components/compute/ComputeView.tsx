@@ -10,7 +10,7 @@ import GuardrailDialog from "../common/GuardrailDialog"
 import CompartmentSelector from "../ui/CompartmentSelector"
 import InlineNotice from "../ui/InlineNotice"
 import StatusBadge, { LifecycleBadge } from "../ui/StatusBadge"
-import { WorkbenchEmptyState, WorkbenchHero, WorkbenchLoadingState, WorkbenchSection } from "../workbench/DatabaseWorkbenchChrome"
+import { WorkbenchEmptyState, WorkbenchLoadingState } from "../workbench/DatabaseWorkbenchChrome"
 import {
   WorkbenchInventoryFilterEmpty,
   WorkbenchInventoryGroupHeading,
@@ -22,17 +22,13 @@ import {
   WorkbenchDismissButton,
   WorkbenchGuardrailActionButton,
   WorkbenchInlineActionCluster,
-  WorkbenchLifecycleActionButton,
   WorkbenchRevealButton,
 } from "../workbench/WorkbenchActionButtons"
 import { WorkbenchCompactFieldRow, WorkbenchCompactInput } from "../workbench/WorkbenchCompactControls"
 import FeaturePageLayout, { FeatureSearchInput } from "../workbench/FeaturePageLayout"
 import type { WorkbenchGuardrailState } from "../workbench/guardrail"
 import { buildWorkbenchResourceGuardrailDetails, createStartResourceGuardrail, createStopResourceGuardrail } from "../workbench/guardrail"
-import WorkbenchInventoryCard from "../workbench/WorkbenchInventoryCard"
 import { WorkbenchRefreshButton } from "../workbench/WorkbenchToolbar"
-import SplitWorkspaceLayout from "../workbench/SplitWorkspaceLayout"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/Tabs"
 
 type ActionState = { id: string; action: "starting" | "stopping" } | null
 type RecentActionState = {
@@ -486,155 +482,73 @@ export default function ComputeView() {
           </div>
         ) : (
           <div className="min-h-0 flex-1">
-            <SplitWorkspaceLayout
-              sidebar={(
-                <div className="flex min-h-0 flex-col gap-2">
-                  <WorkbenchInventorySummary
-                    label="Instance inventory"
-                    count={filtered.length === instances.length
-                      ? `${instances.length} instance${instances.length !== 1 ? "s" : ""}`
-                      : `${filtered.length} of ${instances.length} instances`}
-                    description="Select an instance to inspect connectivity, IPs, and lifecycle actions."
-                  />
+            <section className="h-full overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_76%,white_24%)]">
+              <div className="flex h-full min-h-0 flex-col p-2">
+                <WorkbenchInventorySummary
+                  label="Instance inventory"
+                  count={filtered.length === instances.length
+                    ? `${instances.length} instance${instances.length !== 1 ? "s" : ""}`
+                    : `${filtered.length} of ${instances.length} instances`}
+                  description="Manage SSH settings and lifecycle actions directly inside each compute instance card."
+                />
 
-                  {filtered.length === 0 ? (
+                {filtered.length === 0 ? (
+                  <div className="mt-2">
                     <WorkbenchInventoryFilterEmpty message="No instances match your filter." />
-                  ) : (
-                    <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-                      {grouped.map((compartmentGroup) => (
-                        <div key={compartmentGroup.compartmentId} className="mb-2">
-                          <WorkbenchInventoryGroupHeading>
-                            {compartmentNameById.get(compartmentGroup.compartmentId) ?? compartmentGroup.compartmentId}
-                          </WorkbenchInventoryGroupHeading>
-                          <div className="flex flex-col gap-2">
-                            {compartmentGroup.regions.map((regionGroup) => (
-                              <div key={`${compartmentGroup.compartmentId}-${regionGroup.region}`} className="flex flex-col gap-2">
-                                <WorkbenchInventoryRegionHeading>
-                                  {regionGroup.region}
-                                </WorkbenchInventoryRegionHeading>
-                                {regionGroup.instances.map((instance) => (
-                                  <InstanceListItem
-                                    key={`${instance.id}-${instance.region ?? "default"}`}
-                                    instance={instance}
-                                    selected={instance.id === selectedInstanceId}
-                                    highlighted={highlightedInstanceId === instance.id}
-                                    onRegisterRef={(node) => {
-                                      if (node) {
-                                        instanceItemRefs.current.set(instance.id, node)
-                                      } else {
-                                        instanceItemRefs.current.delete(instance.id)
-                                      }
-                                    }}
-                                    onSelect={() => setSelectedInstanceId(instance.id)}
-                                  />
-                                ))}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-              main={selectedInstance ? (
-                <div className="flex flex-col h-full min-h-0 gap-2">
-                  <WorkbenchHero
-                    eyebrow="Compute Instance"
-                    title={selectedInstance.name}
-                    resourceId={selectedInstance.id}
-                    badge={<LifecycleBadge state={selectedInstance.lifecycleState} />}
-                    metaItems={[
-                      { label: "Region", value: selectedInstance.region || "default" },
-                      { label: "Public IP", value: selectedInstance.publicIp || "-" },
-                      { label: "Private IP", value: selectedInstance.privateIp || "-" },
-                    ]}
-                  />
-
-                  <div className="flex-1 min-h-0 flex flex-col">
-                    <Tabs defaultValue="overview" className="flex-1 min-h-0">
-                      <TabsList>
-                        <TabsTrigger value="overview">Overview</TabsTrigger>
-                        <TabsTrigger value="connection">Connection</TabsTrigger>
-                        <TabsTrigger value="lifecycle">Lifecycle</TabsTrigger>
-                      </TabsList>
-                      <TabsContent value="overview" className="flex-1 overflow-auto pt-1.5 flex flex-col gap-2">
-                        <WorkbenchSection title="Instance Details">
-                          <div className="grid grid-cols-2 gap-2.5 rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2.5 shadow-sm">
-                            <div className="flex flex-col gap-1">
-                              <span className="text-[11px] text-description uppercase tracking-wider font-semibold">SSH Host</span>
-                              <span className="text-[14px] font-medium text-[var(--vscode-foreground)] break-all">{resolveSshHost(selectedInstance, sshConfig.hostPreference) || "-"}</span>
-                            </div>
-                            <div className="flex flex-col gap-1">
-                              <span className="text-[11px] text-description uppercase tracking-wider font-semibold">State</span>
-                              <span className="text-[14px] font-medium text-[var(--vscode-foreground)]">{selectedInstance.lifecycleState || "-"}</span>
-                            </div>
-                          </div>
-                        </WorkbenchSection>
-                      </TabsContent>
-                      <TabsContent value="connection" className="flex-1 overflow-auto pt-1.5">
-                        <WorkbenchSection
-                          title="SSH Connection"
-                          subtitle="Keep lifecycle actions, SSH overrides, and connection controls pinned to the selected instance."
-                        >
-                          <InstanceCard
-                            instance={selectedInstance}
-                            actionState={actionState}
-                            connectingId={connectingId}
-                            highlighted={highlightedInstanceId === selectedInstance.id}
-                            onRegisterRef={() => { }}
-                            sshConfig={sshConfig}
-                            sshUserOverride={sshUserOverrides[selectedInstance.id] || ""}
-                            sshKeyOverride={sshKeyOverrides[selectedInstance.id] || ""}
-                            onStart={handleStart}
-                            onStop={handleStop}
-                            onRequestGuardrail={setGuardrail}
-                            onConnect={handleConnect}
-                            onChangeSshUserOverride={(instanceId, username) =>
-                              setSshUserOverrides((prev) => ({ ...prev, [instanceId]: username }))
-                            }
-                            onChangeSshKeyOverride={(instanceId, keyPath) =>
-                              setSshKeyOverrides((prev) => ({ ...prev, [instanceId]: keyPath }))
-                            }
-                            showLifecycle={false}
-                          />
-                        </WorkbenchSection>
-                      </TabsContent>
-                      <TabsContent value="lifecycle" className="flex-1 overflow-auto pt-1.5">
-                        <WorkbenchSection
-                          title="Lifecycle Management"
-                          subtitle="Start, stop, or manage the state of your compute instance."
-                        >
-                          <InstanceCard
-                            instance={selectedInstance}
-                            actionState={actionState}
-                            connectingId={connectingId}
-                            highlighted={highlightedInstanceId === selectedInstance.id}
-                            onRegisterRef={() => { }}
-                            sshConfig={sshConfig}
-                            sshUserOverride={sshUserOverrides[selectedInstance.id] || ""}
-                            sshKeyOverride={sshKeyOverrides[selectedInstance.id] || ""}
-                            onStart={handleStart}
-                            onStop={handleStop}
-                            onRequestGuardrail={setGuardrail}
-                            onConnect={handleConnect}
-                            onChangeSshUserOverride={(instanceId, username) =>
-                              setSshUserOverrides((prev) => ({ ...prev, [instanceId]: username }))
-                            }
-                            onChangeSshKeyOverride={(instanceId, keyPath) =>
-                              setSshKeyOverrides((prev) => ({ ...prev, [instanceId]: keyPath }))
-                            }
-                            showConnection={false}
-                          />
-                        </WorkbenchSection>
-                      </TabsContent>
-                    </Tabs>
                   </div>
-                </div>
-              ) : (
-                <EmptyState hasSelectedCompartments={selectedCompartmentIds.length > 0} />
-              )}
-            />
+                ) : (
+                  <div className="mt-2 min-h-0 flex-1 overflow-y-auto pr-1">
+                    {grouped.map((compartmentGroup) => (
+                      <div key={compartmentGroup.compartmentId} className="mb-2">
+                        <WorkbenchInventoryGroupHeading>
+                          {compartmentNameById.get(compartmentGroup.compartmentId) ?? compartmentGroup.compartmentId}
+                        </WorkbenchInventoryGroupHeading>
+                        <div className="flex flex-col gap-2">
+                          {compartmentGroup.regions.map((regionGroup) => (
+                            <div key={`${compartmentGroup.compartmentId}-${regionGroup.region}`} className="flex flex-col gap-2">
+                              <WorkbenchInventoryRegionHeading>
+                                {regionGroup.region}
+                              </WorkbenchInventoryRegionHeading>
+                              {regionGroup.instances.map((instance) => (
+                                <InstanceCard
+                                  key={`${instance.id}-${instance.region ?? "default"}`}
+                                  instance={instance}
+                                  actionState={actionState}
+                                  connectingId={connectingId}
+                                  selected={instance.id === selectedInstanceId}
+                                  highlighted={highlightedInstanceId === instance.id}
+                                  onRegisterRef={(node) => {
+                                    if (node) {
+                                      instanceItemRefs.current.set(instance.id, node)
+                                    } else {
+                                      instanceItemRefs.current.delete(instance.id)
+                                    }
+                                  }}
+                                  onSelect={() => setSelectedInstanceId(instance.id)}
+                                  sshConfig={sshConfig}
+                                  sshUserOverride={sshUserOverrides[instance.id] || ""}
+                                  sshKeyOverride={sshKeyOverrides[instance.id] || ""}
+                                  onStart={handleStart}
+                                  onStop={handleStop}
+                                  onRequestGuardrail={setGuardrail}
+                                  onConnect={handleConnect}
+                                  onChangeSshUserOverride={(instanceId, username) =>
+                                    setSshUserOverrides((prev) => ({ ...prev, [instanceId]: username }))
+                                  }
+                                  onChangeSshKeyOverride={(instanceId, keyPath) =>
+                                    setSshKeyOverrides((prev) => ({ ...prev, [instanceId]: keyPath }))
+                                  }
+                                />
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
           </div>
         )}
       </div>
@@ -658,39 +572,14 @@ export default function ComputeView() {
   )
 }
 
-function InstanceListItem({
-  instance,
-  selected,
-  highlighted,
-  onRegisterRef,
-  onSelect,
-}: {
-  instance: ComputeResource
-  selected: boolean
-  highlighted: boolean
-  onRegisterRef: (node: HTMLElement | null) => void
-  onSelect: () => void
-}) {
-  return (
-    <WorkbenchInventoryCard
-      title={instance.name}
-      subtitle={instance.id}
-      details={[`Public: ${instance.publicIp || "-"}`, `Private: ${instance.privateIp || "-"}`]}
-      selected={selected}
-      highlighted={highlighted}
-      onClick={onSelect}
-      buttonRef={onRegisterRef}
-      rightSlot={<LifecycleBadge state={instance.lifecycleState} />}
-    />
-  )
-}
-
 function InstanceCard({
   instance,
   actionState,
   connectingId,
+  selected,
   highlighted,
   onRegisterRef,
+  onSelect,
   sshConfig,
   sshUserOverride,
   sshKeyOverride,
@@ -706,8 +595,10 @@ function InstanceCard({
   instance: ComputeResource
   actionState: ActionState
   connectingId: string | null
+  selected: boolean
   highlighted: boolean
   onRegisterRef: (node: HTMLElement | null) => void
+  onSelect: () => void
   sshConfig: SshConfig
   sshUserOverride: string
   sshKeyOverride: string
@@ -742,11 +633,17 @@ function InstanceCard({
   return (
     <div
       ref={onRegisterRef}
+      onMouseDownCapture={onSelect}
+      onFocusCapture={onSelect}
       className={clsx(
         "flex flex-col gap-2 rounded-[2px] border bg-[var(--vscode-editor-background)] p-2 transition-colors",
-        highlighted
-          ? "border-[color-mix(in_srgb,var(--vscode-button-background)_45%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,var(--vscode-button-background)_18%)]"
-          : "border-[var(--vscode-panel-border)] hover:bg-[var(--vscode-list-hoverBackground)]",
+        selected && highlighted
+          ? "border-[var(--vscode-focusBorder)] bg-[color-mix(in_srgb,var(--vscode-list-hoverBackground)_82%,var(--vscode-button-background)_18%)]"
+          : selected
+            ? "border-[var(--vscode-focusBorder)] bg-[var(--vscode-list-hoverBackground)]"
+            : highlighted
+              ? "border-[color-mix(in_srgb,var(--vscode-button-background)_45%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,var(--vscode-button-background)_18%)]"
+              : "border-[var(--vscode-panel-border)] hover:bg-[var(--vscode-list-hoverBackground)]",
       )}
     >
       <div className="flex items-start justify-between gap-2">

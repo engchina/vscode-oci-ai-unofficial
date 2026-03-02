@@ -1,5 +1,6 @@
 import { AlertCircle, Network } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import type { MutableRefObject } from "react"
 import { useExtensionState } from "../../context/ExtensionStateContext"
 import { toneFromLifecycleState, useWorkbenchInsight } from "../../context/WorkbenchInsightContext"
 import { ResourceServiceClient } from "../../services/grpc-client"
@@ -7,7 +8,7 @@ import type { VcnResource } from "../../services/types"
 import CompartmentSelector from "../ui/CompartmentSelector"
 import InlineNotice from "../ui/InlineNotice"
 import { LifecycleBadge } from "../ui/StatusBadge"
-import { WorkbenchEmptyState, WorkbenchHero, WorkbenchLoadingState, WorkbenchSection } from "../workbench/DatabaseWorkbenchChrome"
+import { WorkbenchEmptyState, WorkbenchLoadingState } from "../workbench/DatabaseWorkbenchChrome"
 import { WorkbenchActionButton } from "../workbench/WorkbenchActionButtons"
 import FeaturePageLayout, { FeatureSearchInput } from "../workbench/FeaturePageLayout"
 import WorkbenchInventoryCard from "../workbench/WorkbenchInventoryCard"
@@ -20,7 +21,6 @@ import {
 import { WorkbenchRefreshButton } from "../workbench/WorkbenchToolbar"
 import SplitWorkspaceLayout from "../workbench/SplitWorkspaceLayout"
 import SecurityListView from "./SecurityListView"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/Tabs"
 
 export default function VcnView() {
     const { activeProfile, profilesConfig, tenancyOcid, vcnCompartmentIds, navigateToView } = useExtensionState()
@@ -291,123 +291,129 @@ export default function VcnView() {
                     </div>
                 ) : (
                     <div className="min-h-0 flex-1">
-                        <SplitWorkspaceLayout
-                            sidebar={(
-                                <div className="flex flex-col gap-2">
-                                    <WorkbenchInventorySummary
-                                        label="VCN inventory"
-                                        count={filtered.length === vcns.length
-                                            ? `${vcns.length} VCN${vcns.length !== 1 ? "s" : ""}`
-                                            : `${filtered.length} of ${vcns.length} VCNs`}
-                                        description="Select a VCN to review CIDRs and manage attached security lists."
+                        {showSecurityListWorkspace && selectedVcn ? (
+                            <SplitWorkspaceLayout
+                                sidebar={(
+                                    <VcnInventoryPanel
+                                        vcns={vcns}
+                                        filtered={filtered}
+                                        grouped={grouped}
+                                        selectedVcn={selectedVcn}
+                                        highlightedVcnId={highlightedVcnId}
+                                        compartmentNameById={compartmentNameById}
+                                        vcnItemRefs={vcnItemRefs}
+                                        onSelectVcn={setSelectedVcn}
+                                        onOpenSecurityLists={(vcn) => {
+                                            setSelectedVcn(vcn)
+                                            setShowSecurityListWorkspace(true)
+                                        }}
                                     />
-
-                                    {filtered.length === 0 ? (
-                                        <WorkbenchInventoryFilterEmpty message="No VCNs match your filter." />
-                                    ) : (
-                                        grouped.map((compartmentGroup) => (
-                                            <div key={compartmentGroup.compartmentId} className="mb-1">
-                                                <WorkbenchInventoryGroupHeading>
-                                                    {compartmentNameById.get(compartmentGroup.compartmentId) ?? compartmentGroup.compartmentId}
-                                                </WorkbenchInventoryGroupHeading>
-                                                <div className="flex flex-col gap-2">
-                                                    {compartmentGroup.regions.map((regionGroup) => (
-                                                        <div key={`${compartmentGroup.compartmentId}-${regionGroup.region}`} className="flex flex-col gap-2">
-                                                            <WorkbenchInventoryRegionHeading>
-                                                                {regionGroup.region}
-                                                            </WorkbenchInventoryRegionHeading>
-                                                            {regionGroup.vcns.map((vcn) => (
-                                                                <VcnListItem
-                                                                    key={`${vcn.id}-${vcn.region ?? "default"}`}
-                                                                    vcn={vcn}
-                                                                    selected={selectedVcn?.id === vcn.id}
-                                                                    highlighted={highlightedVcnId === vcn.id}
-                                                                    onRegisterRef={(node) => {
-                                                                        if (node) {
-                                                                            vcnItemRefs.current.set(vcn.id, node)
-                                                                        } else {
-                                                                            vcnItemRefs.current.delete(vcn.id)
-                                                                        }
-                                                                    }}
-                                                                    onSelect={() => setSelectedVcn(vcn)}
-                                                                />
-                                                            ))}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            )}
-                            main={selectedVcn ? (
-                                showSecurityListWorkspace ? (
+                                )}
+                                main={(
                                     <div className="flex h-full min-h-0 flex-col">
                                         <SecurityListView
                                             vcn={selectedVcn}
                                             onBack={() => setShowSecurityListWorkspace(false)}
                                         />
                                     </div>
-                                ) : (
-                                    <div className="flex h-full min-h-0 flex-col gap-2">
-                                        <WorkbenchHero
-                                            eyebrow="Virtual Cloud Network"
-                                            title={selectedVcn.name}
-                                            resourceId={selectedVcn.id}
-                                            badge={<LifecycleBadge state={selectedVcn.lifecycleState} />}
-                                            metaItems={[
-                                                { label: "Region", value: selectedVcn.region || "default" },
-                                                { label: "Compartment", value: compartmentNameById.get(selectedVcn.compartmentId) ?? selectedVcn.compartmentId },
-                                            ]}
-                                        />
-                                        <div className="flex-1 min-h-0 flex flex-col">
-                                            <Tabs defaultValue="overview" className="flex-1 min-h-0">
-                                                <TabsList>
-                                                    <TabsTrigger value="overview">Overview</TabsTrigger>
-                                                    <TabsTrigger value="security-lists">Security Lists</TabsTrigger>
-                                                </TabsList>
-                                                <TabsContent value="overview" className="flex-1 overflow-auto pt-1.5">
-                                                    <WorkbenchSection title="CIDR Blocks">
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {selectedVcn.cidrBlocks.length > 0 ? selectedVcn.cidrBlocks.map((cidr) => (
-                                                                <span key={cidr} className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-2.5 py-1 text-[11px] text-[var(--vscode-foreground)] shadow-sm">
-                                                                    {cidr}
-                                                                </span>
-                                                            )) : <span className="text-[12px] text-description">No CIDR blocks configured.</span>}
-                                                        </div>
-                                                    </WorkbenchSection>
-                                                </TabsContent>
-                                                <TabsContent value="security-lists" className="min-h-0 flex-1 flex flex-col pt-1.5">
-                                                    <WorkbenchSection
-                                                        title="Security Lists"
-                                                        subtitle="Review attached security lists here, or open the dedicated workspace to modify them."
-                                                        actions={(
-                                                            <WorkbenchActionButton onClick={() => setShowSecurityListWorkspace(true)}>
-                                                                Open Workspace
-                                                            </WorkbenchActionButton>
-                                                        )}
-                                                        className="flex-1 flex flex-col min-h-0"
-                                                    >
-                                                        <div className="min-h-0 flex-1 overflow-hidden rounded-[2px] border border-[var(--vscode-panel-border)] mt-1.5">
-                                                            <SecurityListView
-                                                                vcn={selectedVcn}
-                                                                embedded
-                                                            />
-                                                        </div>
-                                                    </WorkbenchSection>
-                                                </TabsContent>
-                                            </Tabs>
-                                        </div>
-                                    </div>
-                                )
-                            ) : (
-                                <EmptyState hasSelectedCompartments={selectedCompartmentIds.length > 0} />
-                            )}
-                        />
+                                )}
+                            />
+                        ) : (
+                            <section className="h-full min-h-0 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_76%,white_24%)]">
+                                <div className="h-full overflow-y-auto p-2">
+                                    <VcnInventoryPanel
+                                        vcns={vcns}
+                                        filtered={filtered}
+                                        grouped={grouped}
+                                        selectedVcn={selectedVcn}
+                                        highlightedVcnId={highlightedVcnId}
+                                        compartmentNameById={compartmentNameById}
+                                        vcnItemRefs={vcnItemRefs}
+                                        onSelectVcn={setSelectedVcn}
+                                        onOpenSecurityLists={(vcn) => {
+                                            setSelectedVcn(vcn)
+                                            setShowSecurityListWorkspace(true)
+                                        }}
+                                    />
+                                </div>
+                            </section>
+                        )}
                     </div>
                 )}
             </div>
         </FeaturePageLayout>
+    )
+}
+
+function VcnInventoryPanel({
+    vcns,
+    filtered,
+    grouped,
+    selectedVcn,
+    highlightedVcnId,
+    compartmentNameById,
+    vcnItemRefs,
+    onSelectVcn,
+    onOpenSecurityLists,
+}: {
+    vcns: VcnResource[]
+    filtered: VcnResource[]
+    grouped: { compartmentId: string; regions: { region: string; vcns: VcnResource[] }[] }[]
+    selectedVcn: VcnResource | null
+    highlightedVcnId: string | null
+    compartmentNameById: Map<string, string>
+    vcnItemRefs: MutableRefObject<Map<string, HTMLButtonElement>>
+    onSelectVcn: (vcn: VcnResource) => void
+    onOpenSecurityLists: (vcn: VcnResource) => void
+}) {
+    return (
+        <div className="flex flex-col gap-2">
+            <WorkbenchInventorySummary
+                label="VCN inventory"
+                count={filtered.length === vcns.length
+                    ? `${vcns.length} VCN${vcns.length !== 1 ? "s" : ""}`
+                    : `${filtered.length} of ${vcns.length} VCNs`}
+                description="Open security lists directly from each VCN card."
+            />
+
+            {filtered.length === 0 ? (
+                <WorkbenchInventoryFilterEmpty message="No VCNs match your filter." />
+            ) : (
+                grouped.map((compartmentGroup) => (
+                    <div key={compartmentGroup.compartmentId} className="mb-1">
+                        <WorkbenchInventoryGroupHeading>
+                            {compartmentNameById.get(compartmentGroup.compartmentId) ?? compartmentGroup.compartmentId}
+                        </WorkbenchInventoryGroupHeading>
+                        <div className="flex flex-col gap-2">
+                            {compartmentGroup.regions.map((regionGroup) => (
+                                <div key={`${compartmentGroup.compartmentId}-${regionGroup.region}`} className="flex flex-col gap-2">
+                                    <WorkbenchInventoryRegionHeading>
+                                        {regionGroup.region}
+                                    </WorkbenchInventoryRegionHeading>
+                                    {regionGroup.vcns.map((vcn) => (
+                                        <VcnListItem
+                                            key={`${vcn.id}-${vcn.region ?? "default"}`}
+                                            vcn={vcn}
+                                            selected={selectedVcn?.id === vcn.id}
+                                            highlighted={highlightedVcnId === vcn.id}
+                                            onRegisterRef={(node) => {
+                                                if (node) {
+                                                    vcnItemRefs.current.set(vcn.id, node)
+                                                } else {
+                                                    vcnItemRefs.current.delete(vcn.id)
+                                                }
+                                            }}
+                                            onSelect={() => onSelectVcn(vcn)}
+                                            onOpenSecurityLists={() => onOpenSecurityLists(vcn)}
+                                        />
+                                    ))}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ))
+            )}
+        </div>
     )
 }
 
@@ -417,12 +423,14 @@ function VcnListItem({
     highlighted,
     onRegisterRef,
     onSelect,
+    onOpenSecurityLists,
 }: {
     vcn: VcnResource
     selected: boolean
     highlighted: boolean
     onRegisterRef: (node: HTMLButtonElement | null) => void
     onSelect: () => void
+    onOpenSecurityLists: () => void
 }) {
     return (
         <WorkbenchInventoryCard
@@ -434,6 +442,14 @@ function VcnListItem({
             highlighted={highlighted}
             onClick={onSelect}
             rightSlot={<LifecycleBadge state={vcn.lifecycleState} />}
+            footer={(
+                <WorkbenchActionButton
+                    type="button"
+                    onClick={onOpenSecurityLists}
+                >
+                    Manage Security Lists
+                </WorkbenchActionButton>
+            )}
         />
     )
 }
