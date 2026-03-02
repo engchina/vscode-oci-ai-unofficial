@@ -46,7 +46,7 @@ export default function WelcomeGuide({ onOpenSettings }: WelcomeGuideProps) {
         {STEPS.map((step, i) => (
           <div
             key={step.title}
-            className="flex items-start gap-2 rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-2.5 py-2"
+            className="flex items-start gap-2 rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)] px-2.5 py-2"
           >
             <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--vscode-badge-background)] text-[9px] font-bold text-[var(--vscode-badge-foreground)]">
               {i + 1}

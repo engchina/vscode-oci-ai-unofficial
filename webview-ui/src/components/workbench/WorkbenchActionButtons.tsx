@@ -210,7 +210,7 @@ export function WorkbenchShortcutTileButton({
       type="button"
       onClick={onClick}
       className={clsx(
-        "rounded-md border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-2.5 py-2 text-left transition-colors hover:bg-[var(--vscode-list-hoverBackground)]",
+        "rounded-md border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)] px-2.5 py-2 text-left transition-colors hover:bg-[var(--vscode-list-hoverBackground)]",
         className,
       )}
     >

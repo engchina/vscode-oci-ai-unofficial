@@ -5,7 +5,7 @@ export type NoticeTone = "neutral" | "info" | "success" | "warning" | "danger"
 export type NoticeSize = "sm" | "md"
 
 const toneClassNames: Record<NoticeTone, string> = {
-  neutral: "border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] text-[var(--vscode-descriptionForeground)]",
+  neutral: "border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface-subtle)] text-[var(--vscode-descriptionForeground)]",
   info: "border-[color-mix(in_srgb,var(--vscode-button-background)_32%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_84%,var(--vscode-button-background)_16%)] text-[var(--vscode-descriptionForeground)]",
   success: "border-success/30 bg-[color-mix(in_srgb,var(--vscode-editor-background)_94%,green_6%)] text-success",
   warning: "border-[color-mix(in_srgb,var(--vscode-warningForeground)_24%,transparent)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_88%,yellow_12%)] text-[var(--vscode-warningForeground)]",
