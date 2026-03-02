@@ -5,7 +5,6 @@ import ChatView from "./components/chat/ChatView"
 import ComputeView from "./components/compute/ComputeView"
 import DbSystemsView from "./components/dbsystems/DbSystemsView"
 import HistoryView from "./components/history/HistoryView"
-import Navbar from "./components/menu/Navbar"
 import ObjectStorageView from "./components/objectstorage/ObjectStorageView"
 import SettingsView, { SETTINGS_TABS, type SettingsTab } from "./components/settings/SettingsView"
 import SqlWorkbenchView from "./components/sql/SqlWorkbenchView"
@@ -395,10 +394,7 @@ function renderActiveView({
       )
     case "chat":
       return (
-        <div className="flex h-full min-h-0 flex-col">
-          <Navbar onNewChat={onNewChat} onHistory={onOpenHistory} />
-          <ChatView isHidden={false} />
-        </div>
+        <ChatView isHidden={false} onNewChat={onNewChat} onHistory={onOpenHistory} />
       )
     case "history":
       return <HistoryView messages={messages} onBack={onReturnToChat} onClear={onClearHistory} />

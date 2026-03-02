@@ -1,5 +1,5 @@
 import { clsx } from "clsx"
-import { AlertTriangle, Bot, MessageSquareText } from "lucide-react"
+import { AlertTriangle, Bot, History, MessageSquareText, Plus } from "lucide-react"
 import { useEffect, useRef } from "react"
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso"
 import { useExtensionState } from "../../context/ExtensionStateContext"
@@ -8,12 +8,15 @@ import ChatRow from "./ChatRow"
 import ChatTextArea from "./ChatTextArea"
 import CompartmentSelector from "../ui/CompartmentSelector"
 import StreamingRow from "./StreamingRow"
+import { WorkbenchActionButton, WorkbenchCompactActionCluster } from "../workbench/WorkbenchActionButtons"
 
 interface ChatViewProps {
   isHidden?: boolean
+  onNewChat: () => void
+  onHistory?: () => void
 }
 
-export default function ChatView({ isHidden = false }: ChatViewProps) {
+export default function ChatView({ isHidden = false, onNewChat, onHistory }: ChatViewProps) {
   const {
     chatMessages,
     isStreaming,
@@ -51,17 +54,34 @@ export default function ChatView({ isHidden = false }: ChatViewProps) {
           {configWarning}
         </InlineNotice>
       )}
-      <div className="shrink-0 border-b border-border-panel bg-[var(--vscode-editor-background)]">
-        <div className="px-3 pt-3 pb-2">
-          <div className="flex items-center gap-2">
+      <div className="shrink-0 border-b border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-3 py-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
             <MessageSquareText size={14} className="text-[var(--vscode-icon-foreground)]" />
-            <span className="text-[13px] font-semibold text-[var(--vscode-foreground)]">Chat</span>
+            <div className="flex min-w-0 flex-col">
+              <span className="text-[12px] font-semibold tracking-wide uppercase text-[var(--vscode-sideBarTitle-foreground)]">Chat</span>
+              <span className="mt-0.5 text-[11px] text-description">
+                Prompt the assistant with OCI-aware context and coding support.
+              </span>
+            </div>
           </div>
-          <p className="mt-1 text-[12px] text-description">
-            Prompt the assistant with OCI-aware context and coding support.
-          </p>
+
+          <WorkbenchCompactActionCluster>
+            <WorkbenchActionButton variant="secondary" onClick={onNewChat}>
+              <Plus size={12} className="mr-1" />
+              New
+            </WorkbenchActionButton>
+            {onHistory && (
+              <WorkbenchActionButton variant="secondary" onClick={onHistory}>
+                <History size={12} className="mr-1" />
+                History
+              </WorkbenchActionButton>
+            )}
+          </WorkbenchCompactActionCluster>
         </div>
-        <div className="px-3 pb-1">
+      </div>
+      <div className="shrink-0 border-b border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-3 py-1">
+        <div>
           <CompartmentSelector featureKey="chat" />
         </div>
       </div>

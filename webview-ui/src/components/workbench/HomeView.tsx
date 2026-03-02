@@ -48,6 +48,12 @@ const FEATURE_HIGHLIGHTS = [
   },
 ] as const
 
+const FEATURE_CARD_CLASSNAME =
+  "flex flex-col items-start gap-1.5 rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,white_8%)] px-3 py-3 text-left"
+
+const FEATURE_ICON_CLASSNAME =
+  "flex h-9 w-9 items-center justify-center rounded-md bg-[color-mix(in_srgb,var(--vscode-button-background)_18%,transparent)] text-[var(--vscode-button-background)]"
+
 export default function HomeView({
   hasProfiles,
   activeProfile,
@@ -117,11 +123,9 @@ export default function HomeView({
                     key={action.id}
                     type="button"
                     onClick={() => onOpenAction(action.id)}
-                    className="flex flex-col items-start gap-1.5 rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,white_8%)] px-3 py-3 text-left transition-colors hover:bg-[var(--vscode-list-hoverBackground)]"
+                    className={`${FEATURE_CARD_CLASSNAME} transition-colors hover:bg-[var(--vscode-list-hoverBackground)]`}
                   >
-                    <span className="flex h-9 w-9 items-center justify-center rounded-md bg-[color-mix(in_srgb,var(--vscode-button-background)_18%,transparent)] text-[var(--vscode-button-background)]">
-                      {action.icon}
-                    </span>
+                    <span className={FEATURE_ICON_CLASSNAME}>{action.icon}</span>
                     <span className="text-[13px] font-semibold text-[var(--vscode-foreground)]">{action.label}</span>
                     <span className="text-[12px] leading-5 text-[var(--vscode-descriptionForeground)]">{action.description}</span>
                   </button>
@@ -132,13 +136,8 @@ export default function HomeView({
             <Card title="Capability Areas">
               <div className="grid gap-3 md:grid-cols-3">
                 {FEATURE_HIGHLIGHTS.map((item) => (
-                  <div
-                    key={item.title}
-                    className="rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_82%,white_18%)] px-3 py-3"
-                  >
-                    <div className="flex h-9 w-9 items-center justify-center rounded-md bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,white_18%)] text-[var(--vscode-icon-foreground)]">
-                      {item.icon}
-                    </div>
+                  <div key={item.title} className={FEATURE_CARD_CLASSNAME}>
+                    <div className={FEATURE_ICON_CLASSNAME}>{item.icon}</div>
                     <div className="mt-2.5 text-[13px] font-semibold text-[var(--vscode-foreground)]">{item.title}</div>
                     <p className="mt-1.5 text-[12px] leading-5 text-[var(--vscode-descriptionForeground)]">{item.description}</p>
                   </div>
@@ -186,13 +185,13 @@ export default function HomeView({
 
 function InfoRow({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
   return (
-    <div className="flex items-center gap-2.5 rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,white_8%)] px-2.5 py-2.5">
-      <span className="flex h-8 w-8 items-center justify-center rounded-md bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_84%,white_16%)] text-[var(--vscode-icon-foreground)]">
+    <div className="flex items-center gap-2.5 rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,white_8%)] px-3 py-3">
+      <span className="flex h-9 w-9 items-center justify-center rounded-md bg-[color-mix(in_srgb,var(--vscode-button-background)_18%,transparent)] text-[var(--vscode-button-background)]">
         {icon}
       </span>
       <span className="min-w-0">
         <span className="block text-[11px] uppercase tracking-[0.16em] text-[var(--vscode-descriptionForeground)]">{label}</span>
-        <span className="mt-0.5 block truncate text-[13px] font-medium text-[var(--vscode-foreground)]">{value}</span>
+        <span className="mt-0.5 block truncate text-[13px] font-semibold text-[var(--vscode-foreground)]">{value}</span>
       </span>
     </div>
   )
