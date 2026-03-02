@@ -1,5 +1,6 @@
 import { Check, Copy, Pencil, RotateCcw } from "lucide-react"
 import { useCallback, useState } from "react"
+import { WorkbenchCompactActionCluster, WorkbenchIconActionButton } from "../workbench/WorkbenchActionButtons"
 
 export interface MessageActionsProps {
   role: "user" | "model"
@@ -19,7 +20,7 @@ export default function MessageActions({ role, text, onEdit, onRegenerate }: Mes
   }, [text])
 
   return (
-    <div className="flex items-center gap-0.5">
+    <WorkbenchCompactActionCluster className="gap-0.5">
       {/* Copy */}
       <ActionButton
         title={copied ? "Copied!" : "Copy"}
@@ -37,7 +38,7 @@ export default function MessageActions({ role, text, onEdit, onRegenerate }: Mes
       {onRegenerate && (
         <ActionButton title="Regenerate" onClick={onRegenerate} icon={<RotateCcw size={13} />} />
       )}
-    </div>
+    </WorkbenchCompactActionCluster>
   )
 }
 
@@ -53,17 +54,17 @@ function ActionButton({
   active?: boolean
 }) {
   return (
-    <button
-      type="button"
+    <WorkbenchIconActionButton
       onClick={onClick}
       title={title}
-      className={`inline-flex h-6 w-6 items-center justify-center rounded-[3px] transition-colors ${
+      icon={icon}
+      variant="icon"
+      size="icon"
+      className={`rounded-[3px] transition-colors ${
         active
           ? "text-[var(--vscode-notificationsInfoIcon-foreground)]"
           : "text-[var(--vscode-descriptionForeground)] hover:bg-[var(--vscode-toolbar-hoverBackground)] hover:text-[var(--vscode-foreground)]"
       }`}
-    >
-      {icon}
-    </button>
+    />
   )
 }

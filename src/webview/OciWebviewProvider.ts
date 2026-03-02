@@ -6,7 +6,6 @@ import { handleGrpcRequest, handleGrpcRequestCancel } from "../controller/grpc-h
 import type { ExtensionMessage, WebviewMessage } from "../shared/messages";
 
 type HostView = "main";
-const MAIN_VIEW_TITLE = "OCI Tools";
 
 export class OciWebviewProvider implements vscode.WebviewViewProvider {
   public static readonly MAIN_VIEW_ID = "ociAi.mainView";
@@ -91,7 +90,7 @@ export class OciWebviewProvider implements vscode.WebviewViewProvider {
     const compartmentCount = (selectedProfileConfig?.compartments?.length ?? 0) + 1;
     const profileDisplay = `${selectedProfile} (${compartmentCount} Compartments)`;
 
-    this.webview.title = `${MAIN_VIEW_TITLE} · [${profileDisplay}]`;
+    this.webview.title = `[${profileDisplay}]`;
     this.webview.description = undefined;
     this.webview.badge = undefined;
   }

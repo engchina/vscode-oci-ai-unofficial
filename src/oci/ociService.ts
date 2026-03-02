@@ -622,6 +622,15 @@ export class OciService {
 
       instance.publicIp = vnic.publicIp || "";
       instance.privateIp = vnic.privateIp || "";
+      instance.subnetId = vnic.subnetId || "";
+      if (vnic.subnetId) {
+        try {
+          const subnet = (await virtualNetworkClient.getSubnet({ subnetId: vnic.subnetId })).subnet;
+          instance.vcnId = subnet.vcnId || "";
+        } catch {
+          // Keep compute inventory usable even if subnet lookup fails.
+        }
+      }
     } catch {
       // Best-effort enrichment: if address lookup fails, keep listing instances without IPs.
     }
@@ -648,6 +657,17 @@ export class OciService {
             const vnic = (await vcnClient.getVnic({ vnicId: node.vnicId })).vnic;
             if (!dbSystem.privateIp && vnic?.privateIp) dbSystem.privateIp = vnic.privateIp;
             if (!dbSystem.publicIp && vnic?.publicIp) dbSystem.publicIp = vnic.publicIp;
+            if (!dbSystem.subnetId && vnic?.subnetId) dbSystem.subnetId = vnic.subnetId;
+            if (!dbSystem.vcnId && vnic?.subnetId) {
+              try {
+                const subnet = (await vcnClient.getSubnet({ subnetId: vnic.subnetId })).subnet;
+                if (subnet?.vcnId) {
+                  dbSystem.vcnId = subnet.vcnId;
+                }
+              } catch {
+                // Keep DB System inventory usable even if subnet lookup fails.
+              }
+            }
           } catch { }
         }
       }

@@ -1,8 +1,8 @@
 {
-  "name": "vscode-oci-ai-unofficial",
-  "displayName": "vscode-oci-ai-unofficial",
+  "name": "oci-ai-unofficial",
+  "displayName": "oci-ai-unofficial",
   "description": "A comprehensive extension for Oracle Cloud Infrastructure (OCI) in VS Code, supporting AI services and diversified cloud management workflows.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "local",
   "icon": "icon.png",
   "engines": {
@@ -18,7 +18,7 @@
       "activitybar": [
         {
           "id": "ociAi",
-          "title": "vscode-oci-ai-unofficial",
+          "title": "oci-ai-unofficial",
           "icon": "resources/oci-ai.svg"
         }
       ]
@@ -53,21 +53,21 @@
       },
       {
         "command": "ociAi.openChat",
-        "title": "vscode-oci-ai-unofficial: Open Chat"
+        "title": "oci-ai-unofficial: Open Chat"
       },
       {
         "command": "ociAi.auth.configureProfile",
-        "title": "vscode-oci-ai-unofficial: Switch Profile",
+        "title": "Switch Profile",
         "shortTitle": "Profile",
         "icon": "$(account)"
       },
       {
         "command": "ociAi.auth.configureApiKey",
-        "title": "vscode-oci-ai-unofficial: Store API Key in Secret Storage"
+        "title": "oci-ai-unofficial: Store API Key in Secret Storage"
       },
       {
         "command": "ociAi.openSettings",
-        "title": "vscode-oci-ai-unofficial: Open OCI Settings",
+        "title": "oci-ai-unofficial: Open OCI Settings",
         "shortTitle": "OCI Settings"
       },
       {
@@ -84,7 +84,7 @@
       },
       {
         "command": "ociAi.switchCompartment",
-        "title": "vscode-oci-ai-unofficial: Switch Compartment"
+        "title": "oci-ai-unofficial: Switch Compartment"
       }
     ],
     "menus": {
@@ -162,7 +162,7 @@
       ]
     },
     "configuration": {
-      "title": "vscode-oci-ai-unofficial",
+      "title": "oci-ai-unofficial",
       "properties": {
         "ociAi.activeProfile": {
           "type": "string",

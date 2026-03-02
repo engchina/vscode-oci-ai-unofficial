@@ -9,7 +9,7 @@ const STEPS = [
   {
     icon: <Settings2 size={14} />,
     title: "Open Settings",
-    description: "Expand the Settings section below.",
+    description: "Open Administration and go to Settings.",
   },
   {
     icon: <UserPlus size={14} />,
@@ -38,7 +38,7 @@ export default function WelcomeGuide({ onOpenSettings }: WelcomeGuideProps) {
       <div>
         <h2 className="text-sm font-semibold text-[var(--vscode-foreground)]">Welcome to OCI Tools</h2>
         <p className="mt-1 text-[11px] text-[var(--vscode-descriptionForeground)]">
-          Set up your OCI profile to get started.
+          Configure OCI access to unlock chat, resource, and database tools.
         </p>
       </div>
 

@@ -2,6 +2,10 @@ import { Bot, Check, User, X } from "lucide-react"
 import { useCallback, useRef, useState } from "react"
 import TextareaAutosize from "react-textarea-autosize"
 import type { ChatImageData, ChatMessageData } from "../../services/types"
+import {
+  WorkbenchActionButton,
+  WorkbenchCompactActionCluster,
+} from "../workbench/WorkbenchActionButtons"
 import MessageActions from "./MessageActions"
 import MessageContent from "./MessageContent"
 
@@ -15,6 +19,7 @@ interface ChatRowProps {
 
 export default function ChatRow({ message, messageIndex, isLastOfRole, onEdit, onRegenerate }: ChatRowProps) {
   const isUser = message.role === "user"
+  const alignContainer = isUser ? "ml-auto" : "mr-auto"
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState("")
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -56,15 +61,21 @@ export default function ChatRow({ message, messageIndex, isLastOfRole, onEdit, o
 
   return (
     <div className="group/row flex flex-col gap-1 px-3 py-4 w-full border-b border-[var(--vscode-panel-border)] hover:bg-[var(--vscode-list-hoverBackground)] transition-colors">
-      <div className="flex items-center gap-2 font-semibold text-[11px] text-[var(--vscode-sideBarTitle-foreground)] uppercase tracking-wide">
+      <div
+        className={`flex w-full max-w-[min(85%,56rem)] items-center gap-2 font-semibold text-[11px] text-[var(--vscode-sideBarTitle-foreground)] uppercase tracking-wide ${alignContainer} ${isUser ? "justify-end" : "justify-start"
+          }`}
+      >
         <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-[var(--vscode-editor-background)] border border-[var(--vscode-panel-border)] text-[var(--vscode-icon-foreground)]">
           {isUser ? <User size={12} /> : <Bot size={12} />}
         </div>
         <span>{isUser ? "You" : "Generative AI"}</span>
       </div>
-      <div className="pl-7 w-full text-[13px] text-[var(--vscode-foreground)] leading-relaxed">
+      <div
+        className={`w-full max-w-[min(85%,56rem)] text-[13px] text-[var(--vscode-foreground)] leading-relaxed ${alignContainer} ${isUser ? "pr-7 text-right" : "pl-7 text-left"
+          }`}
+      >
         {editing ? (
-          <div className="flex flex-col gap-2">
+          <div className={`flex flex-col gap-2 ${isUser ? "items-end" : "items-start"}`}>
             <TextareaAutosize
               ref={textareaRef}
               value={editText}
@@ -74,30 +85,22 @@ export default function ChatRow({ message, messageIndex, isLastOfRole, onEdit, o
               maxRows={12}
               className="w-full resize-none rounded-[2px] border border-[var(--vscode-focusBorder)] bg-[var(--vscode-input-background)] px-2 py-1.5 text-[13px] text-[var(--vscode-input-foreground)] outline-none"
             />
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={submitEdit}
-                className="inline-flex h-7 items-center gap-1 rounded-[3px] bg-[var(--vscode-button-background)] px-2.5 text-[11px] font-medium text-[var(--vscode-button-foreground)] transition-colors hover:bg-[var(--vscode-button-hoverBackground)]"
-              >
+            <WorkbenchCompactActionCluster>
+              <WorkbenchActionButton type="button" onClick={submitEdit} className="h-7">
                 <Check size={12} />
                 Send
-              </button>
-              <button
-                type="button"
-                onClick={cancelEdit}
-                className="inline-flex h-7 items-center gap-1 rounded-[3px] border border-[var(--vscode-panel-border)] bg-transparent px-2.5 text-[11px] font-medium text-[var(--vscode-foreground)] transition-colors hover:bg-[var(--vscode-toolbar-hoverBackground)]"
-              >
+              </WorkbenchActionButton>
+              <WorkbenchActionButton type="button" variant="ghost" onClick={cancelEdit} className="h-7 px-2.5 text-[11px]">
                 <X size={12} />
                 Cancel
-              </button>
-            </div>
+              </WorkbenchActionButton>
+            </WorkbenchCompactActionCluster>
           </div>
         ) : isUser ? (
           <div className="flex flex-col gap-2">
             {message.text && <p className="whitespace-pre-wrap">{message.text}</p>}
             {message.images && message.images.length > 0 && (
-              <div className="flex gap-2 overflow-x-auto pb-1 mt-1">
+              <div className={`flex gap-2 overflow-x-auto pb-1 mt-1 ${isUser ? "justify-end" : "justify-start"}`}>
                 {message.images.map((img, idx) => (
                   <a
                     key={`${img.name ?? "img"}-${idx}`}
@@ -123,7 +126,9 @@ export default function ChatRow({ message, messageIndex, isLastOfRole, onEdit, o
 
       {/* Action buttons — visible on hover */}
       {!editing && (
-        <div className="pl-7 pt-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
+        <div
+          className={`w-full max-w-[min(85%,56rem)] ${alignContainer} ${isUser ? "pr-7 text-right flex justify-end" : "pl-7 text-left"} pt-1 opacity-0 group-hover/row:opacity-100 transition-opacity`}
+        >
           <MessageActions
             role={message.role}
             text={message.text}

@@ -3,8 +3,20 @@ import { ChevronDown, LoaderCircle, Lock, Plus, Save, Trash2, Users } from "luci
 import { useCallback, useEffect, useRef, useState } from "react"
 import { StateServiceClient } from "../../services/grpc-client"
 import type { SettingsState, SavedCompartment } from "../../services/types"
-import Button from "../ui/Button"
+import GuardrailDialog from "../common/GuardrailDialog"
 import Card from "../ui/Card"
+import {
+    WorkbenchActionButton,
+    WorkbenchCompactActionCluster,
+    WorkbenchIconDestructiveButton,
+    WorkbenchInlineActionCluster,
+} from "../workbench/WorkbenchActionButtons"
+import { WorkbenchLoadingState } from "../workbench/DatabaseWorkbenchChrome"
+import {
+    buildWorkbenchResourceGuardrailDetails,
+    createDeleteResourceGuardrail,
+    type WorkbenchGuardrailState,
+} from "../workbench/guardrail"
 
 const EMPTY_SETTINGS: SettingsState = {
     activeProfile: "DEFAULT",
@@ -40,6 +52,7 @@ export default function ProfilesCompartmentsView() {
     const [settings, setSettings] = useState<SettingsState>(EMPTY_SETTINGS)
     const [loaded, setLoaded] = useState(false)
     const [saving, setSaving] = useState(false)
+    const [guardrail, setGuardrail] = useState<WorkbenchGuardrailState>(null)
     const fetchIdRef = useRef(0)
     const refreshTimerRef = useRef<number | null>(null)
 
@@ -107,46 +120,73 @@ export default function ProfilesCompartmentsView() {
         }
     }, [settings])
 
+    const handleGuardedAction = useCallback(async () => {
+        if (!guardrail) return
+        try {
+            await guardrail.onConfirm()
+            setGuardrail(null)
+        } catch (error) {
+            console.error("Failed to execute guarded compartment action:", error)
+            setGuardrail(null)
+        }
+    }, [guardrail])
+
     if (!loaded) {
         return (
-            <div className="flex h-full items-center justify-center px-6">
-                <span className="text-sm text-description">Loading...</span>
+            <div className="flex h-full min-h-0 flex-col p-1">
+                <WorkbenchLoadingState label="Loading compartments..." className="h-full" />
             </div>
         )
     }
 
     return (
-        <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-                <h3 className="flex items-center gap-1.5 text-md font-semibold">
-                    <Users size={14} />
-                    Compartments
-                </h3>
-                {saving && (
-                    <span className="inline-flex items-center gap-1 text-[11px] text-description">
-                        <LoaderCircle size={12} className="animate-spin" />
-                        Saving...
-                    </span>
-                )}
+        <>
+            <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                    <h3 className="flex items-center gap-1.5 text-md font-semibold">
+                        <Users size={14} />
+                        Compartments
+                    </h3>
+                    {saving && (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-description">
+                            <LoaderCircle size={12} className="animate-spin" />
+                            Saving...
+                        </span>
+                    )}
+                </div>
+                <p className="-mt-2 text-xs text-description">Manage OCI profiles and their compartment mappings.</p>
+
+                <ProfileConfigEditor settings={settings} updateField={updateField} onRequestGuardrail={setGuardrail} />
+
+                <WorkbenchInlineActionCluster>
+                    <WorkbenchActionButton onClick={handleSave} disabled={saving} className="self-start px-4">
+                        <Save size={14} className="mr-1.5" />
+                        {saving ? "Saving..." : "Save Settings"}
+                    </WorkbenchActionButton>
+                </WorkbenchInlineActionCluster>
             </div>
-            <p className="-mt-2 text-xs text-description">Manage OCI profiles and their compartment mappings.</p>
-
-            <ProfileConfigEditor settings={settings} updateField={updateField} />
-
-            <Button onClick={handleSave} disabled={saving} className="self-start px-4">
-                <Save size={14} className="mr-1.5" />
-                {saving ? "Saving..." : "Save Settings"}
-            </Button>
-        </div>
+            <GuardrailDialog
+                open={guardrail !== null}
+                title={guardrail?.title ?? ""}
+                description={guardrail?.description ?? ""}
+                confirmLabel={guardrail?.confirmLabel ?? "Confirm"}
+                details={guardrail?.details ?? []}
+                tone={guardrail?.tone}
+                onCancel={() => setGuardrail(null)}
+                onConfirm={() => void handleGuardedAction()}
+            />
+        </>
     )
 }
 
 function ProfileConfigEditor({
     settings,
     updateField,
+    onRequestGuardrail,
 }: {
     settings: SettingsState
     updateField: <K extends keyof SettingsState>(field: K, value: SettingsState[K]) => void
+    onRequestGuardrail: (value: WorkbenchGuardrailState) => void
 }) {
     const [newCompId, setNewCompId] = useState("")
     const [newCompName, setNewCompName] = useState("")
@@ -200,6 +240,23 @@ function ProfileConfigEditor({
             return p
         })
         updateField("profilesConfig", updated)
+    }
+
+    const requestRemoveCompartment = (profileName: string, compartment: SavedCompartment) => {
+        onRequestGuardrail(createDeleteResourceGuardrail({
+            resourceKind: "compartment",
+            details: buildWorkbenchResourceGuardrailDetails({
+                resourceLabel: "Compartment",
+                resourceName: compartment.name,
+                extras: [
+                    { label: "Profile", value: profileName },
+                    { label: "OCID", value: compartment.id },
+                ],
+            }),
+            onConfirm: async () => {
+                removeCompartment(profileName, compartment.id)
+            },
+        }))
     }
 
     return (
@@ -261,12 +318,12 @@ function ProfileConfigEditor({
                                         <span className="text-xs truncate">{c.name}</span>
                                         <span className="text-[10px] text-description truncate" title={c.id}>{c.id}</span>
                                     </div>
-                                    <button
-                                        onClick={() => removeCompartment(p.name, c.id)}
-                                        className="shrink-0 text-description hover:text-error"
-                                    >
-                                        <Trash2 size={10} />
-                                    </button>
+                                    <WorkbenchIconDestructiveButton
+                                        onClick={() => requestRemoveCompartment(p.name, c)}
+                                        icon={<Trash2 size={10} />}
+                                        className="shrink-0"
+                                        title={`Remove compartment "${c.name}"`}
+                                    />
                                 </div>
                             ))}
 
@@ -284,18 +341,19 @@ function ProfileConfigEditor({
                                         onChange={e => setNewCompId(e.target.value)}
                                         className="rounded-md border border-input-border bg-input-background px-2 py-1.5 text-xs outline-none"
                                     />
-                                    <div className="flex gap-2 justify-end">
-                                        <Button size="sm" variant="secondary" onClick={() => setEditingProfile(null)}>Cancel</Button>
-                                        <Button size="sm" disabled={!newCompId.trim() || !newCompName.trim()} onClick={() => { addCompartment(p.name); setEditingProfile(null); }}>Add</Button>
-                                    </div>
+                                    <WorkbenchCompactActionCluster className="justify-end">
+                                        <WorkbenchActionButton variant="secondary" onClick={() => setEditingProfile(null)}>Cancel</WorkbenchActionButton>
+                                        <WorkbenchActionButton disabled={!newCompId.trim() || !newCompName.trim()} onClick={() => { addCompartment(p.name); setEditingProfile(null); }}>Add</WorkbenchActionButton>
+                                    </WorkbenchCompactActionCluster>
                                 </div>
                             ) : (
-                                <button
+                                <WorkbenchActionButton
+                                    variant="ghost"
                                     onClick={() => { setEditingProfile(p.name); setNewCompId(""); setNewCompName(""); }}
-                                    className="flex items-center gap-1.5 mt-1 px-2 py-1 text-xs text-description hover:text-foreground transition-colors w-fit"
+                                    className="mt-1 w-fit px-2"
                                 >
                                     <Plus size={12} /> Add Compartment
-                                </button>
+                                </WorkbenchActionButton>
                             )}
                         </div>
                     </div>

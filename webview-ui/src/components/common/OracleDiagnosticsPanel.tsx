@@ -1,5 +1,6 @@
 import { useMemo } from "react"
 import type { OracleDbDiagnosticsResponse } from "../../services/types"
+import { WorkbenchKeyValueStrip, WorkbenchSurface } from "../workbench/DatabaseWorkbenchChrome"
 
 type ProblemType =
   | "ok"
@@ -26,17 +27,25 @@ export default function OracleDiagnosticsPanel({ diagnostics }: { diagnostics: O
   const commandText = guide.commands.join("\n")
 
   return (
-    <div className="rounded-md border border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_97%,black_3%)] px-2.5 py-2 text-[11px] text-description">
-      <div><span className="font-semibold text-foreground">Problem Type:</span> <code>{guide.problemType}</code></div>
-      <div><span className="font-semibold text-foreground">Driver Requested:</span> <code>{diagnostics.requestedMode}</code></div>
-      <div><span className="font-semibold text-foreground">Driver Effective:</span> <code>{diagnostics.effectiveMode}</code></div>
-      <div><span className="font-semibold text-foreground">Thin Mode:</span> <code>{String(diagnostics.thin)}</code></div>
-      <div><span className="font-semibold text-foreground">Oracle Client Version:</span> <code>{diagnostics.oracleClientVersionString || "-"}</code></div>
-      <div><span className="font-semibold text-foreground">libDir:</span> <code>{diagnostics.configuredLibDir || "(auto)"}</code></div>
-      <div><span className="font-semibold text-foreground">Recommended libDir:</span> <code>{diagnostics.recommendedOracleClientLibDir}</code></div>
-      <div><span className="font-semibold text-foreground">Runtime:</span> <code>{diagnostics.platform}/{diagnostics.arch}{diagnostics.isWsl ? ` (WSL${diagnostics.wslDistro ? `:${diagnostics.wslDistro}` : ""})` : ""}</code></div>
-      <div><span className="font-semibold text-foreground">Node:</span> <code>{diagnostics.nodeVersion}</code></div>
-      <div><span className="font-semibold text-foreground">Checked At:</span> <code>{new Date(diagnostics.timestamp).toLocaleString()}</code></div>
+    <WorkbenchSurface className="px-2.5 py-2 text-[11px] text-description">
+      <WorkbenchKeyValueStrip
+        className="border-0 bg-transparent p-0"
+        items={[
+          { label: "Problem Type", value: guide.problemType },
+          { label: "Driver Requested", value: diagnostics.requestedMode },
+          { label: "Driver Effective", value: diagnostics.effectiveMode },
+          { label: "Thin Mode", value: String(diagnostics.thin) },
+          { label: "Oracle Client Version", value: diagnostics.oracleClientVersionString || "-" },
+          { label: "libDir", value: diagnostics.configuredLibDir || "(auto)" },
+          { label: "Recommended libDir", value: diagnostics.recommendedOracleClientLibDir },
+          {
+            label: "Runtime",
+            value: `${diagnostics.platform}/${diagnostics.arch}${diagnostics.isWsl ? ` (WSL${diagnostics.wslDistro ? `:${diagnostics.wslDistro}` : ""})` : ""}`,
+          },
+          { label: "Node", value: diagnostics.nodeVersion },
+          { label: "Checked At", value: new Date(diagnostics.timestamp).toLocaleString() },
+        ]}
+      />
       {diagnostics.initError && (
         <div className="mt-1"><span className="font-semibold text-error">Init Error:</span> <code className="text-error break-all">{diagnostics.initError}</code></div>
       )}
@@ -55,7 +64,7 @@ export default function OracleDiagnosticsPanel({ diagnostics }: { diagnostics: O
       {guide.commands.length > 0 && (
         <pre className="mt-2 whitespace-pre-wrap rounded border border-border-panel bg-input-background px-2 py-1.5 text-[10px] leading-relaxed text-description">{commandText}</pre>
       )}
-    </div>
+    </WorkbenchSurface>
   )
 }
 

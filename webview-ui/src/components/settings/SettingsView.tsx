@@ -3,13 +3,27 @@ import { Bot, ChevronDown, Info, Loader2, LoaderCircle, Plus, Save, Settings2, T
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction } from "react"
 import { StateServiceClient } from "../../services/grpc-client"
 import type { SettingsState } from "../../services/types"
+import GuardrailDialog from "../common/GuardrailDialog"
 import ProfilesCompartmentsView from "../profiles/ProfilesCompartmentsView"
 import { DEFAULT_SSH_USERNAME, clampPort, loadSshConfig, saveSshConfig, type HostPreference, type SshConfig } from "../../sshConfig"
-import Button from "../ui/Button"
 import Card from "../ui/Card"
 import Input from "../ui/Input"
+import InlineNotice from "../ui/InlineNotice"
+import StatusBadge from "../ui/StatusBadge"
 import Textarea from "../ui/Textarea"
 import Toggle from "../ui/Toggle"
+import {
+  WorkbenchActionButton,
+  WorkbenchCompactActionCluster,
+  WorkbenchIconDestructiveButton,
+  WorkbenchInlineActionCluster,
+} from "../workbench/WorkbenchActionButtons"
+import { WorkbenchLoadingState } from "../workbench/DatabaseWorkbenchChrome"
+import {
+  buildWorkbenchResourceGuardrailDetails,
+  createDeleteResourceGuardrail,
+  type WorkbenchGuardrailState,
+} from "../workbench/guardrail"
 
 
 interface SettingsViewProps {
@@ -77,6 +91,7 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
   const [loaded, setLoaded] = useState(false)
   const [activeTab, setActiveTab] = useState<SettingsTab>("api-config")
   const [editingProfileName, setEditingProfileName] = useState<string | null>(null)
+  const [guardrail, setGuardrail] = useState<WorkbenchGuardrailState>(null)
   const fetchIdRef = useRef(0)
   const editingProfileRef = useRef<string | null>(null)
   const refreshTimerRef = useRef<number | null>(null)
@@ -191,6 +206,19 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
     }
   }, [resolveEditingProfile, settings])
 
+  const handleGuardedAction = useCallback(async () => {
+    if (!guardrail) {
+      return
+    }
+    try {
+      await guardrail.onConfirm()
+      setGuardrail(null)
+    } catch (error) {
+      console.error("Failed to execute guarded settings action:", error)
+      setGuardrail(null)
+    }
+  }, [guardrail])
+
   const handleFileUpload = useCallback(
     async (e: ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0]
@@ -207,98 +235,111 @@ export default function SettingsView({ onDone, showDone = true }: SettingsViewPr
 
   if (!loaded) {
     return (
-      <div className="flex h-full items-center justify-center px-6">
-        <span className="text-sm text-description">Loading settings...</span>
+      <div className="flex h-full min-h-0 flex-col p-4">
+        <WorkbenchLoadingState label="Loading settings..." className="h-full" />
       </div>
     )
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--vscode-panel-border)] px-3 py-2 bg-[var(--vscode-editor-background)]">
-        <div className="flex min-w-0 items-center gap-2">
-          <Settings2 size={14} className="text-[var(--vscode-icon-foreground)]" />
-          <div className="flex min-w-0 flex-col">
-            <span className="text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)]">OCI Settings</span>
-            <span className="mt-0.5 text-[10px] text-description uppercase tracking-wider">{activeTabLabel}</span>
+    <>
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--vscode-panel-border)] px-3 py-2 bg-[var(--vscode-editor-background)]">
+          <div className="flex min-w-0 items-center gap-2">
+            <Settings2 size={14} className="text-[var(--vscode-icon-foreground)]" />
+            <div className="flex min-w-0 flex-col">
+              <span className="text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)]">OCI Settings</span>
+              <span className="mt-0.5 text-[10px] text-description uppercase tracking-wider">{activeTabLabel}</span>
+            </div>
           </div>
+          <WorkbenchInlineActionCluster className="shrink-0">
+            {saving && (
+              <span className="inline-flex items-center gap-1 text-[11px] text-description">
+                <LoaderCircle size={12} className="animate-spin" />
+                Saving...
+              </span>
+            )}
+            {showDone && onDone && (
+              <WorkbenchActionButton variant="secondary" onClick={onDone}>
+                Done
+              </WorkbenchActionButton>
+            )}
+          </WorkbenchInlineActionCluster>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {saving && (
-            <span className="inline-flex items-center gap-1 text-[11px] text-description">
-              <LoaderCircle size={12} className="animate-spin" />
-              Saving...
-            </span>
-          )}
-          {showDone && onDone && (
-            <Button variant="secondary" size="sm" onClick={onDone}>
-              Done
-            </Button>
-          )}
-        </div>
-      </div>
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <div className="flex w-48 shrink-0 flex-col gap-0.5 border-r border-[var(--vscode-panel-border)] bg-[var(--vscode-sideBar-background)] py-2">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => toggleTab(tab.id)}
-              title={tab.label}
-              aria-label={tab.label}
-              className={clsx(
-                "flex h-8 w-full items-center justify-start gap-2 px-3 transition-colors outline-none",
-                activeTab === tab.id
-                  ? "bg-[var(--vscode-list-activeSelectionBackground)] text-[var(--vscode-list-activeSelectionForeground)]"
-                  : "text-[var(--vscode-foreground)] hover:bg-[var(--vscode-list-hoverBackground)] hover:text-[var(--vscode-list-hoverForeground)]",
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="flex w-48 shrink-0 flex-col gap-0.5 border-r border-[var(--vscode-panel-border)] bg-[var(--vscode-sideBar-background)] py-2">
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => toggleTab(tab.id)}
+                title={tab.label}
+                aria-label={tab.label}
+                className={clsx(
+                  "flex h-8 w-full items-center justify-start gap-2 px-3 transition-colors outline-none",
+                  activeTab === tab.id
+                    ? "bg-[var(--vscode-list-activeSelectionBackground)] text-[var(--vscode-list-activeSelectionForeground)]"
+                    : "text-[var(--vscode-foreground)] hover:bg-[var(--vscode-list-hoverBackground)] hover:text-[var(--vscode-list-hoverForeground)]",
+                )}
+              >
+                <div className="shrink-0 opacity-80">{tab.icon}</div>
+                <span className="text-[12px] truncate">{tab.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-4">
+            <div className="flex w-full flex-col gap-4">
+              {activeTab === "api-config" && (
+                <ApiConfigTab
+                  editingProfile={editingProfileName}
+                  setEditingProfile={updateEditingProfile}
+                  settings={settings}
+                  setSettings={setSettings}
+                  updateField={updateField}
+                  handleSave={handleSave}
+                  handleFileUpload={handleFileUpload}
+                  saving={saving}
+                  onRequestGuardrail={setGuardrail}
+                />
               )}
-            >
-              <div className="shrink-0 opacity-80">{tab.icon}</div>
-              <span className="text-[12px] truncate">{tab.label}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-4">
-          <div className="flex w-full flex-col gap-4">
-            {activeTab === "api-config" && (
-              <ApiConfigTab
-                editingProfile={editingProfileName}
-                setEditingProfile={updateEditingProfile}
-                settings={settings}
-                setSettings={setSettings}
-                updateField={updateField}
-                handleSave={handleSave}
-                handleFileUpload={handleFileUpload}
-                saving={saving}
-              />
-            )}
-            {activeTab === "profiles" && (
-              <ProfilesCompartmentsView />
-            )}
-            {activeTab === "genai" && (
-              <GenAiTab
-                settings={settings}
-                updateField={updateField}
-                handleSave={handleSave}
-                saving={saving}
-              />
-            )}
-            {activeTab === "terminal" && (
-              <TerminalTab
-                settings={settings}
-                sshConfig={sshConfig}
-                setSshConfig={setSshConfig}
-                updateField={updateField}
-                handleSave={handleSave}
-                saving={saving}
-              />
-            )}
-            {activeTab === "about" && <AboutTab settings={settings} />}
+              {activeTab === "profiles" && (
+                <ProfilesCompartmentsView />
+              )}
+              {activeTab === "genai" && (
+                <GenAiTab
+                  settings={settings}
+                  updateField={updateField}
+                  handleSave={handleSave}
+                  saving={saving}
+                />
+              )}
+              {activeTab === "terminal" && (
+                <TerminalTab
+                  settings={settings}
+                  sshConfig={sshConfig}
+                  setSshConfig={setSshConfig}
+                  updateField={updateField}
+                  handleSave={handleSave}
+                  saving={saving}
+                />
+              )}
+              {activeTab === "about" && <AboutTab settings={settings} />}
+            </div>
           </div>
         </div>
       </div>
-    </div>
+      <GuardrailDialog
+        open={guardrail !== null}
+        title={guardrail?.title ?? ""}
+        description={guardrail?.description ?? ""}
+        confirmLabel={guardrail?.confirmLabel ?? "Confirm"}
+        details={guardrail?.details ?? []}
+        tone={guardrail?.tone}
+        onCancel={() => setGuardrail(null)}
+        onConfirm={() => void handleGuardedAction()}
+      />
+    </>
   )
 }
 
@@ -333,6 +374,7 @@ function ApiConfigTab({
   handleSave,
   handleFileUpload,
   saving,
+  onRequestGuardrail,
 }: {
   editingProfile: string | null
   setEditingProfile: (profileName: string | null) => void
@@ -342,6 +384,7 @@ function ApiConfigTab({
   handleSave: () => void
   handleFileUpload: (e: ChangeEvent<HTMLInputElement>) => void
   saving: boolean
+  onRequestGuardrail: (value: WorkbenchGuardrailState) => void
 }) {
   const [newProfileName, setNewProfileName] = useState("")
   const [addingProfile, setAddingProfile] = useState(false)
@@ -421,6 +464,22 @@ function ApiConfigTab({
     }
   }
 
+  const requestDeleteProfile = (name: string) => {
+    const profile = profiles.find((item) => item.name === name)
+    onRequestGuardrail(createDeleteResourceGuardrail({
+      resourceKind: "oci-profile",
+      details: buildWorkbenchResourceGuardrailDetails({
+        resourceLabel: "Profile",
+        resourceName: name,
+        extras: [
+          { label: "Compartments", value: String(profile?.compartments.length ?? 0) },
+          { label: "Role", value: settings.activeProfile === name ? "Active runtime profile" : "Saved profile" },
+        ],
+      }),
+      onConfirm: () => deleteProfile(name),
+    }))
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <h3 className="flex items-center gap-1.5 text-md font-semibold">
@@ -430,22 +489,18 @@ function ApiConfigTab({
       <p className="-mt-2 text-xs text-description">These values are used for OCI API calls and model inference.</p>
 
       {validationErrors.length > 0 && (
-        <div className="flex flex-col gap-1 rounded-[2px] border border-warning/30 bg-[color-mix(in_srgb,var(--vscode-editor-background)_88%,yellow_12%)] px-3 py-2.5">
-          <span className="text-[11px] font-medium text-warning">Configuration incomplete:</span>
-          {validationErrors.map((err) => (
-            <span key={err} className="text-[11px] text-warning">• {err}</span>
-          ))}
-        </div>
+        <InlineNotice tone="warning" title="Configuration incomplete">
+          <div className="flex flex-col gap-1">
+            {validationErrors.map((err) => (
+              <span key={err}>• {err}</span>
+            ))}
+          </div>
+        </InlineNotice>
       )}
 
       <div className="flex items-center justify-between gap-2">
         <h4 className="text-xs font-semibold uppercase tracking-wider text-description">OCI Access</h4>
-        <span
-          className="rounded-full border border-success/30 bg-[color-mix(in_srgb,var(--vscode-editor-background)_80%,green_20%)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-success"
-          title="Using API Key from SecretStorage"
-        >
-          API Key Auth
-        </span>
+        <StatusBadge label="API Key Auth" tone="success" className="cursor-help" title="Using API Key from SecretStorage" />
       </div>
       <p className="-mt-1 text-xs text-description">
         All OCI requests use API Key credentials from SecretStorage. The OCI config file is not used.
@@ -489,14 +544,14 @@ function ApiConfigTab({
                       <span className="ml-2 text-[10px] text-description">(Selected)</span>
                     )}
                   </button>
-                  <button
-                    onClick={() => deleteProfile(p.name)}
+                  <WorkbenchIconDestructiveButton
+                    onClick={() => requestDeleteProfile(p.name)}
                     disabled={deletingProfile === p.name}
-                    className="shrink-0 rounded p-1 text-description hover:bg-list-background-hover hover:text-error transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                     title={`Delete profile "${p.name}"`}
-                  >
-                    {deletingProfile === p.name ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                  </button>
+                    icon={<Trash2 size={12} />}
+                    busy={deletingProfile === p.name}
+                    className="shrink-0"
+                  />
                 </div>
               ))
             ) : (
@@ -507,7 +562,7 @@ function ApiConfigTab({
         </div>
 
         {/* Add Profile */}
-        <div className="flex gap-2 mt-2 border-t border-border-panel pt-3">
+        <WorkbenchCompactActionCluster className="mt-2 border-t border-border-panel pt-3">
           <input
             placeholder="New Profile Name..."
             value={newProfileName}
@@ -515,11 +570,11 @@ function ApiConfigTab({
             onKeyDown={e => e.key === "Enter" && addProfile()}
             className="flex-1 rounded-md border border-input-border bg-input-background px-2 py-1.5 text-xs outline-none focus:border-border"
           />
-          <Button size="sm" variant="secondary" onClick={addProfile} disabled={addingProfile || !newProfileName.trim()}>
+          <WorkbenchActionButton variant="secondary" onClick={addProfile} disabled={addingProfile || !newProfileName.trim()}>
             {addingProfile ? <Loader2 size={12} className="mr-1 animate-spin" /> : <Plus size={12} className="mr-1" />}
             {addingProfile ? "Adding..." : "Add"}
-          </Button>
-        </div>
+          </WorkbenchActionButton>
+        </WorkbenchCompactActionCluster>
       </Card>
 
       <Card title="API Key (SecretStorage)">
@@ -580,10 +635,12 @@ function ApiConfigTab({
         />
       </Card>
 
-      <Button onClick={handleSave} disabled={saving} className="self-start px-4">
-        <Save size={14} className="mr-1.5" />
-        {saving ? "Saving..." : "Save Settings"}
-      </Button>
+      <WorkbenchInlineActionCluster>
+        <WorkbenchActionButton onClick={handleSave} disabled={saving} className="self-start px-4">
+          <Save size={14} className="mr-1.5" />
+          {saving ? "Saving..." : "Save Settings"}
+        </WorkbenchActionButton>
+      </WorkbenchInlineActionCluster>
     </div>
   )
 }
@@ -680,10 +737,12 @@ function GenAiTab({
         />
       </Card>
 
-      <Button onClick={handleSave} disabled={saving} className="self-start px-4">
-        <Save size={14} className="mr-1.5" />
-        {saving ? "Saving..." : "Save Settings"}
-      </Button>
+      <WorkbenchInlineActionCluster>
+        <WorkbenchActionButton onClick={handleSave} disabled={saving} className="self-start px-4">
+          <Save size={14} className="mr-1.5" />
+          {saving ? "Saving..." : "Save Settings"}
+        </WorkbenchActionButton>
+      </WorkbenchInlineActionCluster>
     </div>
   )
 }
@@ -783,10 +842,12 @@ function TerminalTab({
         <p className="text-xs text-description">Used by Compute view when launching SSH connection.</p>
       </Card>
 
-      <Button onClick={handleSave} disabled={saving} className="self-start px-4">
-        <Save size={14} className="mr-1.5" />
-        {saving ? "Saving..." : "Save Settings"}
-      </Button>
+      <WorkbenchInlineActionCluster>
+        <WorkbenchActionButton onClick={handleSave} disabled={saving} className="self-start px-4">
+          <Save size={14} className="mr-1.5" />
+          {saving ? "Saving..." : "Save Settings"}
+        </WorkbenchActionButton>
+      </WorkbenchInlineActionCluster>
     </div>
   )
 }
@@ -804,7 +865,7 @@ function AboutTab({ settings }: { settings: SettingsState }) {
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap gap-1">
             <span className="text-xs text-description">Extension: </span>
-            <span className="text-sm">vscode-oci-ai-unofficial</span>
+            <span className="text-sm">oci-ai-unofficial</span>
           </div>
           <div className="flex flex-wrap gap-1">
             <span className="text-xs text-description">Version: </span>

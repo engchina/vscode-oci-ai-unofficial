@@ -268,6 +268,8 @@ export interface ComputeResource {
   region?: string
   publicIp?: string
   privateIp?: string
+  subnetId?: string
+  vcnId?: string
 }
 
 export interface AdbResource {
@@ -288,6 +290,8 @@ export interface DbSystemResource {
   publicIp?: string
   privateIp?: string
   connectString?: string
+  subnetId?: string
+  vcnId?: string
 }
 
 export interface VcnResource {

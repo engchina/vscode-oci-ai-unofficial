@@ -1,17 +1,26 @@
 import { clsx } from "clsx"
-import { AlertCircle, CheckCircle2, ChevronLeft, Edit, Loader2, Plus, RefreshCw, Search, Shield, Trash2, X } from "lucide-react"
+import { AlertCircle, CheckCircle2, ChevronLeft, Edit, Loader2, Plus, Search, Shield, Trash2, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ResourceServiceClient } from "../../services/grpc-client"
 import type { SecurityListResource, SecurityRule, VcnResource } from "../../services/types"
 import GuardrailDialog from "../common/GuardrailDialog"
 import Button from "../ui/Button"
-
-type GuardrailState = {
-    title: string
-    description: string
-    details: string[]
-    onConfirm: () => Promise<void>
-} | null
+import InlineNotice from "../ui/InlineNotice"
+import {
+    WorkbenchActionButton,
+    WorkbenchDismissButton,
+    WorkbenchEditIconButton,
+    WorkbenchIconDestructiveButton,
+    WorkbenchInlineActionCluster,
+    WorkbenchRevealButton,
+} from "../workbench/WorkbenchActionButtons"
+import { WorkbenchEmptyState, WorkbenchLoadingState } from "../workbench/DatabaseWorkbenchChrome"
+import {
+    buildWorkbenchResourceGuardrailDetails,
+    createDeleteResourceGuardrail,
+    type WorkbenchGuardrailState,
+} from "../workbench/guardrail"
+import { WorkbenchRefreshButton, WorkbenchToolbarGroup } from "../workbench/WorkbenchToolbar"
 
 type RecentActionState = {
     kind: "created" | "updated" | "deleted"
@@ -23,9 +32,11 @@ type RecentActionState = {
 export default function SecurityListView({
     vcn,
     onBack,
+    embedded = false,
 }: {
     vcn: VcnResource
-    onBack: () => void
+    onBack?: () => void
+    embedded?: boolean
 }) {
     const [securityLists, setSecurityLists] = useState<SecurityListResource[]>([])
     const [loading, setLoading] = useState(true)
@@ -35,7 +46,7 @@ export default function SecurityListView({
     const [editingList, setEditingList] = useState<SecurityListResource | null>(null)
     const [isCreating, setIsCreating] = useState(false)
     const [deletingId, setDeletingId] = useState<string | null>(null)
-    const [guardrail, setGuardrail] = useState<GuardrailState>(null)
+    const [guardrail, setGuardrail] = useState<WorkbenchGuardrailState>(null)
     const [recentAction, setRecentAction] = useState<RecentActionState>(null)
     const [highlightedSecurityListId, setHighlightedSecurityListId] = useState<string | null>(null)
     const actionTimerRef = useRef<number | null>(null)
@@ -150,14 +161,16 @@ export default function SecurityListView({
     const handleDelete = async (id: string) => {
         const securityList = securityLists.find((item) => item.id === id)
         if (!securityList) return
-        setGuardrail({
-            title: "Delete Security List",
-            description: "Deleting a security list can immediately affect ingress and egress traffic for attached subnets.",
-            details: [
-                `VCN: ${vcn.name}`,
-                `Security List: ${securityList.name}`,
-                `Region: ${vcn.region}`,
-            ],
+        setGuardrail(createDeleteResourceGuardrail({
+            resourceKind: "security-list",
+            details: buildWorkbenchResourceGuardrailDetails({
+                resourceLabel: "VCN",
+                resourceName: vcn.name,
+                region: vcn.region,
+                extras: [
+                { label: "Security List", value: securityList.name },
+                ],
+            }),
             onConfirm: async () => {
                 setDeletingId(id)
                 try {
@@ -174,7 +187,7 @@ export default function SecurityListView({
                     setDeletingId(null)
                 }
             },
-        })
+        }))
     }
 
     if (editingList || isCreating) {
@@ -214,31 +227,33 @@ export default function SecurityListView({
         <div className="flex h-full min-h-0 flex-col">
             <div className="flex items-center justify-between gap-3 border-b border-[var(--vscode-panel-border)] px-3 py-2 bg-[var(--vscode-editor-background)]">
                 <div className="flex min-w-0 items-center gap-2">
-                    <button
-                        onClick={onBack}
-                        className="flex h-6 w-6 items-center justify-center rounded-[2px] hover:bg-[var(--vscode-toolbar-hoverBackground)] hover:text-[var(--vscode-toolbar-hoverOutline)]"
-                        title="Back to VCNs"
-                    >
-                        <ChevronLeft size={14} />
-                    </button>
+                    {onBack && !embedded && (
+                        <button
+                            onClick={onBack}
+                            className="flex h-6 w-6 items-center justify-center rounded-[2px] hover:bg-[var(--vscode-toolbar-hoverBackground)] hover:text-[var(--vscode-toolbar-hoverOutline)]"
+                            title="Back to VCNs"
+                        >
+                            <ChevronLeft size={14} />
+                        </button>
+                    )}
                     <div className="flex min-w-0 flex-col">
-                        <span className="text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)] truncate">Security Lists: {vcn.name}</span>
+                        <span className="text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)] truncate">
+                            {embedded ? "Security Lists" : `Security Lists: ${vcn.name}`}
+                        </span>
+                        {embedded && <span className="truncate text-[10px] text-description">{vcn.name}</span>}
                     </div>
                 </div>
-                <div className="flex items-center gap-1">
+                <WorkbenchToolbarGroup className="items-center gap-1">
                     <Button variant="secondary" size="sm" onClick={() => setIsCreating(true)} className="flex items-center gap-1.5 h-6">
                         <Plus size={14} /> Create
                     </Button>
-                    <Button
-                        variant="icon"
-                        size="icon"
+                    <WorkbenchRefreshButton
                         onClick={load}
                         disabled={loading}
+                        spinning={loading}
                         title="Refresh"
-                    >
-                        <RefreshCw size={14} className={clsx(loading && "animate-spin")} />
-                    </Button>
-                </div>
+                    />
+                </WorkbenchToolbarGroup>
             </div>
 
             {securityLists.length > 0 && (
@@ -268,65 +283,67 @@ export default function SecurityListView({
 
             <div className="flex-1 overflow-y-auto px-3 py-3">
                 {error && (
-                    <div className="mb-4 flex items-start gap-2 rounded-[2px] border border-error/30 bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,red_8%)] px-3 py-2.5 text-[11px] text-error">
-                        <AlertCircle size={13} className="mt-0.5 shrink-0" />
-                        <span>{error}</span>
-                    </div>
+                    <InlineNotice tone="danger" icon={<AlertCircle size={13} />} className="mb-4">
+                        {error}
+                    </InlineNotice>
                 )}
 
                 {recentAction && (
-                    <div className="mb-4 flex items-center justify-between gap-3 rounded-[2px] border border-[color-mix(in_srgb,var(--vscode-button-background)_32%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_84%,var(--vscode-button-background)_16%)] px-3 py-2 text-[11px]">
-                        <div className="flex min-w-0 items-center gap-2">
-                            <CheckCircle2 size={14} className="shrink-0 text-[var(--vscode-testing-iconPassed)]" />
-                            <div className="min-w-0 text-description">
+                    <InlineNotice
+                        tone="info"
+                        icon={<CheckCircle2 size={14} className="text-[var(--vscode-testing-iconPassed)]" />}
+                        className="mb-4"
+                        actions={(
+                            <>
+                                {recentAction.securityListId && recentAction.kind !== "deleted" && (
+                                    <WorkbenchRevealButton
+                                        onClick={() => revealSecurityList(recentAction.securityListId ?? "")}
+                                        title="Show this security list in the list"
+                                        label="Show Security List"
+                                    />
+                                )}
+                                <WorkbenchDismissButton onClick={() => setRecentAction(null)} title="Dismiss" />
+                            </>
+                        )}
+                    >
+                        <div className="min-w-0">
                                 {formatSecurityListActionMessage(recentAction.kind)}
                                 {" "}
                                 <span className="text-[var(--vscode-foreground)]">{recentAction.securityListName}</span>
                                 {" "}
                                 {formatRecentActionAge(recentAction.timestamp)}
-                            </div>
                         </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                            {recentAction.securityListId && recentAction.kind !== "deleted" && (
-                                <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    onClick={() => revealSecurityList(recentAction.securityListId ?? "")}
-                                    title="Show this security list in the list"
-                                >
-                                    Show Security List
-                                </Button>
-                            )}
-                            <Button variant="ghost" size="sm" onClick={() => setRecentAction(null)} title="Dismiss">
-                                Dismiss
-                            </Button>
-                        </div>
-                    </div>
+                    </InlineNotice>
                 )}
 
                 {highlightedListHiddenByFilter && recentAction?.securityListName && (
-                    <div className="mb-4 flex items-center justify-between gap-3 rounded-[2px] border border-[color-mix(in_srgb,var(--vscode-button-background)_35%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_86%,var(--vscode-button-background)_14%)] px-3 py-2">
-                        <div className="min-w-0 text-[11px] text-description">
+                    <InlineNotice
+                        tone="info"
+                        className="mb-4"
+                        actions={(
+                            <Button variant="secondary" size="sm" onClick={() => setQuery("")}>
+                                Clear Filter
+                            </Button>
+                        )}
+                    >
+                        <div className="min-w-0">
                             <span className="text-[var(--vscode-foreground)]">{recentAction.securityListName}</span> is hidden by the current filter.
                         </div>
-                        <Button variant="secondary" size="sm" onClick={() => setQuery("")}>
-                            Clear Filter
-                        </Button>
-                    </div>
+                    </InlineNotice>
                 )}
 
                 {loading ? (
-                    <div className="flex py-8 justify-center">
-                        <Loader2 size={24} className="animate-spin text-description" />
-                    </div>
+                    <WorkbenchLoadingState label="Loading security lists..." />
                 ) : securityLists.length === 0 ? (
-                    <div className="text-center py-8 text-description text-[12px]">
-                        No security lists found for this VCN.
-                    </div>
+                    <WorkbenchEmptyState
+                        title="No security lists found"
+                        description="No security lists are attached to this VCN yet."
+                    />
                 ) : filteredSecurityLists.length === 0 ? (
-                    <div className="text-center py-8 text-description text-[12px]">
-                        No security lists match your filter.
-                    </div>
+                    <WorkbenchEmptyState
+                        title="No matches"
+                        description="No security lists match the current filter."
+                    />
                 ) : (
                     <div className="flex flex-col gap-3">
                         {filteredSecurityLists.map(sl => (
@@ -354,14 +371,16 @@ export default function SecurityListView({
                                         </div>
                                         <div className="text-[11px] text-description mt-0.5 truncate" title={sl.id}>{sl.id}</div>
                                     </div>
-                                    <div className="flex gap-1 shrink-0">
-                                        <Button variant="secondary" size="sm" onClick={() => setEditingList(sl)}>
-                                            <Edit size={12} />
-                                        </Button>
-                                        <Button variant="secondary" size="sm" onClick={() => handleDelete(sl.id)} disabled={deletingId === sl.id}>
-                                            {deletingId === sl.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} className="text-error" />}
-                                        </Button>
-                                    </div>
+                                    <WorkbenchInlineActionCluster className="gap-1 shrink-0">
+                                        <WorkbenchEditIconButton onClick={() => setEditingList(sl)} title="Edit security list" />
+                                        <WorkbenchIconDestructiveButton
+                                            icon={<Trash2 size={12} />}
+                                            onClick={() => handleDelete(sl.id)}
+                                            disabled={deletingId === sl.id}
+                                            title="Delete security list"
+                                            busy={deletingId === sl.id}
+                                        />
+                                    </WorkbenchInlineActionCluster>
                                 </div>
 
                                 <div className="mt-3 grid grid-cols-2 gap-4 border-t border-[var(--vscode-panel-border)] pt-2">
@@ -382,9 +401,9 @@ export default function SecurityListView({
                 open={guardrail !== null}
                 title={guardrail?.title ?? ""}
                 description={guardrail?.description ?? ""}
-                confirmLabel="Delete Security List"
+                confirmLabel={guardrail?.confirmLabel ?? "Confirm"}
                 details={guardrail?.details ?? []}
-                tone="danger"
+                tone={guardrail?.tone}
                 busy={deletingId !== null}
                 onCancel={() => {
                     if (!deletingId) {
@@ -510,18 +529,19 @@ function SecurityListForm({
                 </button>
                 <span className="text-sm font-semibold">{initialData ? "Edit Security List" : "Create Security List"}</span>
                 <div className="ml-auto">
-                    <Button size="sm" onClick={handleSave} disabled={saving}>
-                        {saving ? <Loader2 size={14} className="animate-spin" /> : "Save"}
-                    </Button>
+                    <WorkbenchInlineActionCluster>
+                        <WorkbenchActionButton onClick={handleSave} disabled={saving}>
+                            {saving ? <Loader2 size={14} className="animate-spin" /> : "Save"}
+                        </WorkbenchActionButton>
+                    </WorkbenchInlineActionCluster>
                 </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
                 {error && (
-                    <div className="flex items-start gap-2 rounded-lg border border-error/30 bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,red_8%)] px-3 py-2.5 text-xs text-error">
-                        <AlertCircle size={13} className="mt-0.5 shrink-0" />
-                        <span>{error}</span>
-                    </div>
+                    <InlineNotice tone="danger" size="md" icon={<AlertCircle size={13} />}>
+                        {error}
+                    </InlineNotice>
                 )}
 
                 {!initialData && (
@@ -678,7 +698,9 @@ function SecurityRuleTable({
         <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
                 <h4 className="text-sm font-semibold">{type === "ingress" ? "Ingress Rules" : "Egress Rules"}</h4>
-                <Button variant="secondary" size="sm" onClick={onAddRule}>Add {type === "ingress" ? "Ingress" : "Egress"} Rule</Button>
+                <WorkbenchInlineActionCluster>
+                    <WorkbenchActionButton variant="secondary" onClick={onAddRule}>Add {type === "ingress" ? "Ingress" : "Egress"} Rule</WorkbenchActionButton>
+                </WorkbenchInlineActionCluster>
             </div>
             <div className="overflow-x-auto border border-border-panel rounded-lg">
                 <table className="w-full text-left text-xs whitespace-nowrap">
@@ -775,13 +797,12 @@ function SecurityRuleTable({
                                     />
                                 </td>
                                 <td className="px-3 py-2 text-right">
-                                    <button
-                                        className="p-1 rounded text-description hover:bg-list-background-hover hover:text-error transition-colors"
+                                    <WorkbenchIconDestructiveButton
+                                        icon={<Trash2 size={14} />}
                                         onClick={() => onRemoveRule(idx)}
                                         title="Delete Rule"
-                                    >
-                                        <Trash2 size={14} />
-                                    </button>
+                                        className="h-7 w-7 rounded"
+                                    />
                                 </td>
                             </tr>
                         ))}

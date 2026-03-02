@@ -7,17 +7,16 @@ import {
   Loader2,
   PlayCircle,
   Plug,
-  RefreshCw,
   Save,
   Search,
   SquareTerminal,
   StopCircle,
   Trash2,
   Unplug,
-  X,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useExtensionState } from "../../context/ExtensionStateContext"
+import { toneFromLifecycleState, useWorkbenchInsight } from "../../context/WorkbenchInsightContext"
 import { ResourceServiceClient } from "../../services/grpc-client"
 import type {
   AdbResource,
@@ -31,17 +30,40 @@ import OracleDiagnosticsPanel from "../common/OracleDiagnosticsPanel"
 import Button from "../ui/Button"
 import CompartmentSelector from "../ui/CompartmentSelector"
 import Input from "../ui/Input"
+import InlineNotice from "../ui/InlineNotice"
+import StatusBadge, { LifecycleBadge } from "../ui/StatusBadge"
 import Textarea from "../ui/Textarea"
+import {
+  DatabaseContextStrip,
+  DatabaseWorkbenchHero,
+  WorkbenchLoadingState,
+  WorkbenchEmptyState,
+  WorkbenchSection,
+} from "../workbench/DatabaseWorkbenchChrome"
+import FeaturePageLayout, { FeatureSearchInput } from "../workbench/FeaturePageLayout"
+import WorkbenchActionInventoryCard from "../workbench/WorkbenchActionInventoryCard"
+import {
+  WorkbenchInventoryFilterEmpty,
+  WorkbenchInventoryGroupHeading,
+  WorkbenchInventoryRegionHeading,
+  WorkbenchInventorySummary,
+} from "../workbench/WorkbenchInventoryScaffold"
+import {
+  WorkbenchActionButton,
+  WorkbenchDestructiveButton,
+  WorkbenchDismissButton,
+  WorkbenchGuardrailActionButton,
+  WorkbenchInlineActionCluster,
+  WorkbenchRevealButton,
+  WorkbenchSelectButton,
+} from "../workbench/WorkbenchActionButtons"
+import type { WorkbenchGuardrailState } from "../workbench/guardrail"
+import { buildWorkbenchResourceGuardrailDetails, createStartResourceGuardrail, createStopResourceGuardrail } from "../workbench/guardrail"
+import WorkbenchQueryResult from "../workbench/WorkbenchQueryResult"
+import { WorkbenchRefreshButton, WorkbenchToolbarGroup, WorkbenchToolbarSpacer } from "../workbench/WorkbenchToolbar"
+import SplitWorkspaceLayout from "../workbench/SplitWorkspaceLayout"
 
 type ActionState = { id: string; action: "starting" | "stopping" } | null
-type GuardrailState = {
-  tone: "warning" | "danger"
-  title: string
-  description: string
-  confirmLabel: string
-  details: string[]
-  onConfirm: () => Promise<void>
-} | null
 type RecentActionState = {
   resourceId: string
   resourceName: string
@@ -57,7 +79,8 @@ const TRANSITIONAL_STATES = new Set([
 const POLL_INTERVAL_MS = 5000
 
 export default function AdbView() {
-  const { activeProfile, profilesConfig, tenancyOcid, adbCompartmentIds } = useExtensionState()
+  const { activeProfile, profilesConfig, tenancyOcid, adbCompartmentIds, navigateToView } = useExtensionState()
+  const { pendingSelection, setPendingSelection, setResource } = useWorkbenchInsight()
   const [databases, setDatabases] = useState<AdbResource[]>([])
   const [selectedAdbId, setSelectedAdbId] = useState("")
   const [loading, setLoading] = useState(true)
@@ -80,7 +103,7 @@ export default function AdbView() {
   const [diagnostics, setDiagnostics] = useState<OracleDbDiagnosticsResponse | null>(null)
   const [loadingDiagnostics, setLoadingDiagnostics] = useState(false)
   const previousSelectedAdbIdRef = useRef("")
-  const [guardrail, setGuardrail] = useState<GuardrailState>(null)
+  const [guardrail, setGuardrail] = useState<WorkbenchGuardrailState>(null)
   const [recentAction, setRecentAction] = useState<RecentActionState>(null)
   const [highlightedDatabaseId, setHighlightedDatabaseId] = useState<string | null>(null)
   const actionTimerRef = useRef<number | null>(null)
@@ -116,6 +139,66 @@ export default function AdbView() {
     () => adbCompartmentIds.map((id) => id.trim()).filter((id) => id.length > 0),
     [adbCompartmentIds],
   )
+
+  useEffect(() => {
+    if (!selectedDatabase) {
+      setResource(null)
+      return
+    }
+
+    setResource({
+      view: "adb",
+      title: selectedDatabase.name,
+      eyebrow: "Selected Autonomous DB",
+      resourceId: selectedDatabase.id,
+      badge: connectionId
+        ? { label: "Connected", tone: "success" }
+        : { label: selectedDatabase.lifecycleState, tone: toneFromLifecycleState(selectedDatabase.lifecycleState) },
+      metrics: [
+        { label: "Region", value: selectedDatabase.region || "default" },
+        { label: "Lifecycle", value: selectedDatabase.lifecycleState },
+        { label: "Service", value: serviceName || "Not set" },
+        { label: "Wallet", value: walletPath || "Not downloaded" },
+      ],
+      notes: [
+        connectionTarget
+          ? `Connection target: ${connectionTarget.serviceName}`
+          : "No active SQL connection for this database.",
+        hasSavedProfile ? "A saved connection profile is available." : "Connection profile is not saved yet.",
+      ],
+      actions: [
+        ...(query
+          ? [{
+            label: "Clear Filter",
+            run: () => setQuery(""),
+            variant: "ghost" as const,
+          }]
+          : []),
+        {
+          label: "Open SQL Workbench",
+          run: () => {
+            setPendingSelection({
+              view: "sqlWorkbench",
+              targetId: selectedDatabase.id,
+              targetType: "adb",
+            })
+            navigateToView("sqlWorkbench")
+          },
+          variant: "secondary",
+        },
+      ],
+    })
+
+    return () => setResource(null)
+  }, [connectionId, connectionTarget, hasSavedProfile, navigateToView, query, selectedDatabase, serviceName, setPendingSelection, setResource, walletPath])
+
+  useEffect(() => {
+    if (pendingSelection?.view !== "adb") {
+      return
+    }
+    setSelectedAdbId(pendingSelection.targetId)
+    setPendingSelection(null)
+  }, [pendingSelection, setPendingSelection])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -528,364 +611,314 @@ export default function AdbView() {
   }, [])
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--vscode-panel-border)] px-3 py-2 bg-[var(--vscode-editor-background)]">
-        <div className="flex min-w-0 items-center gap-2">
-          <Database size={14} className="text-[var(--vscode-icon-foreground)]" />
-          <div className="flex min-w-0 flex-col">
-            <span className="text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)]">Autonomous AI Database</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-1">
-          {isPolling && <span className="text-[10px] text-warning animate-pulse mr-2">Refreshing...</span>}
-          <Button
-            variant="icon"
-            size="icon"
-            onClick={load}
-            disabled={loading}
-            title={isPolling ? "Auto-refreshing every 5s" : "Refresh"}
-          >
-            <RefreshCw size={14} className={clsx(loading && "animate-spin")} />
-          </Button>
-        </div>
-      </div>
-
-      <div className="border-b border-[var(--vscode-panel-border)] px-3 pt-3 pb-2 flex flex-col gap-2 bg-[var(--vscode-editor-background)]">
-        <CompartmentSelector featureKey="adb" multiple />
-        {databases.length > 0 && (
-          <div className="flex items-center gap-2 rounded-[2px] border border-input-border bg-input-background px-2 py-1 focus-within:outline focus-within:outline-1 focus-within:outline-[var(--vscode-focusBorder)] focus-within:-outline-offset-1">
-            <Search size={12} className="shrink-0 text-[var(--vscode-icon-foreground)]" />
-            <input
-              type="text"
+    <FeaturePageLayout
+      title="Autonomous Database"
+      description="Browse ADB resources, connect through wallets, and run SQL from the same page."
+      icon={<Database size={16} />}
+      status={isPolling ? <StatusBadge label="Auto-refreshing" tone="warning" className="animate-pulse" /> : undefined}
+      actions={(
+        <WorkbenchRefreshButton
+          onClick={load}
+          disabled={loading}
+          spinning={loading}
+          title={isPolling ? "Auto-refreshing every 5s" : "Refresh"}
+        />
+      )}
+      controls={(
+        <div className="flex flex-col gap-2">
+          <CompartmentSelector featureKey="adb" multiple />
+          {databases.length > 0 && (
+            <FeatureSearchInput
               value={query}
-              onChange={e => setQuery(e.target.value)}
+              onChange={setQuery}
               placeholder="Filter databases..."
-              className="flex-1 bg-transparent text-[13px] text-input-foreground outline-none placeholder:text-input-placeholder"
             />
-            {query && (
-              <button
-                type="button"
-                onClick={() => setQuery("")}
-                className="flex h-5 w-5 items-center justify-center rounded-[2px] text-description hover:bg-[var(--vscode-toolbar-hoverBackground)] hover:text-[var(--vscode-foreground)]"
-                title="Clear filter"
-              >
-                <X size={12} />
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-3 py-3">
+          )}
+        </div>
+      )}
+    >
+      <div className="flex h-full min-h-0 flex-col px-4 py-4">
         {error && (
-          <div className="mb-4 flex items-start gap-2 rounded-lg border border-error/30 bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,red_8%)] px-3 py-2.5 text-xs text-error">
-            <AlertCircle size={13} className="mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
+          <InlineNotice tone="danger" size="md" icon={<AlertCircle size={13} />} className="mb-4">
+            {error}
+          </InlineNotice>
         )}
 
         {recentAction && (
-          <div className="mb-4 flex items-center justify-between gap-3 rounded-[2px] border border-[color-mix(in_srgb,var(--vscode-button-background)_32%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_84%,var(--vscode-button-background)_16%)] px-3 py-2 text-[11px]">
-            <div className="flex min-w-0 items-center gap-2">
-              <CheckCircle2 size={14} className="shrink-0 text-[var(--vscode-testing-iconPassed)]" />
-              <div className="min-w-0 text-description">
-                {recentAction.message} <span className="text-[var(--vscode-foreground)]">{recentAction.resourceName}</span> {formatRecentActionAge(recentAction.timestamp)}
-              </div>
+          <InlineNotice
+            tone="info"
+            icon={<CheckCircle2 size={14} className="text-[var(--vscode-testing-iconPassed)]" />}
+            className="mb-4"
+            actions={(
+              <>
+                <WorkbenchRevealButton onClick={() => revealDatabase(recentAction.resourceId)} title="Show this database in the list" label="Show Database" />
+                <WorkbenchDismissButton onClick={() => setRecentAction(null)} title="Dismiss" />
+              </>
+            )}
+          >
+            <div className="min-w-0">
+              {recentAction.message} <span className="text-[var(--vscode-foreground)]">{recentAction.resourceName}</span> {formatRecentActionAge(recentAction.timestamp)}
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <Button variant="secondary" size="sm" onClick={() => revealDatabase(recentAction.resourceId)} title="Show this database in the list">
-                Show Database
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setRecentAction(null)} title="Dismiss">
-                Dismiss
-              </Button>
-            </div>
-          </div>
+          </InlineNotice>
         )}
 
         {loading && databases.length === 0 ? (
-          <div className="flex items-center justify-center gap-2 p-4 text-[12px] text-description">
-            <Loader2 size={14} className="animate-spin" />
-            <span>Loading databases...</span>
-          </div>
+          <WorkbenchLoadingState
+            label="Loading databases..."
+            className="min-h-[140px] py-6"
+          />
         ) : databases.length === 0 ? (
-          <EmptyState hasSelectedCompartments={selectedCompartmentIds.length > 0} />
+          <div className="flex flex-1">
+            <EmptyState hasSelectedCompartments={selectedCompartmentIds.length > 0} />
+          </div>
         ) : (
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wider text-description">
-                {filtered.length === databases.length
-                  ? `${databases.length} Database${databases.length !== 1 ? "s" : ""}`
-                  : `${filtered.length} of ${databases.length} Databases`}
-              </h4>
-              {filtered.length === 0 ? (
-                <p className="py-8 text-center text-xs text-description">No databases match your filter.</p>
-              ) : (
-                grouped.map((compartmentGroup) => (
-                  <div key={compartmentGroup.compartmentId} className="mb-4">
-                    <h5 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[var(--vscode-sideBarTitle-foreground)]">
-                      {compartmentNameById.get(compartmentGroup.compartmentId) ?? compartmentGroup.compartmentId}
-                    </h5>
-                    <div className="flex flex-col gap-3">
-                      {compartmentGroup.regions.map((regionGroup) => (
-                        <div key={`${compartmentGroup.compartmentId}-${regionGroup.region}`} className="flex flex-col gap-2">
-                          <h6 className="text-[10px] font-semibold uppercase tracking-wider text-description border-b border-[var(--vscode-panel-border)] pb-1">
-                            {regionGroup.region}
-                          </h6>
-                          {regionGroup.databases.map((db) => (
-                            <DatabaseCard
-                              key={`${db.id}-${db.region ?? "default"}`}
-                              database={db}
-                              selected={db.id === selectedAdbId}
-                              highlighted={highlightedDatabaseId === db.id}
-                              onRegisterRef={(node) => {
-                                if (node) {
-                                  databaseItemRefs.current.set(db.id, node)
-                                } else {
-                                  databaseItemRefs.current.delete(db.id)
-                                }
-                              }}
-                              actionState={actionState}
-                              onStart={handleStart}
-                              onStop={handleStop}
-                              onRequestGuardrail={setGuardrail}
-                              onSelect={setSelectedAdbId}
-                            />
+          <div className="min-h-0 flex-1">
+            <SplitWorkspaceLayout
+              sidebar={(
+                <div className="flex flex-col gap-3">
+                  <WorkbenchInventorySummary
+                    label="Database inventory"
+                    count={filtered.length === databases.length
+                      ? `${databases.length} database${databases.length !== 1 ? "s" : ""}`
+                      : `${filtered.length} of ${databases.length} databases`}
+                    description="Select a database to manage lifecycle, wallet download, and SQL execution."
+                  />
+
+                  {filtered.length === 0 ? (
+                    <WorkbenchInventoryFilterEmpty message="No databases match your filter." />
+                  ) : (
+                    grouped.map((compartmentGroup) => (
+                      <div key={compartmentGroup.compartmentId} className="mb-1">
+                        <WorkbenchInventoryGroupHeading>
+                          {compartmentNameById.get(compartmentGroup.compartmentId) ?? compartmentGroup.compartmentId}
+                        </WorkbenchInventoryGroupHeading>
+                        <div className="flex flex-col gap-3">
+                          {compartmentGroup.regions.map((regionGroup) => (
+                            <div key={`${compartmentGroup.compartmentId}-${regionGroup.region}`} className="flex flex-col gap-2">
+                              <WorkbenchInventoryRegionHeading>
+                                {regionGroup.region}
+                              </WorkbenchInventoryRegionHeading>
+                              {regionGroup.databases.map((db) => (
+                                <DatabaseCard
+                                  key={`${db.id}-${db.region ?? "default"}`}
+                                  database={db}
+                                  selected={db.id === selectedAdbId}
+                                  highlighted={highlightedDatabaseId === db.id}
+                                  onRegisterRef={(node) => {
+                                    if (node) {
+                                      databaseItemRefs.current.set(db.id, node)
+                                    } else {
+                                      databaseItemRefs.current.delete(db.id)
+                                    }
+                                  }}
+                                  actionState={actionState}
+                                  onStart={handleStart}
+                                  onStop={handleStop}
+                                  onRequestGuardrail={setGuardrail}
+                                  onSelect={setSelectedAdbId}
+                                />
+                              ))}
+                            </div>
                           ))}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="flex flex-col gap-3 rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-3 shadow-sm mt-2">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <h4 className="text-[13px] font-semibold text-[var(--vscode-foreground)]">ADB SQL Console</h4>
-                  <p className="text-[11px] text-description">
-                    {selectedDatabase?.name ?? "No Database Selected"}
-                  </p>
-                </div>
-                <span
-                  className={clsx(
-                    "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider",
-                    connectionId
-                      ? "border-success/30 text-success bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,green_18%)]"
-                      : "border-border-panel text-description",
+                      </div>
+                    ))
                   )}
-                >
-                  {connectionId ? "Connected" : "Disconnected"}
-                </span>
-              </div>
-              {connectionTarget && (
-                <div className="rounded-md border border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_97%,black_3%)] px-2.5 py-2 text-[11px] text-description">
-                  <div><span className="font-semibold text-foreground">DB:</span> <code>{connectionTarget.autonomousDatabaseId}</code></div>
-                  <div><span className="font-semibold text-foreground">Service:</span> <code>{connectionTarget.serviceName}</code></div>
-                  <div className="break-all"><span className="font-semibold text-foreground">Wallet:</span> <code>{connectionTarget.walletPath}</code></div>
                 </div>
               )}
-              <OracleDiagnosticsPanel diagnostics={diagnostics} />
-
-              <div className="grid gap-2 sm:grid-cols-2">
-                <Input
-                  type="password"
-                  label="Wallet Password"
-                  value={walletPassword}
-                  onChange={e => setWalletPassword(e.target.value)}
-                  placeholder="At least 8 chars"
-                />
-                <div className="flex items-end">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className="w-full gap-1.5"
-                    onClick={handleDownloadWallet}
-                    disabled={adbBusyAction !== null || !selectedAdbId || walletPassword.trim().length < 8}
-                  >
-                    {adbBusyAction === "wallet" ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-                    Download Wallet
-                  </Button>
-                </div>
-              </div>
-
-              <Input
-                label="Wallet Path"
-                value={walletPath}
-                onChange={e => setWalletPath(e.target.value)}
-                placeholder="Wallet directory path"
-              />
-
-              <div className="grid gap-2 sm:grid-cols-3">
-                <Input
-                  label="Username"
-                  value={username}
-                  onChange={e => setUsername(e.target.value)}
-                  placeholder="ADMIN"
-                />
-                <Input
-                  type="password"
-                  label="Password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  placeholder="Database password"
-                />
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-description">Service Name</label>
-                  <input
-                    value={serviceName}
-                    onChange={e => setServiceName(e.target.value)}
-                    list="adb-service-names"
-                    placeholder="e.g. dbname_high"
-                    className="w-full rounded-md border border-input-border bg-input-background px-3 py-2 text-sm text-input-foreground outline-none focus:border-border placeholder:text-input-placeholder"
+              main={(
+                <div className="flex flex-col gap-3">
+                  <DatabaseWorkbenchHero
+                    eyebrow="Autonomous Database"
+                    title={selectedDatabase?.name ?? "No Database Selected"}
+                    resourceId={selectedDatabase?.id}
+                    connected={Boolean(connectionId)}
+                    metaItems={selectedDatabase ? [
+                      { label: "Database", value: selectedDatabase.name },
+                      { label: "Region", value: selectedDatabase.region || "default" },
+                      { label: "Lifecycle", value: selectedDatabase.lifecycleState },
+                    ] : []}
                   />
-                  <datalist id="adb-service-names">
-                    {serviceNames.map((name) => <option key={name} value={name} />)}
-                  </datalist>
-                </div>
-              </div>
 
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  className="gap-1.5"
-                  onClick={handleConnect}
-                  disabled={
-                    adbBusyAction !== null ||
-                    Boolean(connectionId) ||
-                    !selectedAdbId ||
-                    !walletPath.trim() ||
-                    !walletPassword.trim() ||
-                    !username.trim() ||
-                    !password ||
-                    !serviceName.trim()
-                  }
-                >
-                  {adbBusyAction === "connect" ? <Loader2 size={12} className="animate-spin" /> : <Plug size={12} />}
-                  Connect
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  className="gap-1.5"
-                  onClick={handleDisconnect}
-                  disabled={adbBusyAction !== null || !connectionId}
-                >
-                  {adbBusyAction === "disconnect" ? <Loader2 size={12} className="animate-spin" /> : <Unplug size={12} />}
-                  Disconnect
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  className="gap-1.5"
-                  onClick={handleDiagnostics}
-                  disabled={loadingDiagnostics}
-                >
-                  {loadingDiagnostics ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
-                  Connection Diagnostic
-                </Button>
-                <div className="ml-auto flex gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className="gap-1.5"
-                    onClick={handleSaveConnection}
-                    disabled={
-                      adbBusyAction !== null ||
-                      !selectedAdbId ||
-                      !walletPath.trim() ||
-                      !username.trim() ||
-                      !serviceName.trim()
-                    }
-                  >
-                    {adbBusyAction === "save" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                    {hasSavedProfile ? "Saved" : "Save"}
-                  </Button>
-                  {hasSavedProfile && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      className="gap-1.5 text-error hover:text-error"
-                      onClick={handleDeleteConnection}
-                      disabled={adbBusyAction !== null}
+                  {connectionTarget && (
+                    <DatabaseContextStrip
+                      items={[
+                        { label: "DB", value: connectionTarget.autonomousDatabaseId },
+                        { label: "Service", value: connectionTarget.serviceName },
+                        { label: "Wallet", value: connectionTarget.walletPath, breakAll: true },
+                      ]}
+                    />
+                  )}
+                  <OracleDiagnosticsPanel diagnostics={diagnostics} />
+
+                  <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                    <WorkbenchSection
+                      title="Connection"
+                      subtitle="Download wallets, keep a saved profile, and maintain the active database session."
                     >
-                      {adbBusyAction === "delete" ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                      Delete
-                    </Button>
-                  )}
-                </div>
-              </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <Input
+                          type="password"
+                          label="Wallet Password"
+                          value={walletPassword}
+                          onChange={e => setWalletPassword(e.target.value)}
+                          placeholder="At least 8 chars"
+                        />
+                        <div className="flex items-end">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className="w-full gap-1.5"
+                            onClick={handleDownloadWallet}
+                            disabled={adbBusyAction !== null || !selectedAdbId || walletPassword.trim().length < 8}
+                          >
+                            {adbBusyAction === "wallet" ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                            Download Wallet
+                          </Button>
+                        </div>
+                      </div>
 
-              <Textarea
-                label="SQL"
-                value={sql}
-                onChange={e => setSql(e.target.value)}
-                className="min-h-[100px] font-mono text-xs"
-                placeholder="SELECT * FROM your_table FETCH FIRST 20 ROWS ONLY"
-              />
-              <Button
-                type="button"
-                size="sm"
-                className="w-fit gap-1.5"
-                onClick={handleExecuteSql}
-                disabled={adbBusyAction !== null || !connectionId || !sql.trim()}
-              >
-                {adbBusyAction === "execute" ? <Loader2 size={12} className="animate-spin" /> : <SquareTerminal size={12} />}
-                Execute SQL
-              </Button>
+                      <Input
+                        label="Wallet Path"
+                        value={walletPath}
+                        onChange={e => setWalletPath(e.target.value)}
+                        placeholder="Wallet directory path"
+                      />
 
-              {sqlResult && (
-                <div className="rounded-md border border-border-panel bg-[color-mix(in_srgb,var(--vscode-editor-background)_97%,black_3%)] p-3">
-                  <div className="mb-2 text-xs text-description">{sqlResult.message}</div>
-                  {sqlResult.isSelect ? (
-                    <div className="max-h-[320px] overflow-auto rounded border border-border-panel">
-                      <table className="min-w-full border-collapse text-xs">
-                        <thead className="sticky top-0 bg-list-background-hover">
-                          <tr>
-                            {sqlResult.columns.map((column) => (
-                              <th key={column} className="border-b border-border-panel px-2 py-1.5 text-left font-semibold">
-                                {column}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sqlResult.rows.length === 0 ? (
-                            <tr>
-                              <td
-                                colSpan={Math.max(sqlResult.columns.length, 1)}
-                                className="px-2 py-2 text-description"
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        <Input
+                          label="Username"
+                          value={username}
+                          onChange={e => setUsername(e.target.value)}
+                          placeholder="ADMIN"
+                        />
+                        <Input
+                          type="password"
+                          label="Password"
+                          value={password}
+                          onChange={e => setPassword(e.target.value)}
+                          placeholder="Database password"
+                        />
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-xs font-medium text-description">Service Name</label>
+                          <input
+                            value={serviceName}
+                            onChange={e => setServiceName(e.target.value)}
+                            list="adb-service-names"
+                            placeholder="e.g. dbname_high"
+                            className="w-full rounded-md border border-input-border bg-input-background px-3 py-2 text-sm text-input-foreground outline-none focus:border-border placeholder:text-input-placeholder"
+                          />
+                          <datalist id="adb-service-names">
+                            {serviceNames.map((name) => <option key={name} value={name} />)}
+                          </datalist>
+                        </div>
+                      </div>
+
+                      <WorkbenchToolbarGroup>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="gap-1.5"
+                          onClick={handleConnect}
+                          disabled={
+                            adbBusyAction !== null ||
+                            Boolean(connectionId) ||
+                            !selectedAdbId ||
+                            !walletPath.trim() ||
+                            !walletPassword.trim() ||
+                            !username.trim() ||
+                            !password ||
+                            !serviceName.trim()
+                          }
+                        >
+                          {adbBusyAction === "connect" ? <Loader2 size={12} className="animate-spin" /> : <Plug size={12} />}
+                          Connect
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className="gap-1.5"
+                          onClick={handleDisconnect}
+                          disabled={adbBusyAction !== null || !connectionId}
+                        >
+                          {adbBusyAction === "disconnect" ? <Loader2 size={12} className="animate-spin" /> : <Unplug size={12} />}
+                          Disconnect
+                        </Button>
+                        <WorkbenchActionButton
+                          type="button"
+                          onClick={handleDiagnostics}
+                          disabled={loadingDiagnostics}
+                        >
+                          {loadingDiagnostics ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+                          Connection Diagnostic
+                        </WorkbenchActionButton>
+                        <WorkbenchToolbarSpacer>
+                          <WorkbenchInlineActionCluster>
+                            <WorkbenchActionButton
+                              type="button"
+                              onClick={handleSaveConnection}
+                              disabled={
+                                adbBusyAction !== null ||
+                                !selectedAdbId ||
+                                !walletPath.trim() ||
+                                !username.trim() ||
+                                !serviceName.trim()
+                              }
+                            >
+                              {adbBusyAction === "save" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                              {hasSavedProfile ? "Saved" : "Save"}
+                            </WorkbenchActionButton>
+                            {hasSavedProfile && (
+                              <WorkbenchDestructiveButton
+                                type="button"
+                                onClick={handleDeleteConnection}
+                                disabled={adbBusyAction !== null}
                               >
-                                No rows
-                              </td>
-                            </tr>
-                          ) : (
-                            sqlResult.rows.map((row, index) => (
-                              <tr key={`row-${index}`} className="odd:bg-[color-mix(in_srgb,var(--vscode-editor-background)_98%,white_2%)]">
-                                {sqlResult.columns.map((column) => (
-                                  <td key={`${index}-${column}`} className="border-b border-border-panel/50 px-2 py-1.5 align-top">
-                                    {formatCell(row[column])}
-                                  </td>
-                                ))}
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div className="text-xs text-description">Rows affected: {sqlResult.rowsAffected}</div>
-                  )}
+                                {adbBusyAction === "delete" ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                                Delete
+                              </WorkbenchDestructiveButton>
+                            )}
+                          </WorkbenchInlineActionCluster>
+                        </WorkbenchToolbarSpacer>
+                      </WorkbenchToolbarGroup>
+                    </WorkbenchSection>
+
+                    <WorkbenchSection
+                      title="SQL Runner"
+                      subtitle="Run statements against the current ADB session and inspect the returned rows."
+                    >
+                      <Textarea
+                        label="SQL"
+                        value={sql}
+                        onChange={e => setSql(e.target.value)}
+                        className="min-h-[140px] font-mono text-xs"
+                        placeholder="SELECT * FROM your_table FETCH FIRST 20 ROWS ONLY"
+                      />
+                      <WorkbenchActionButton
+                        type="button"
+                        className="w-fit"
+                        onClick={handleExecuteSql}
+                        disabled={adbBusyAction !== null || !connectionId || !sql.trim()}
+                      >
+                        {adbBusyAction === "execute" ? <Loader2 size={12} className="animate-spin" /> : <SquareTerminal size={12} />}
+                        Execute SQL
+                      </WorkbenchActionButton>
+
+                      {sqlResult ? (
+                        <WorkbenchQueryResult result={sqlResult} />
+                      ) : (
+                        <WorkbenchEmptyState
+                          title="No query output yet"
+                          description="Connect to the selected database and execute a statement to populate this area."
+                        />
+                      )}
+                    </WorkbenchSection>
+                  </div>
                 </div>
               )}
-            </div>
+            />
           </div>
         )}
       </div>
@@ -905,7 +938,7 @@ export default function AdbView() {
         }}
         onConfirm={handleGuardedAction}
       />
-    </div>
+    </FeaturePageLayout>
   )
 }
 
@@ -927,7 +960,7 @@ function DatabaseCard({
   actionState: ActionState
   onStart: (id: string, region?: string) => void
   onStop: (id: string, region?: string) => void
-  onRequestGuardrail: (value: GuardrailState) => void
+  onRequestGuardrail: (value: WorkbenchGuardrailState) => void
   onSelect: (id: string) => void
 }) {
   const isActing = actionState?.id === database.id
@@ -935,90 +968,56 @@ function DatabaseCard({
   const isStopped = database.lifecycleState === "STOPPED"
 
   return (
-    <div
-      ref={onRegisterRef}
-      className={clsx(
-        "flex flex-col gap-2 rounded-[2px] border p-2.5 transition-colors cursor-pointer",
-        selected && highlighted
-          ? "border-[var(--vscode-focusBorder)] bg-[color-mix(in_srgb,var(--vscode-list-hoverBackground)_82%,var(--vscode-button-background)_18%)]"
-          : selected
-          ? "border-[var(--vscode-focusBorder)] bg-[var(--vscode-list-hoverBackground)]"
-          : highlighted
-            ? "border-[color-mix(in_srgb,var(--vscode-button-background)_45%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,var(--vscode-button-background)_18%)]"
-          : "border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] hover:bg-[var(--vscode-list-hoverBackground)]",
+    <WorkbenchActionInventoryCard
+      cardRef={onRegisterRef}
+      title={database.name}
+      subtitle={database.id}
+      selected={selected}
+      highlighted={highlighted}
+      onSelect={() => onSelect(database.id)}
+      trailing={<LifecycleBadge state={database.lifecycleState} />}
+      actions={(
+        <>
+          <WorkbenchSelectButton selected={selected} onClick={() => onSelect(database.id)} />
+          <WorkbenchGuardrailActionButton
+            disabled={isActing || !isStopped}
+            guardrail={createStartResourceGuardrail({
+              resourceKind: "autonomous-database",
+              details: buildWorkbenchResourceGuardrailDetails({
+                resourceLabel: "Database",
+                resourceName: database.name,
+                region: database.region || "default",
+              }),
+              onConfirm: async () => {
+                await onStart(database.id, database.region)
+              },
+            })}
+            onRequestGuardrail={onRequestGuardrail}
+            busy={isActing && actionState?.action === "starting"}
+            idleIcon={<PlayCircle size={12} />}
+            label="Start"
+          />
+          <WorkbenchGuardrailActionButton
+            disabled={isActing || !isAvailable}
+            guardrail={createStopResourceGuardrail({
+              resourceKind: "autonomous-database",
+              details: buildWorkbenchResourceGuardrailDetails({
+                resourceLabel: "Database",
+                resourceName: database.name,
+                region: database.region || "default",
+              }),
+              onConfirm: async () => {
+                await onStop(database.id, database.region)
+              },
+            })}
+            onRequestGuardrail={onRequestGuardrail}
+            busy={isActing && actionState?.action === "stopping"}
+            idleIcon={<StopCircle size={12} />}
+            label="Stop"
+          />
+        </>
       )}
-      onClick={() => !selected && onSelect(database.id)}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 flex-col">
-          <span className="truncate text-[13px] font-medium text-[var(--vscode-foreground)]">{database.name}</span>
-          <span className="truncate text-[11px] text-description">{database.id}</span>
-        </div>
-        <LifecycleBadge state={database.lifecycleState} />
-      </div>
-
-      <div className="flex items-center gap-2">
-        <Button
-          size="sm"
-          variant={selected ? "primary" : "secondary"}
-          onClick={() => onSelect(database.id)}
-        >
-          {selected ? "Selected" : "Select"}
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={isActing || !isStopped}
-          onClick={() => onRequestGuardrail({
-            tone: "warning",
-            title: "Start Autonomous Database",
-            description: "Starting this database resumes access and billing.",
-            confirmLabel: "Start Database",
-            details: [
-              `Database: ${database.name}`,
-              `Region: ${database.region || "default"}`,
-            ],
-            onConfirm: async () => {
-              await onStart(database.id, database.region)
-            },
-          })}
-          className="flex items-center gap-1.5"
-        >
-          {isActing && actionState?.action === "starting" ? (
-            <Loader2 size={12} className="animate-spin" />
-          ) : (
-            <PlayCircle size={12} />
-          )}
-          Start
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={isActing || !isAvailable}
-          onClick={() => onRequestGuardrail({
-            tone: "danger",
-            title: "Stop Autonomous Database",
-            description: "Stopping this database interrupts client access until it is started again.",
-            confirmLabel: "Stop Database",
-            details: [
-              `Database: ${database.name}`,
-              `Region: ${database.region || "default"}`,
-            ],
-            onConfirm: async () => {
-              await onStop(database.id, database.region)
-            },
-          })}
-          className="flex items-center gap-1.5"
-        >
-          {isActing && actionState?.action === "stopping" ? (
-            <Loader2 size={12} className="animate-spin" />
-          ) : (
-            <StopCircle size={12} />
-          )}
-          Stop
-        </Button>
-      </div>
-    </div>
+    />
   )
 }
 
@@ -1030,37 +1029,15 @@ function formatRecentActionAge(timestamp: number): string {
   return `${Math.round(ageMs / 1000)}s ago`
 }
 
-function LifecycleBadge({ state }: { state: string }) {
-  const colorMap: Record<string, string> = {
-    AVAILABLE: "text-success bg-[color-mix(in_srgb,var(--vscode-editor-background)_80%,green_20%)] border-success/30",
-    STOPPED: "text-description bg-[color-mix(in_srgb,var(--vscode-editor-background)_90%,black_10%)] border-border-panel",
-    STOPPING: "text-warning bg-[color-mix(in_srgb,var(--vscode-editor-background)_85%,yellow_15%)] border-warning/30",
-    STARTING: "text-warning bg-[color-mix(in_srgb,var(--vscode-editor-background)_85%,yellow_15%)] border-warning/30",
-    PROVISIONING: "text-warning bg-[color-mix(in_srgb,var(--vscode-editor-background)_85%,yellow_15%)] border-warning/30",
-    TERMINATED: "text-error bg-[color-mix(in_srgb,var(--vscode-editor-background)_85%,red_15%)] border-error/30",
-    UNAVAILABLE: "text-error bg-[color-mix(in_srgb,var(--vscode-editor-background)_85%,red_15%)] border-error/30",
-  }
-  const cls = colorMap[state] ?? "text-description border-border-panel"
-  return (
-    <span className={clsx("shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider", cls)}>
-      {state}
-    </span>
-  )
-}
-
 function EmptyState({ hasSelectedCompartments }: { hasSelectedCompartments: boolean }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border-panel py-16 text-description">
-      <Database size={24} className="mb-2 opacity-70" />
-      <p className="text-sm">
-        {hasSelectedCompartments ? "No Autonomous Databases found." : "No compartment selected"}
-      </p>
-      <p className="mt-1 text-xs">
-        {hasSelectedCompartments
-          ? "No databases found in the selected compartments."
-          : "Please select one or more compartments."}
-      </p>
-    </div>
+    <WorkbenchEmptyState
+      title={hasSelectedCompartments ? "No Autonomous Databases found." : "No compartment selected"}
+      description={hasSelectedCompartments
+        ? "No databases found in the selected compartments."
+        : "Please select one or more compartments."}
+      icon={<Database size={24} className="opacity-70" />}
+    />
   )
 }
 
@@ -1082,11 +1059,4 @@ function groupAdbByCompartmentAndRegion(databases: AdbResource[]): { compartment
     compartmentId,
     regions: [...regions.entries()].map(([region, groupedDatabases]) => ({ region, databases: groupedDatabases })),
   }))
-}
-
-function formatCell(value: string | number | boolean | null | undefined): string {
-  if (value === null || value === undefined) {
-    return "NULL"
-  }
-  return String(value)
 }

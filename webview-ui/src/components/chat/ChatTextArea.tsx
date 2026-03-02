@@ -11,6 +11,7 @@ import {
 } from "react"
 import TextareaAutosize from "react-textarea-autosize"
 import type { ChatImageData, CodeContextPayload, SendMessageRequest } from "../../services/types"
+import { WorkbenchCompactActionCluster, WorkbenchIconActionButton } from "../workbench/WorkbenchActionButtons"
 
 interface ChatTextAreaProps {
   onSend: (request: SendMessageRequest) => void
@@ -234,14 +235,15 @@ export default function ChatTextArea({
                     alt={attachmentName(img.name, idx)}
                   />
                   <span className="truncate text-xs text-foreground">{attachmentName(img.name, idx)}</span>
-                  <button
-                    type="button"
+                  <WorkbenchIconActionButton
                     onClick={() => removeImage(idx)}
-                    className="absolute right-1 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--vscode-editor-background)_72%,black_28%)] text-foreground opacity-85 transition-opacity group-hover:opacity-100"
+                    type="button"
+                    variant="icon"
+                    size="icon"
                     title="Remove image"
-                  >
-                    <X size={12} />
-                  </button>
+                    icon={<X size={12} />}
+                    className="absolute right-1 top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-[color-mix(in_srgb,var(--vscode-editor-background)_72%,black_28%)] p-0 text-foreground opacity-85 transition-opacity group-hover:opacity-100 hover:bg-[color-mix(in_srgb,var(--vscode-editor-background)_68%,black_32%)]"
+                  />
                 </div>
               ))}
             </div>
@@ -261,34 +263,40 @@ export default function ChatTextArea({
             maxRows={8}
             className="w-full resize-none bg-transparent px-1 py-1 pr-20 text-[13px] text-input-foreground outline-none placeholder:text-input-placeholder disabled:cursor-not-allowed disabled:opacity-50"
           />
-          <div className="absolute bottom-1.5 right-1.5 inline-flex items-center gap-1">
-            <button
+          <WorkbenchCompactActionCluster className="absolute bottom-1.5 right-1.5 gap-1">
+            <WorkbenchIconActionButton
               onClick={handlePickImages}
               disabled={disabled || images.length >= MAX_IMAGES}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-description transition-colors hover:bg-list-background-hover hover:text-foreground disabled:opacity-30"
+              type="button"
+              variant="icon"
+              size="icon"
               title={images.length >= MAX_IMAGES ? `Max ${MAX_IMAGES} images` : "Attach images"}
-            >
-              <Paperclip size={16} />
-            </button>
+              icon={<Paperclip size={16} />}
+              className="h-8 w-8 rounded-md text-description hover:bg-list-background-hover hover:text-foreground"
+            />
             {disabled && onCancel ? (
-              <button
+              <WorkbenchIconActionButton
                 onClick={onCancel}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-description transition-colors hover:bg-list-background-hover hover:text-foreground"
+                type="button"
+                variant="icon"
+                size="icon"
                 title="Stop generating"
-              >
-                <Square size={14} />
-              </button>
+                icon={<Square size={14} />}
+                className="h-8 w-8 rounded-md text-description hover:bg-list-background-hover hover:text-foreground"
+              />
             ) : (
-              <button
+              <WorkbenchIconActionButton
                 onClick={handleSend}
                 disabled={!canSend}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-description transition-colors hover:bg-list-background-hover hover:text-foreground disabled:opacity-30"
+                type="button"
+                variant="icon"
+                size="icon"
                 title="Send message"
-              >
-                <SendHorizonal size={16} />
-              </button>
+                icon={<SendHorizonal size={16} />}
+                className="h-8 w-8 rounded-md text-description hover:bg-list-background-hover hover:text-foreground"
+              />
             )}
-          </div>
+          </WorkbenchCompactActionCluster>
         </div>
 
         {validationError && (

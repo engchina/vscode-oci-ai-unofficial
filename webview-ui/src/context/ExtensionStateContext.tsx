@@ -10,7 +10,17 @@ import type {
   StreamTokenResponse
 } from "../services/types"
 
-export type ViewType = "chat" | "settings" | "history"
+export type ViewType =
+  | "home"
+  | "chat"
+  | "history"
+  | "settings"
+  | "vcn"
+  | "compute"
+  | "objectStorage"
+  | "adb"
+  | "dbSystems"
+  | "sqlWorkbench"
 
 export interface ExtensionStateContextType {
   // Hydration
@@ -43,6 +53,7 @@ export interface ExtensionStateContextType {
   showSettings: boolean
 
   // Navigation
+  navigateToView: (view: ViewType) => void
   navigateToSettings: () => void
   navigateToChat: () => void
   navigateToHistory: () => void
@@ -65,7 +76,7 @@ const MAX_IMAGES_PER_MESSAGE = 10
 
 export function ExtensionStateContextProvider({ children }: { children: ReactNode }) {
   const [didHydrateState, setDidHydrateState] = useState(false)
-  const [currentView, setCurrentView] = useState<ViewType>("chat")
+  const [currentView, setCurrentView] = useState<ViewType>("home")
   const [streamingText, setStreamingText] = useState("")
   const [isStreaming, setIsStreaming] = useState(false)
 
@@ -98,6 +109,7 @@ export function ExtensionStateContextProvider({ children }: { children: ReactNod
   const clearPendingCodeContext = useCallback(() => setPendingCodeContext(null), [])
 
   // Navigation
+  const navigateToView = useCallback((view: ViewType) => setCurrentView(view), [])
   const navigateToSettings = useCallback(() => setCurrentView("settings"), [])
   const navigateToChat = useCallback(() => setCurrentView("chat"), [])
   const navigateToHistory = useCallback(() => setCurrentView("history"), [])
@@ -324,6 +336,7 @@ export function ExtensionStateContextProvider({ children }: { children: ReactNod
     streamingText,
     currentView,
     showSettings: currentView === "settings",
+    navigateToView,
     navigateToSettings,
     navigateToChat,
     navigateToHistory,

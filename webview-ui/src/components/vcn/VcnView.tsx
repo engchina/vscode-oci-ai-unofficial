@@ -1,20 +1,39 @@
-import { clsx } from "clsx"
-import { AlertCircle, Loader2, RefreshCw, Search, Network, Shield, X } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { AlertCircle, Network } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useExtensionState } from "../../context/ExtensionStateContext"
+import { toneFromLifecycleState, useWorkbenchInsight } from "../../context/WorkbenchInsightContext"
 import { ResourceServiceClient } from "../../services/grpc-client"
 import type { VcnResource } from "../../services/types"
-import Button from "../ui/Button"
 import CompartmentSelector from "../ui/CompartmentSelector"
+import InlineNotice from "../ui/InlineNotice"
+import { LifecycleBadge } from "../ui/StatusBadge"
+import { WorkbenchEmptyState, WorkbenchHero, WorkbenchLoadingState, WorkbenchSection } from "../workbench/DatabaseWorkbenchChrome"
+import { WorkbenchActionButton } from "../workbench/WorkbenchActionButtons"
+import FeaturePageLayout, { FeatureSearchInput } from "../workbench/FeaturePageLayout"
+import WorkbenchInventoryCard from "../workbench/WorkbenchInventoryCard"
+import {
+    WorkbenchInventoryFilterEmpty,
+    WorkbenchInventoryGroupHeading,
+    WorkbenchInventoryRegionHeading,
+    WorkbenchInventorySummary,
+} from "../workbench/WorkbenchInventoryScaffold"
+import { WorkbenchRefreshButton } from "../workbench/WorkbenchToolbar"
+import SplitWorkspaceLayout from "../workbench/SplitWorkspaceLayout"
 import SecurityListView from "./SecurityListView"
 
 export default function VcnView() {
-    const { activeProfile, profilesConfig, tenancyOcid, vcnCompartmentIds } = useExtensionState()
+    const { activeProfile, profilesConfig, tenancyOcid, vcnCompartmentIds, navigateToView } = useExtensionState()
+    const { pendingSelection, setPendingSelection, setResource } = useWorkbenchInsight()
     const [vcns, setVcns] = useState<VcnResource[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [query, setQuery] = useState("")
     const [selectedVcn, setSelectedVcn] = useState<VcnResource | null>(null)
+    const [requestedVcnId, setRequestedVcnId] = useState<string | null>(null)
+    const [showSecurityListWorkspace, setShowSecurityListWorkspace] = useState(false)
+    const [highlightedVcnId, setHighlightedVcnId] = useState<string | null>(null)
+    const vcnItemRefs = useRef(new Map<string, HTMLButtonElement>())
+    const highlightTimerRef = useRef<number | null>(null)
     const activeProfileConfig = useMemo(
         () => profilesConfig.find((p) => p.name === activeProfile),
         [activeProfile, profilesConfig],
@@ -66,6 +85,12 @@ export default function VcnView() {
             const selectedIds = new Set(selectedCompartmentIds)
             const items = (res.vcns ?? []).filter((vcn) => selectedIds.has((vcn.compartmentId || "").trim()))
             setVcns(items)
+            setSelectedVcn((current) => {
+                if (current && items.some((item) => item.id === current.id)) {
+                    return items.find((item) => item.id === current.id) ?? current
+                }
+                return items[0] ?? null
+            })
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err))
         } finally {
@@ -76,6 +101,134 @@ export default function VcnView() {
     useEffect(() => {
         load()
     }, [load])
+
+    useEffect(() => {
+        if (pendingSelection?.view !== "vcn") {
+            return
+        }
+        setRequestedVcnId(pendingSelection.targetId)
+        setPendingSelection(null)
+    }, [pendingSelection, setPendingSelection])
+
+    useEffect(() => {
+        if (!selectedVcn) {
+            setShowSecurityListWorkspace(false)
+        }
+    }, [selectedVcn])
+
+    useEffect(() => {
+        if (!requestedVcnId) {
+            return
+        }
+        const matchingVcn = vcns.find((item) => item.id === requestedVcnId)
+        if (matchingVcn) {
+            setQuery("")
+            setSelectedVcn(matchingVcn)
+            setShowSecurityListWorkspace(false)
+            setHighlightedVcnId(matchingVcn.id)
+            setRequestedVcnId(null)
+            return
+        }
+        if (!loading) {
+            setRequestedVcnId(null)
+        }
+    }, [loading, requestedVcnId, vcns])
+
+    useEffect(() => {
+        if (highlightTimerRef.current !== null) {
+            window.clearTimeout(highlightTimerRef.current)
+            highlightTimerRef.current = null
+        }
+        if (!highlightedVcnId) {
+            return
+        }
+        highlightTimerRef.current = window.setTimeout(() => {
+            highlightTimerRef.current = null
+            setHighlightedVcnId(null)
+        }, 2200)
+        return () => {
+            if (highlightTimerRef.current !== null) {
+                window.clearTimeout(highlightTimerRef.current)
+                highlightTimerRef.current = null
+            }
+        }
+    }, [highlightedVcnId])
+
+    useEffect(() => {
+        if (!highlightedVcnId || !filtered.some((item) => item.id === highlightedVcnId)) {
+            return
+        }
+        const frameId = window.requestAnimationFrame(() => {
+            vcnItemRefs.current.get(highlightedVcnId)?.scrollIntoView({
+                block: "nearest",
+                behavior: "smooth",
+            })
+        })
+        return () => window.cancelAnimationFrame(frameId)
+    }, [filtered, highlightedVcnId])
+
+    const revealSelectedVcn = useCallback(() => {
+        if (!selectedVcn) {
+            return
+        }
+        if (query) {
+            setQuery("")
+        }
+        setHighlightedVcnId(selectedVcn.id)
+    }, [query, selectedVcn])
+
+    useEffect(() => {
+        if (!selectedVcn) {
+            setResource(null)
+            return
+        }
+
+        const compartmentLabel = compartmentNameById.get(selectedVcn.compartmentId) ?? selectedVcn.compartmentId
+        setResource({
+            view: "vcn",
+            title: selectedVcn.name,
+            eyebrow: "Selected VCN",
+            resourceId: selectedVcn.id,
+            badge: {
+                label: selectedVcn.lifecycleState,
+                tone: toneFromLifecycleState(selectedVcn.lifecycleState),
+            },
+            metrics: [
+                { label: "Region", value: selectedVcn.region || "default" },
+                { label: "CIDRs", value: String(selectedVcn.cidrBlocks.length) },
+                { label: "Compartment", value: compartmentLabel },
+            ],
+            notes: selectedVcn.cidrBlocks.length > 0
+                ? [`CIDR blocks: ${selectedVcn.cidrBlocks.join(", ")}`]
+                : ["No CIDR blocks reported for the selected VCN."],
+            actions: [
+                ...(query
+                    ? [{
+                        label: "Clear Filter",
+                        run: () => setQuery(""),
+                        variant: "ghost" as const,
+                    }]
+                    : []),
+                {
+                    label: "Open Compute",
+                    run: () => navigateToView("compute"),
+                    variant: "secondary",
+                },
+                {
+                    label: "Open Security Lists",
+                    run: () => setShowSecurityListWorkspace(true),
+                    variant: "secondary",
+                },
+                {
+                    label: "Show in List",
+                    run: revealSelectedVcn,
+                    variant: "ghost",
+                },
+            ],
+        })
+
+        return () => setResource(null)
+    }, [compartmentNameById, navigateToView, query, revealSelectedVcn, selectedVcn, setResource])
 
     useEffect(() => {
         const onMessage = (event: MessageEvent) => {
@@ -93,190 +246,192 @@ export default function VcnView() {
         return () => window.removeEventListener("message", onMessage)
     }, [load])
 
-    if (selectedVcn) {
-        return (
-            <SecurityListView
-                vcn={selectedVcn}
-                onBack={() => setSelectedVcn(null)}
-            />
-        )
-    }
-
     return (
-        <div className="flex h-full min-h-0 flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between gap-3 border-b border-[var(--vscode-panel-border)] px-3 py-2 bg-[var(--vscode-editor-background)]">
-                <div className="flex min-w-0 items-center gap-2">
-                    <Network size={14} className="text-[var(--vscode-icon-foreground)]" />
-                    <div className="flex min-w-0 flex-col">
-                        <span className="text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)]">Virtual Cloud Networks</span>
-                    </div>
-                </div>
-                <div className="flex items-center gap-1">
-                    <Button
-                        variant="icon"
-                        size="icon"
-                        onClick={load}
-                        disabled={loading}
-                        title="Refresh"
-                    >
-                        <RefreshCw size={14} className={clsx(loading && "animate-spin")} />
-                    </Button>
-                </div>
-            </div>
-
-            {/* Controls */}
-            <div className="border-b border-[var(--vscode-panel-border)] px-3 pt-3 pb-2 flex flex-col gap-2 bg-[var(--vscode-editor-background)]">
-                <CompartmentSelector featureKey="vcn" multiple />
-                {vcns.length > 0 && (
-                    <div className="flex items-center gap-2 rounded-[2px] border border-input-border bg-input-background px-2 py-1 focus-within:outline focus-within:outline-1 focus-within:outline-[var(--vscode-focusBorder)] focus-within:-outline-offset-1">
-                        <Search size={12} className="shrink-0 text-[var(--vscode-icon-foreground)]" />
-                        <input
-                            type="text"
+        <FeaturePageLayout
+            title="Virtual Cloud Networks"
+            description="Inspect network boundaries by compartment and jump into security list management."
+            icon={<Network size={16} />}
+            actions={(
+                <WorkbenchRefreshButton
+                    onClick={load}
+                    disabled={loading}
+                    spinning={loading}
+                    title="Refresh"
+                />
+            )}
+            controls={(
+                <div className="flex flex-col gap-2">
+                    <CompartmentSelector featureKey="vcn" multiple />
+                    {vcns.length > 0 && (
+                        <FeatureSearchInput
                             value={query}
-                            onChange={e => setQuery(e.target.value)}
+                            onChange={setQuery}
                             placeholder="Filter VCNs..."
-                            className="flex-1 bg-transparent text-[13px] text-input-foreground outline-none placeholder:text-input-placeholder"
                         />
-                        {query && (
-                            <button
-                                type="button"
-                                onClick={() => setQuery("")}
-                                className="flex h-5 w-5 items-center justify-center rounded-[2px] text-description hover:bg-[var(--vscode-toolbar-hoverBackground)] hover:text-[var(--vscode-foreground)]"
-                                title="Clear filter"
-                            >
-                                <X size={12} />
-                            </button>
-                        )}
-                    </div>
-                )}
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto px-3 py-3">
+                    )}
+                </div>
+            )}
+        >
+            <div className="flex h-full min-h-0 flex-col px-4 py-4">
                 {error && (
-                    <div className="mb-4 flex items-start gap-2 rounded-lg border border-error/30 bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,red_8%)] px-3 py-2.5 text-xs text-error">
-                        <AlertCircle size={13} className="mt-0.5 shrink-0" />
-                        <span>{error}</span>
-                    </div>
+                    <InlineNotice tone="danger" size="md" icon={<AlertCircle size={13} />} className="mb-4">
+                        {error}
+                    </InlineNotice>
                 )}
 
                 {loading && vcns.length === 0 ? (
-                    <div className="flex items-center justify-center gap-2 p-4 text-[12px] text-description">
-                        <Loader2 size={14} className="animate-spin" />
-                        <span>Loading VCNs...</span>
-                    </div>
+                    <WorkbenchLoadingState
+                        label="Loading VCNs..."
+                        className="min-h-[140px] py-6"
+                    />
                 ) : vcns.length === 0 ? (
-                    <EmptyState hasSelectedCompartments={selectedCompartmentIds.length > 0} />
+                    <div className="flex flex-1">
+                        <EmptyState hasSelectedCompartments={selectedCompartmentIds.length > 0} />
+                    </div>
                 ) : (
-                    <div className="flex flex-col gap-3">
-                        <h4 className="mb-1 text-xs font-semibold uppercase tracking-wider text-description">
-                            {filtered.length === vcns.length
-                                ? `${vcns.length} VCN${vcns.length !== 1 ? "s" : ""}`
-                                : `${filtered.length} of ${vcns.length} VCNs`}
-                        </h4>
-                        {filtered.length === 0 ? (
-                            <p className="py-8 text-center text-[12px] text-description">No VCNs match your filter.</p>
-                        ) : (
-                            grouped.map((compartmentGroup) => (
-                                <div key={compartmentGroup.compartmentId} className="mb-4">
-                                    <h5 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[var(--vscode-sideBarTitle-foreground)]">
-                                        {compartmentNameById.get(compartmentGroup.compartmentId) ?? compartmentGroup.compartmentId}
-                                    </h5>
-                                    <div className="flex flex-col gap-3">
-                                        {compartmentGroup.regions.map((regionGroup) => (
-                                            <div key={`${compartmentGroup.compartmentId}-${regionGroup.region}`} className="flex flex-col gap-2">
-                                                <h6 className="text-[10px] font-semibold uppercase tracking-wider text-description border-b border-[var(--vscode-panel-border)] pb-1">
-                                                    {regionGroup.region}
-                                                </h6>
-                                                {regionGroup.vcns.map((vcn) => (
-                                                    <VcnCard
-                                                        key={`${vcn.id}-${vcn.region ?? "default"}`}
-                                                        vcn={vcn}
-                                                        onSelect={() => setSelectedVcn(vcn)}
-                                                    />
+                    <div className="min-h-0 flex-1">
+                        <SplitWorkspaceLayout
+                            sidebar={(
+                                <div className="flex flex-col gap-3">
+                                    <WorkbenchInventorySummary
+                                        label="VCN inventory"
+                                        count={filtered.length === vcns.length
+                                            ? `${vcns.length} VCN${vcns.length !== 1 ? "s" : ""}`
+                                            : `${filtered.length} of ${vcns.length} VCNs`}
+                                        description="Select a VCN to review CIDRs and manage attached security lists."
+                                    />
+
+                                    {filtered.length === 0 ? (
+                                        <WorkbenchInventoryFilterEmpty message="No VCNs match your filter." />
+                                    ) : (
+                                        grouped.map((compartmentGroup) => (
+                                            <div key={compartmentGroup.compartmentId} className="mb-1">
+                                                <WorkbenchInventoryGroupHeading>
+                                                    {compartmentNameById.get(compartmentGroup.compartmentId) ?? compartmentGroup.compartmentId}
+                                                </WorkbenchInventoryGroupHeading>
+                                                <div className="flex flex-col gap-2">
+                                                    {compartmentGroup.regions.map((regionGroup) => (
+                                                        <div key={`${compartmentGroup.compartmentId}-${regionGroup.region}`} className="flex flex-col gap-2">
+                                                            <WorkbenchInventoryRegionHeading>
+                                                                {regionGroup.region}
+                                                            </WorkbenchInventoryRegionHeading>
+                                                            {regionGroup.vcns.map((vcn) => (
+                                                                <VcnListItem
+                                                                    key={`${vcn.id}-${vcn.region ?? "default"}`}
+                                                                    vcn={vcn}
+                                                                    selected={selectedVcn?.id === vcn.id}
+                                                                    highlighted={highlightedVcnId === vcn.id}
+                                                                    onRegisterRef={(node) => {
+                                                                        if (node) {
+                                                                            vcnItemRefs.current.set(vcn.id, node)
+                                                                        } else {
+                                                                            vcnItemRefs.current.delete(vcn.id)
+                                                                        }
+                                                                    }}
+                                                                    onSelect={() => setSelectedVcn(vcn)}
+                                                                />
+                                                            ))}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            )}
+                            main={selectedVcn ? (
+                                showSecurityListWorkspace ? (
+                                    <div className="flex h-full min-h-0 flex-col">
+                                        <SecurityListView
+                                            vcn={selectedVcn}
+                                            onBack={() => setShowSecurityListWorkspace(false)}
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="flex h-full min-h-0 flex-col gap-3">
+                                        <WorkbenchHero
+                                            eyebrow="Virtual Cloud Network"
+                                            title={selectedVcn.name}
+                                            resourceId={selectedVcn.id}
+                                            badge={<LifecycleBadge state={selectedVcn.lifecycleState} />}
+                                            metaItems={[
+                                                { label: "Region", value: selectedVcn.region || "default" },
+                                                { label: "CIDR Blocks", value: `${selectedVcn.cidrBlocks.length}` },
+                                                { label: "Compartment", value: compartmentNameById.get(selectedVcn.compartmentId) ?? selectedVcn.compartmentId },
+                                            ]}
+                                        />
+                                        <WorkbenchSection
+                                            title="Security Lists"
+                                            subtitle="Review attached security lists here, or open the dedicated workspace to modify them."
+                                            actions={(
+                                                <WorkbenchActionButton onClick={() => setShowSecurityListWorkspace(true)}>
+                                                    Open Workspace
+                                                </WorkbenchActionButton>
+                                            )}
+                                        >
+                                            <div className="flex flex-wrap gap-2">
+                                                {selectedVcn.cidrBlocks.map((cidr) => (
+                                                    <span key={cidr} className="rounded-full border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-2.5 py-1 text-[11px] text-description">
+                                                        {cidr}
+                                                    </span>
                                                 ))}
                                             </div>
-                                        ))}
+                                            <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)]">
+                                                <SecurityListView
+                                                    vcn={selectedVcn}
+                                                    embedded
+                                                />
+                                            </div>
+                                        </WorkbenchSection>
                                     </div>
-                                </div>
-                            ))
-                        )}
+                                )
+                            ) : (
+                                <EmptyState hasSelectedCompartments={selectedCompartmentIds.length > 0} />
+                            )}
+                        />
                     </div>
                 )}
             </div>
-        </div>
+        </FeaturePageLayout>
     )
 }
 
-function VcnCard({
+function VcnListItem({
     vcn,
+    selected,
+    highlighted,
+    onRegisterRef,
     onSelect,
 }: {
     vcn: VcnResource
+    selected: boolean
+    highlighted: boolean
+    onRegisterRef: (node: HTMLButtonElement | null) => void
     onSelect: () => void
 }) {
     return (
-        <div className="flex flex-col gap-3 rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] hover:bg-[var(--vscode-list-hoverBackground)] transition-colors p-2.5">
-            <div className="flex items-start justify-between gap-2">
-                <div className="flex min-w-0 flex-col">
-                    <span className="truncate text-[13px] font-medium text-[var(--vscode-foreground)]">{vcn.name}</span>
-                    <span className="truncate text-[11px] text-description">{vcn.id}</span>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                        {vcn.cidrBlocks.map((cidr, i) => (
-                            <span key={i} className="text-[11px] text-description">CIDR: {cidr}</span>
-                        ))}
-                    </div>
-                </div>
-                <LifecycleBadge state={vcn.lifecycleState} />
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-                <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={onSelect}
-                    className="flex items-center gap-1.5"
-                    title="Open security lists for this VCN"
-                >
-                    <Shield size={12} />
-                    Manage Security Lists
-                </Button>
-            </div>
-        </div>
-    )
-}
-
-function LifecycleBadge({ state }: { state: string }) {
-    const colorMap: Record<string, string> = {
-        AVAILABLE: "text-success bg-[color-mix(in_srgb,var(--vscode-editor-background)_80%,green_20%)] border-success/30",
-        TERMINATED: "text-error bg-[color-mix(in_srgb,var(--vscode-editor-background)_85%,red_15%)] border-error/30",
-    }
-    const cls = colorMap[state] ?? "text-description border-border-panel"
-    return (
-        <span className={clsx("shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider", cls)}>
-            {state}
-        </span>
+        <WorkbenchInventoryCard
+            buttonRef={onRegisterRef}
+            title={vcn.name}
+            subtitle={vcn.id}
+            chips={vcn.cidrBlocks}
+            selected={selected}
+            highlighted={highlighted}
+            onClick={onSelect}
+            rightSlot={<LifecycleBadge state={vcn.lifecycleState} />}
+        />
     )
 }
 
 function EmptyState({ hasSelectedCompartments }: { hasSelectedCompartments: boolean }) {
     return (
-        <div className="flex flex-col items-center justify-center gap-3 py-16">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-border-panel bg-list-background-hover">
-                <Network size={22} className="text-description" />
-            </div>
-            <div className="text-center">
-                <p className="text-sm font-medium">
-                    {hasSelectedCompartments ? "No Virtual Cloud Networks found" : "No compartment selected"}
-                </p>
-                <p className="mt-1 text-xs text-description">
-                    {hasSelectedCompartments
-                        ? "No VCNs found in the selected compartments."
-                        : "Please select one or more compartments."}
-                </p>
-            </div>
-        </div>
+        <WorkbenchEmptyState
+            title={hasSelectedCompartments ? "No Virtual Cloud Networks found" : "No compartment selected"}
+            description={hasSelectedCompartments
+                ? "No VCNs found in the selected compartments."
+                : "Please select one or more compartments."}
+            icon={<Network size={22} />}
+        />
     )
 }
 

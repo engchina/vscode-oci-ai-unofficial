@@ -184,8 +184,8 @@ export class Controller {
       authMode: "api-key",
       savedCompartments: Array.isArray(savedCompartments) ? savedCompartments : [],
       profilesConfig: Array.isArray(profilesConfig) ? profilesConfig : [],
-      extensionVersion: vscode.extensions.getExtension("local.vscode-oci-ai-unofficial")?.packageJSON?.version ?? "0.0.0",
-      extensionDescription: vscode.extensions.getExtension("local.vscode-oci-ai-unofficial")?.packageJSON?.description ?? "",
+      extensionVersion: vscode.extensions.getExtension("local.oci-ai-unofficial")?.packageJSON?.version ?? "0.0.0",
+      extensionDescription: vscode.extensions.getExtension("local.oci-ai-unofficial")?.packageJSON?.description ?? "",
     };
   }
 

@@ -3,6 +3,7 @@ import { AlertTriangle, Bot } from "lucide-react"
 import { useEffect, useRef } from "react"
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso"
 import { useExtensionState } from "../../context/ExtensionStateContext"
+import InlineNotice from "../ui/InlineNotice"
 import ChatRow from "./ChatRow"
 import ChatTextArea from "./ChatTextArea"
 import CompartmentSelector from "../ui/CompartmentSelector"
@@ -46,10 +47,9 @@ export default function ChatView({ isHidden = false }: ChatViewProps) {
   return (
     <div className={clsx("flex h-full min-h-0 flex-col", isHidden && "hidden")}>
       {configWarning && (
-        <div className="flex items-start gap-2 border-b border-warning/20 bg-[color-mix(in_srgb,var(--vscode-editor-background)_88%,yellow_12%)] px-3 py-2 text-xs text-warning">
-          <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-          <span>{configWarning}</span>
-        </div>
+        <InlineNotice tone="warning" size="md" icon={<AlertTriangle size={13} />} className="rounded-none border-x-0 border-t-0">
+          {configWarning}
+        </InlineNotice>
       )}
       <div className="px-3 pt-3 pb-1 border-b border-border-panel shrink-0">
         <CompartmentSelector featureKey="chat" />
