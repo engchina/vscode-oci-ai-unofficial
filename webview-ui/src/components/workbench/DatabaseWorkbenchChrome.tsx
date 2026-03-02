@@ -50,8 +50,8 @@ export function WorkbenchHero({
   metaItems = [],
 }: WorkbenchHeroProps) {
   return (
-    <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_96%,white_4%)] px-3 py-3">
-      <div className="flex items-start justify-between gap-3">
+    <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_96%,white_4%)] px-2.5 py-2.5">
+      <div className="flex items-start justify-between gap-2.5">
         <div className="min-w-0">
           <div className="text-[11px] uppercase tracking-[0.16em] text-[var(--vscode-descriptionForeground)]">{eyebrow}</div>
           <div className="mt-1 truncate text-[16px] font-semibold text-[var(--vscode-foreground)]">{title}</div>
@@ -63,7 +63,7 @@ export function WorkbenchHero({
       </div>
 
       {metaItems.length > 0 && (
-        <div className="mt-3 grid gap-2 sm:grid-cols-3 xl:grid-cols-5">
+        <div className="mt-2.5 grid gap-2 sm:grid-cols-3 xl:grid-cols-5">
           {metaItems.map((item) => (
             <SummaryMetaCard key={item.label} label={item.label} value={item.value} />
           ))}
@@ -93,7 +93,7 @@ export function DatabaseWorkbenchHero({
 
 export function WorkbenchKeyValueStrip({ items, className }: WorkbenchKeyValueStripProps) {
   return (
-    <WorkbenchSurface className={clsx("grid gap-1.5 px-2.5 py-2 text-[11px] leading-5 text-description", className)}>
+    <WorkbenchSurface className={clsx("grid gap-1 px-2 py-1.5 text-[11px] leading-5 text-description", className)}>
       {items.map((item) => (
         <div key={item.label} className={clsx(item.breakAll && "break-all")}>
           <span className="font-semibold text-foreground">{item.label}:</span> <code>{item.value}</code>
@@ -119,14 +119,14 @@ export function WorkbenchSection({
 }: WorkbenchSectionProps) {
   return (
     <section className={clsx("flex min-h-0 flex-col rounded-xl border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)]", className)}>
-      <div className="flex flex-col gap-3 border-b border-[var(--vscode-panel-border)] px-3 py-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-2.5 border-b border-[var(--vscode-panel-border)] px-2.5 py-2.5 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="text-[13px] font-semibold text-[var(--vscode-foreground)]">{title}</div>
           {subtitle && <div className="mt-1 text-[11px] text-[var(--vscode-descriptionForeground)]">{subtitle}</div>}
         </div>
         {actions && <div className="min-w-0 sm:shrink-0">{actions}</div>}
       </div>
-      <div className={clsx("flex min-h-0 flex-1 flex-col gap-3 p-3", bodyClassName)}>{children}</div>
+      <div className={clsx("flex min-h-0 flex-1 flex-col gap-2.5 p-2.5", bodyClassName)}>{children}</div>
     </section>
   )
 }
@@ -139,7 +139,7 @@ export function WorkbenchSurface({
   className?: string
 }) {
   return (
-    <div className={clsx("rounded-[2px] border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_97%,black_3%)] p-3", className)}>
+    <div className={clsx("rounded-[2px] border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_97%,black_3%)] p-2.5", className)}>
       {children}
     </div>
   )
@@ -182,7 +182,7 @@ export function WorkbenchEmptyState({
 
 export function SummaryMetaCard({ label, value }: MetaItem) {
   return (
-    <WorkbenchSurface className="px-2.5 py-2">
+    <WorkbenchSurface className="px-2 py-1.5">
       <div className="text-[10px] uppercase tracking-[0.12em] text-[var(--vscode-descriptionForeground)]">{label}</div>
       <div className="mt-1 truncate text-[12px] font-medium text-[var(--vscode-foreground)]">{value}</div>
     </WorkbenchSurface>

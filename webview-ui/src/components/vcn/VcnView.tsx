@@ -272,7 +272,7 @@ export default function VcnView() {
                 </div>
             )}
         >
-            <div className="flex h-full min-h-0 flex-col px-4 py-4">
+            <div className="flex h-full min-h-0 flex-col px-3 py-3">
                 {error && (
                     <InlineNotice tone="danger" size="md" icon={<AlertCircle size={13} />} className="mb-4">
                         {error}
@@ -292,7 +292,7 @@ export default function VcnView() {
                     <div className="min-h-0 flex-1">
                         <SplitWorkspaceLayout
                             sidebar={(
-                                <div className="flex flex-col gap-3">
+                                <div className="flex flex-col gap-2.5">
                                     <WorkbenchInventorySummary
                                         label="VCN inventory"
                                         count={filtered.length === vcns.length
@@ -348,7 +348,7 @@ export default function VcnView() {
                                         />
                                     </div>
                                 ) : (
-                                    <div className="flex h-full min-h-0 flex-col gap-3">
+                                    <div className="flex h-full min-h-0 flex-col gap-2.5">
                                         <WorkbenchHero
                                             eyebrow="Virtual Cloud Network"
                                             title={selectedVcn.name}

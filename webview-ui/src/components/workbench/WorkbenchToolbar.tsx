@@ -10,7 +10,7 @@ export function WorkbenchToolbarGroup({
   children: ReactNode
   className?: string
 }) {
-  return <div className={clsx("flex flex-wrap gap-2", className)}>{children}</div>
+  return <div className={clsx("flex flex-wrap gap-1.5", className)}>{children}</div>
 }
 
 export function WorkbenchToolbarSpacer({
@@ -20,7 +20,7 @@ export function WorkbenchToolbarSpacer({
   children: ReactNode
   className?: string
 }) {
-  return <div className={clsx("ml-auto flex flex-wrap gap-2", className)}>{children}</div>
+  return <div className={clsx("ml-auto flex flex-wrap gap-1.5", className)}>{children}</div>
 }
 
 export function WorkbenchRefreshButton({

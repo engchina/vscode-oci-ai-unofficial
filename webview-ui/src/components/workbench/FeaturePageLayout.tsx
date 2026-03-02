@@ -27,10 +27,10 @@ export default function FeaturePageLayout({
 }: FeaturePageLayoutProps) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--vscode-editor-background)]">
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--vscode-panel-border)] px-4 py-3">
-        <div className="flex min-w-0 items-center gap-3">
+      <div className="flex items-center justify-between gap-2.5 border-b border-[var(--vscode-panel-border)] px-3 py-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
           {leading}
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_84%,white_16%)] text-[var(--vscode-icon-foreground)]">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_84%,white_16%)] text-[var(--vscode-icon-foreground)]">
             {icon}
           </span>
           <div className="min-w-0">
@@ -41,14 +41,14 @@ export default function FeaturePageLayout({
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5">
           {status}
           {actions}
         </div>
       </div>
 
       {controls && (
-        <div className="border-b border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_94%,white_6%)] px-4 py-3">
+        <div className="border-b border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_94%,white_6%)] px-3 py-2.5">
           {controls}
         </div>
       )}

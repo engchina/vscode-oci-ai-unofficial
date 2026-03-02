@@ -637,7 +637,7 @@ export default function AdbView() {
         </div>
       )}
     >
-      <div className="flex h-full min-h-0 flex-col px-4 py-4">
+      <div className="flex h-full min-h-0 flex-col px-3 py-3">
         {error && (
           <InlineNotice tone="danger" size="md" icon={<AlertCircle size={13} />} className="mb-4">
             {error}
@@ -675,7 +675,7 @@ export default function AdbView() {
           <div className="min-h-0 flex-1">
             <SplitWorkspaceLayout
               sidebar={(
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2.5">
                   <WorkbenchInventorySummary
                     label="Database inventory"
                     count={filtered.length === databases.length
@@ -692,7 +692,7 @@ export default function AdbView() {
                         <WorkbenchInventoryGroupHeading>
                           {compartmentNameById.get(compartmentGroup.compartmentId) ?? compartmentGroup.compartmentId}
                         </WorkbenchInventoryGroupHeading>
-                        <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-2.5">
                           {compartmentGroup.regions.map((regionGroup) => (
                             <div key={`${compartmentGroup.compartmentId}-${regionGroup.region}`} className="flex flex-col gap-2">
                               <WorkbenchInventoryRegionHeading>
@@ -727,7 +727,7 @@ export default function AdbView() {
                 </div>
               )}
               main={(
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2.5">
                   <DatabaseWorkbenchHero
                     eyebrow="Autonomous Database"
                     title={selectedDatabase?.name ?? "No Database Selected"}
@@ -751,7 +751,7 @@ export default function AdbView() {
                   )}
                   <OracleDiagnosticsPanel diagnostics={diagnostics} />
 
-                  <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                  <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                     <WorkbenchSection
                       title="Connection"
                       subtitle="Download wallets, keep a saved profile, and maintain the active database session."

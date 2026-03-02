@@ -449,7 +449,7 @@ export default function ComputeView() {
         </div>
       )}
     >
-      <div className="flex h-full min-h-0 flex-col px-4 py-4">
+      <div className="flex h-full min-h-0 flex-col px-3 py-3">
         {error && (
           <InlineNotice tone="danger" size="md" icon={<AlertCircle size={13} />} className="mb-4">
             {error}
@@ -487,7 +487,7 @@ export default function ComputeView() {
           <div className="min-h-0 flex-1">
             <SplitWorkspaceLayout
               sidebar={(
-                <div className="flex min-h-0 flex-col gap-3">
+                <div className="flex min-h-0 flex-col gap-2.5">
                   <WorkbenchInventorySummary
                     label="Instance inventory"
                     count={filtered.length === instances.length
@@ -501,7 +501,7 @@ export default function ComputeView() {
                   ) : (
                     <div className="min-h-0 flex-1 overflow-y-auto pr-1">
                       {grouped.map((compartmentGroup) => (
-                        <div key={compartmentGroup.compartmentId} className="mb-3">
+                        <div key={compartmentGroup.compartmentId} className="mb-2.5">
                           <WorkbenchInventoryGroupHeading>
                             {compartmentNameById.get(compartmentGroup.compartmentId) ?? compartmentGroup.compartmentId}
                           </WorkbenchInventoryGroupHeading>
@@ -537,7 +537,7 @@ export default function ComputeView() {
                 </div>
               )}
               main={selectedInstance ? (
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2.5">
                   <WorkbenchHero
                     eyebrow="Compute Instance"
                     title={selectedInstance.name}

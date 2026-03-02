@@ -674,7 +674,7 @@ export default function DbSystemsView() {
                 </div>
             )}
         >
-            <div className="flex h-full min-h-0 flex-col px-4 py-4">
+            <div className="flex h-full min-h-0 flex-col px-3 py-3">
                 {error && (
                     <InlineNotice tone="danger" size="md" icon={<AlertCircle size={13} />} className="mb-4">
                         {error}
@@ -712,7 +712,7 @@ export default function DbSystemsView() {
                     <div className="min-h-0 flex-1">
                         <SplitWorkspaceLayout
                             sidebar={(
-                                <div className="flex flex-col gap-3">
+                                <div className="flex flex-col gap-2.5">
                                     <WorkbenchInventorySummary
                                         label="System inventory"
                                         count={filtered.length === dbSystems.length
@@ -729,7 +729,7 @@ export default function DbSystemsView() {
                                                 <WorkbenchInventoryGroupHeading>
                                                     {compartmentNameById.get(compartmentGroup.compartmentId) ?? compartmentGroup.compartmentId}
                                                 </WorkbenchInventoryGroupHeading>
-                                                <div className="flex flex-col gap-3">
+                                                <div className="flex flex-col gap-2.5">
                                                     {compartmentGroup.regions.map((regionGroup) => (
                                                         <div key={`${compartmentGroup.compartmentId}-${regionGroup.region}`} className="flex flex-col gap-2">
                                                             <WorkbenchInventoryRegionHeading>
@@ -773,7 +773,7 @@ export default function DbSystemsView() {
                                 </div>
                             )}
                             main={(
-                                <div className="flex flex-col gap-3">
+                                <div className="flex flex-col gap-2.5">
                                     <DatabaseWorkbenchHero
                                         eyebrow="DB System"
                                         title={selectedDatabase?.name ?? "No Database Selected"}
@@ -796,7 +796,7 @@ export default function DbSystemsView() {
                                     )}
                                     <OracleDiagnosticsPanel diagnostics={diagnostics} />
 
-                                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                                    <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                                         <WorkbenchSection
                                             title="Connection"
                                             subtitle="Pick a connect string, keep saved credentials nearby, and maintain the active DB session."

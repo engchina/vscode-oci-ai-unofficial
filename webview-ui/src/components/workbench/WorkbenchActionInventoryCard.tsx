@@ -30,7 +30,7 @@ export default function WorkbenchActionInventoryCard({
     <div
       ref={cardRef}
       className={clsx(
-        "flex flex-col gap-2 rounded-[2px] border p-2.5 transition-colors",
+        "flex flex-col gap-1.5 rounded-[2px] border p-2 transition-colors",
         onSelect && "cursor-pointer",
         selected && highlighted
           ? "border-[var(--vscode-focusBorder)] bg-[color-mix(in_srgb,var(--vscode-list-hoverBackground)_82%,var(--vscode-button-background)_18%)]"

@@ -884,7 +884,7 @@ export default function SqlWorkbenchView() {
           />
         )}
       >
-        <div className="flex h-full min-h-0 flex-col px-4 py-4">
+        <div className="flex h-full min-h-0 flex-col px-3 py-3">
           {error && (
             <InlineNotice tone="danger" size="md" className="mb-3">
               {error}
@@ -894,7 +894,7 @@ export default function SqlWorkbenchView() {
           <div className="min-h-0 flex-1">
             <SplitWorkspaceLayout
               sidebar={(
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2.5">
                 <WorkbenchInventorySummary
                   label="Target inventory"
                   count={filteredTargets.length === targets.length

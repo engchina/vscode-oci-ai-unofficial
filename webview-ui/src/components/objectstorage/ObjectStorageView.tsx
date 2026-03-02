@@ -567,7 +567,7 @@ export default function ObjectStorageView() {
         </div>
       )}
     >
-      <div className="flex h-full min-h-0 flex-col px-4 py-4">
+      <div className="flex h-full min-h-0 flex-col px-3 py-3">
         {error && <InlineError message={error} />}
         {loadingBuckets ? (
           <WorkbenchLoadingState label="Loading buckets..." />
@@ -580,7 +580,7 @@ export default function ObjectStorageView() {
           <div className="min-h-0 flex-1">
             <SplitWorkspaceLayout
               sidebar={(
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2.5">
                   <WorkbenchInventorySummary
                     label="Bucket inventory"
                     count={`${buckets.length} bucket${buckets.length === 1 ? "" : "s"}`}
@@ -595,7 +595,7 @@ export default function ObjectStorageView() {
                 </div>
               )}
               main={selectedBucket ? (
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2.5">
                   <WorkbenchHero
                     eyebrow="Object Storage Bucket"
                     title={selectedBucket.name}
