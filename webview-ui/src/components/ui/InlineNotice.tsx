@@ -13,8 +13,8 @@ const toneClassNames: Record<NoticeTone, string> = {
 }
 
 const sizeClassNames: Record<NoticeSize, string> = {
-  sm: "px-3 py-2 text-[11px]",
-  md: "px-3 py-2.5 text-xs",
+  sm: "px-2.5 py-1.5 text-[11px]",
+  md: "px-2.5 py-2 text-xs",
 }
 
 interface InlineNoticeProps {
@@ -39,21 +39,21 @@ export default function InlineNotice({
   return (
     <div
       className={clsx(
-        "rounded-lg border",
+        "rounded-md border",
         toneClassNames[tone],
         sizeClassNames[size],
         className,
       )}
     >
-      <div className={clsx("flex gap-3", actions ? "flex-col sm:flex-row sm:items-center sm:justify-between" : "")}>
+      <div className={clsx("flex gap-2.5", actions ? "flex-col sm:flex-row sm:items-center sm:justify-between" : "")}>
         <div className="min-w-0 flex items-start gap-2">
           {icon ? <div className="mt-0.5 shrink-0">{icon}</div> : null}
           <div className="min-w-0">
             {title ? <div className="font-medium text-[var(--vscode-foreground)]">{title}</div> : null}
-            <div className={clsx("min-w-0", title && "mt-1")}>{children}</div>
+            <div className={clsx("min-w-0", title && "mt-0.5")}>{children}</div>
           </div>
         </div>
-        {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+        {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
       </div>
     </div>
   )

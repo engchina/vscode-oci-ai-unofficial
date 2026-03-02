@@ -156,7 +156,7 @@ export function WorkbenchInlineActionCluster({
   className?: string
   children: ReactNode
 }) {
-  return <div className={clsx("flex flex-wrap items-center gap-2", className)}>{children}</div>
+  return <div className={clsx("flex flex-wrap items-center gap-1.5", className)}>{children}</div>
 }
 
 export function WorkbenchCompactActionCluster({
@@ -210,12 +210,12 @@ export function WorkbenchShortcutTileButton({
       type="button"
       onClick={onClick}
       className={clsx(
-        "rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-3 py-3 text-left transition-colors hover:bg-[var(--vscode-list-hoverBackground)]",
+        "rounded-md border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-2.5 py-2 text-left transition-colors hover:bg-[var(--vscode-list-hoverBackground)]",
         className,
       )}
     >
       <div className="text-[12px] font-semibold text-[var(--vscode-foreground)]">{title}</div>
-      <div className="mt-1 text-[11px] leading-5 text-[var(--vscode-descriptionForeground)]">{description}</div>
+      <div className="mt-0.5 text-[11px] leading-5 text-[var(--vscode-descriptionForeground)]">{description}</div>
     </button>
   )
 }

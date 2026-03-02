@@ -32,6 +32,7 @@ import { buildWorkbenchResourceGuardrailDetails, createStartResourceGuardrail, c
 import WorkbenchInventoryCard from "../workbench/WorkbenchInventoryCard"
 import { WorkbenchRefreshButton } from "../workbench/WorkbenchToolbar"
 import SplitWorkspaceLayout from "../workbench/SplitWorkspaceLayout"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/Tabs"
 
 type ActionState = { id: string; action: "starting" | "stopping" } | null
 type RecentActionState = {
@@ -449,9 +450,9 @@ export default function ComputeView() {
         </div>
       )}
     >
-      <div className="flex h-full min-h-0 flex-col px-3 py-3">
+      <div className="flex h-full min-h-0 flex-col px-2 py-2">
         {error && (
-          <InlineNotice tone="danger" size="md" icon={<AlertCircle size={13} />} className="mb-3">
+          <InlineNotice tone="danger" size="md" icon={<AlertCircle size={13} />} className="mb-2">
             {error}
           </InlineNotice>
         )}
@@ -460,7 +461,7 @@ export default function ComputeView() {
           <InlineNotice
             tone="info"
             icon={<CheckCircle2 size={14} className="text-[var(--vscode-testing-iconPassed)]" />}
-            className="mb-3"
+            className="mb-2"
             actions={(
               <>
                 <WorkbenchRevealButton onClick={() => revealInstance(recentAction.resourceId)} title="Show this instance in the list" label="Show Instance" />
@@ -477,7 +478,7 @@ export default function ComputeView() {
         {loading && instances.length === 0 ? (
           <WorkbenchLoadingState
             label="Loading instances..."
-            className="min-h-[140px] py-6"
+            className="min-h-[140px] py-4"
           />
         ) : instances.length === 0 ? (
           <div className="flex flex-1">
@@ -487,7 +488,7 @@ export default function ComputeView() {
           <div className="min-h-0 flex-1">
             <SplitWorkspaceLayout
               sidebar={(
-                <div className="flex min-h-0 flex-col gap-2.5">
+                <div className="flex min-h-0 flex-col gap-2">
                   <WorkbenchInventorySummary
                     label="Instance inventory"
                     count={filtered.length === instances.length
@@ -501,7 +502,7 @@ export default function ComputeView() {
                   ) : (
                     <div className="min-h-0 flex-1 overflow-y-auto pr-1">
                       {grouped.map((compartmentGroup) => (
-                        <div key={compartmentGroup.compartmentId} className="mb-2.5">
+                        <div key={compartmentGroup.compartmentId} className="mb-2">
                           <WorkbenchInventoryGroupHeading>
                             {compartmentNameById.get(compartmentGroup.compartmentId) ?? compartmentGroup.compartmentId}
                           </WorkbenchInventoryGroupHeading>
@@ -537,7 +538,7 @@ export default function ComputeView() {
                 </div>
               )}
               main={selectedInstance ? (
-                <div className="flex flex-col gap-2.5">
+                <div className="flex flex-col h-full min-h-0 gap-2">
                   <WorkbenchHero
                     eyebrow="Compute Instance"
                     title={selectedInstance.name}
@@ -547,35 +548,88 @@ export default function ComputeView() {
                       { label: "Region", value: selectedInstance.region || "default" },
                       { label: "Public IP", value: selectedInstance.publicIp || "-" },
                       { label: "Private IP", value: selectedInstance.privateIp || "-" },
-                      { label: "SSH Host", value: resolveSshHost(selectedInstance, sshConfig.hostPreference) || "-" },
                     ]}
                   />
 
-                  <WorkbenchSection
-                    title="Instance Details"
-                    subtitle="Keep lifecycle actions, SSH overrides, and connection controls pinned to the selected instance."
-                  >
-                    <InstanceCard
-                      instance={selectedInstance}
-                      actionState={actionState}
-                      connectingId={connectingId}
-                      highlighted={highlightedInstanceId === selectedInstance.id}
-                      onRegisterRef={() => { }}
-                      sshConfig={sshConfig}
-                      sshUserOverride={sshUserOverrides[selectedInstance.id] || ""}
-                      sshKeyOverride={sshKeyOverrides[selectedInstance.id] || ""}
-                      onStart={handleStart}
-                      onStop={handleStop}
-                      onRequestGuardrail={setGuardrail}
-                      onConnect={handleConnect}
-                      onChangeSshUserOverride={(instanceId, username) =>
-                        setSshUserOverrides((prev) => ({ ...prev, [instanceId]: username }))
-                      }
-                      onChangeSshKeyOverride={(instanceId, keyPath) =>
-                        setSshKeyOverrides((prev) => ({ ...prev, [instanceId]: keyPath }))
-                      }
-                    />
-                  </WorkbenchSection>
+                  <div className="flex-1 min-h-0 flex flex-col">
+                    <Tabs defaultValue="overview" className="flex-1 min-h-0">
+                      <TabsList>
+                        <TabsTrigger value="overview">Overview</TabsTrigger>
+                        <TabsTrigger value="connection">Connection</TabsTrigger>
+                        <TabsTrigger value="lifecycle">Lifecycle</TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="overview" className="flex-1 overflow-auto pt-1.5 flex flex-col gap-2">
+                        <WorkbenchSection title="Instance Details">
+                          <div className="grid grid-cols-2 gap-2.5 rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2.5 shadow-sm">
+                            <div className="flex flex-col gap-1">
+                              <span className="text-[11px] text-description uppercase tracking-wider font-semibold">SSH Host</span>
+                              <span className="text-[14px] font-medium text-[var(--vscode-foreground)] break-all">{resolveSshHost(selectedInstance, sshConfig.hostPreference) || "-"}</span>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              <span className="text-[11px] text-description uppercase tracking-wider font-semibold">State</span>
+                              <span className="text-[14px] font-medium text-[var(--vscode-foreground)]">{selectedInstance.lifecycleState || "-"}</span>
+                            </div>
+                          </div>
+                        </WorkbenchSection>
+                      </TabsContent>
+                      <TabsContent value="connection" className="flex-1 overflow-auto pt-1.5">
+                        <WorkbenchSection
+                          title="SSH Connection"
+                          subtitle="Keep lifecycle actions, SSH overrides, and connection controls pinned to the selected instance."
+                        >
+                          <InstanceCard
+                            instance={selectedInstance}
+                            actionState={actionState}
+                            connectingId={connectingId}
+                            highlighted={highlightedInstanceId === selectedInstance.id}
+                            onRegisterRef={() => { }}
+                            sshConfig={sshConfig}
+                            sshUserOverride={sshUserOverrides[selectedInstance.id] || ""}
+                            sshKeyOverride={sshKeyOverrides[selectedInstance.id] || ""}
+                            onStart={handleStart}
+                            onStop={handleStop}
+                            onRequestGuardrail={setGuardrail}
+                            onConnect={handleConnect}
+                            onChangeSshUserOverride={(instanceId, username) =>
+                              setSshUserOverrides((prev) => ({ ...prev, [instanceId]: username }))
+                            }
+                            onChangeSshKeyOverride={(instanceId, keyPath) =>
+                              setSshKeyOverrides((prev) => ({ ...prev, [instanceId]: keyPath }))
+                            }
+                            showLifecycle={false}
+                          />
+                        </WorkbenchSection>
+                      </TabsContent>
+                      <TabsContent value="lifecycle" className="flex-1 overflow-auto pt-1.5">
+                        <WorkbenchSection
+                          title="Lifecycle Management"
+                          subtitle="Start, stop, or manage the state of your compute instance."
+                        >
+                          <InstanceCard
+                            instance={selectedInstance}
+                            actionState={actionState}
+                            connectingId={connectingId}
+                            highlighted={highlightedInstanceId === selectedInstance.id}
+                            onRegisterRef={() => { }}
+                            sshConfig={sshConfig}
+                            sshUserOverride={sshUserOverrides[selectedInstance.id] || ""}
+                            sshKeyOverride={sshKeyOverrides[selectedInstance.id] || ""}
+                            onStart={handleStart}
+                            onStop={handleStop}
+                            onRequestGuardrail={setGuardrail}
+                            onConnect={handleConnect}
+                            onChangeSshUserOverride={(instanceId, username) =>
+                              setSshUserOverrides((prev) => ({ ...prev, [instanceId]: username }))
+                            }
+                            onChangeSshKeyOverride={(instanceId, keyPath) =>
+                              setSshKeyOverrides((prev) => ({ ...prev, [instanceId]: keyPath }))
+                            }
+                            showConnection={false}
+                          />
+                        </WorkbenchSection>
+                      </TabsContent>
+                    </Tabs>
+                  </div>
                 </div>
               ) : (
                 <EmptyState hasSelectedCompartments={selectedCompartmentIds.length > 0} />
@@ -646,6 +700,8 @@ function InstanceCard({
   onConnect,
   onChangeSshUserOverride,
   onChangeSshKeyOverride,
+  showConnection,
+  showLifecycle,
 }: {
   instance: ComputeResource
   actionState: ActionState
@@ -661,6 +717,8 @@ function InstanceCard({
   onConnect: (instance: ComputeResource) => void
   onChangeSshUserOverride: (instanceId: string, username: string) => void
   onChangeSshKeyOverride: (instanceId: string, keyPath: string) => void
+  showConnection?: boolean
+  showLifecycle?: boolean
 }) {
   const isActing = actionState?.id === instance.id
   const isConnecting = connectingId === instance.id
@@ -678,11 +736,14 @@ function InstanceCard({
         ? "Set SSH username first"
         : ""
 
+  const _showConnection = showConnection ?? true
+  const _showLifecycle = showLifecycle ?? true
+
   return (
     <div
       ref={onRegisterRef}
       className={clsx(
-        "flex flex-col gap-2.5 rounded-[2px] border bg-[var(--vscode-editor-background)] p-2.5 transition-colors",
+        "flex flex-col gap-2 rounded-[2px] border bg-[var(--vscode-editor-background)] p-2 transition-colors",
         highlighted
           ? "border-[color-mix(in_srgb,var(--vscode-button-background)_45%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,var(--vscode-button-background)_18%)]"
           : "border-[var(--vscode-panel-border)] hover:bg-[var(--vscode-list-hoverBackground)]",
@@ -696,81 +757,91 @@ function InstanceCard({
             <span className="text-[11px] text-description">Public IP: {instance.publicIp || "-"}</span>
             <span className="text-[11px] text-description">Private IP: {instance.privateIp || "-"}</span>
           </div>
-          <WorkbenchCompactFieldRow className="mt-2" label="SSH User" labelClassName="w-14 font-semibold text-[var(--vscode-foreground)]">
-            <WorkbenchCompactInput
-              type="text"
-              value={sshUserOverride}
-              onChange={(e) => onChangeSshUserOverride(instance.id, e.target.value)}
-              placeholder={defaultUsername}
-              className="h-[22px] px-1.5 text-[11px]"
-              title="Per-instance SSH username override"
-            />
-          </WorkbenchCompactFieldRow>
-          <WorkbenchCompactFieldRow className="mt-1" label="Identity" labelClassName="w-14 font-semibold text-[var(--vscode-foreground)]">
-            <WorkbenchCompactInput
-              type="text"
-              value={sshKeyOverride}
-              onChange={(e) => onChangeSshKeyOverride(instance.id, e.target.value)}
-              placeholder={sshConfig.privateKeyPath.trim() || "~/.ssh/id_rsa"}
-              className="h-[22px] px-1.5 text-[11px]"
-              title="Per-instance private key path override (e.g. ~/.ssh/id_rsa)"
-            />
-          </WorkbenchCompactFieldRow>
+          {_showConnection && (
+            <>
+              <WorkbenchCompactFieldRow className="mt-2" label="SSH User" labelClassName="w-14 font-semibold text-[var(--vscode-foreground)]">
+                <WorkbenchCompactInput
+                  type="text"
+                  value={sshUserOverride}
+                  onChange={(e) => onChangeSshUserOverride(instance.id, e.target.value)}
+                  placeholder={defaultUsername}
+                  className="h-[22px] px-1.5 text-[11px]"
+                  title="Per-instance SSH username override"
+                />
+              </WorkbenchCompactFieldRow>
+              <WorkbenchCompactFieldRow className="mt-1" label="Identity" labelClassName="w-14 font-semibold text-[var(--vscode-foreground)]">
+                <WorkbenchCompactInput
+                  type="text"
+                  value={sshKeyOverride}
+                  onChange={(e) => onChangeSshKeyOverride(instance.id, e.target.value)}
+                  placeholder={sshConfig.privateKeyPath.trim() || "~/.ssh/id_rsa"}
+                  className="h-[22px] px-1.5 text-[11px]"
+                  title="Per-instance private key path override (e.g. ~/.ssh/id_rsa)"
+                />
+              </WorkbenchCompactFieldRow>
+            </>
+          )}
         </div>
         <LifecycleBadge state={instance.lifecycleState} />
       </div>
 
       <WorkbenchInlineActionCluster>
-        <WorkbenchGuardrailActionButton
-          disabled={isActing || !isStopped}
-          guardrail={createStartResourceGuardrail({
-            resourceKind: "compute-instance",
-            details: buildWorkbenchResourceGuardrailDetails({
-              resourceLabel: "Instance",
-              resourceName: instance.name,
-              region: instance.region || "default",
-              extras: [
-                { label: "Public IP", value: instance.publicIp || "None" },
-              ],
-            }),
-            onConfirm: async () => {
-              await onStart(instance.id, instance.region)
-            },
-          })}
-          onRequestGuardrail={onRequestGuardrail}
-          busy={isActing && actionState?.action === "starting"}
-          idleIcon={<MonitorPlay size={12} />}
-          label="Start"
-        />
-        <WorkbenchGuardrailActionButton
-          disabled={isActing || !isRunning}
-          guardrail={createStopResourceGuardrail({
-            resourceKind: "compute-instance",
-            details: buildWorkbenchResourceGuardrailDetails({
-              resourceLabel: "Instance",
-              resourceName: instance.name,
-              region: instance.region || "default",
-              extras: [
-                { label: "Private IP", value: instance.privateIp || "None" },
-              ],
-            }),
-            onConfirm: async () => {
-              await onStop(instance.id, instance.region)
-            },
-          })}
-          onRequestGuardrail={onRequestGuardrail}
-          busy={isActing && actionState?.action === "stopping"}
-          idleIcon={<MonitorStop size={12} />}
-          label="Stop"
-        />
-        <WorkbenchActionButton
-          disabled={!canConnect}
-          onClick={() => onConnect(instance)}
-          title={connectReason}
-        >
-          {isConnecting ? <Loader2 size={12} className="animate-spin" /> : <SquareTerminal size={12} />}
-          SSH Connect
-        </WorkbenchActionButton>
+        {_showLifecycle && (
+          <WorkbenchGuardrailActionButton
+            disabled={isActing || !isStopped}
+            guardrail={createStartResourceGuardrail({
+              resourceKind: "compute-instance",
+              details: buildWorkbenchResourceGuardrailDetails({
+                resourceLabel: "Instance",
+                resourceName: instance.name,
+                region: instance.region || "default",
+                extras: [
+                  { label: "Public IP", value: instance.publicIp || "None" },
+                ],
+              }),
+              onConfirm: async () => {
+                await onStart(instance.id, instance.region)
+              },
+            })}
+            onRequestGuardrail={onRequestGuardrail}
+            busy={isActing && actionState?.action === "starting"}
+            idleIcon={<MonitorPlay size={12} />}
+            label="Start"
+          />
+        )}
+        {_showLifecycle && (
+          <WorkbenchGuardrailActionButton
+            disabled={isActing || !isRunning}
+            guardrail={createStopResourceGuardrail({
+              resourceKind: "compute-instance",
+              details: buildWorkbenchResourceGuardrailDetails({
+                resourceLabel: "Instance",
+                resourceName: instance.name,
+                region: instance.region || "default",
+                extras: [
+                  { label: "Private IP", value: instance.privateIp || "None" },
+                ],
+              }),
+              onConfirm: async () => {
+                await onStop(instance.id, instance.region)
+              },
+            })}
+            onRequestGuardrail={onRequestGuardrail}
+            busy={isActing && actionState?.action === "stopping"}
+            idleIcon={<MonitorStop size={12} />}
+            label="Stop"
+          />
+        )}
+        {_showConnection && (
+          <WorkbenchActionButton
+            disabled={!canConnect}
+            onClick={() => onConnect(instance)}
+            title={connectReason}
+          >
+            {isConnecting ? <Loader2 size={12} className="animate-spin" /> : <SquareTerminal size={12} />}
+            SSH Connect
+          </WorkbenchActionButton>
+        )}
       </WorkbenchInlineActionCluster>
     </div>
   )

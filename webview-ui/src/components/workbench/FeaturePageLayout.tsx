@@ -27,10 +27,10 @@ export default function FeaturePageLayout({
 }: FeaturePageLayoutProps) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--vscode-editor-background)]">
-      <div className="flex items-center justify-between gap-2.5 border-b border-[var(--vscode-panel-border)] px-3 py-2.5">
-        <div className="flex min-w-0 items-center gap-2.5">
+      <div className="flex items-center justify-between gap-2 border-b border-[var(--vscode-panel-border)] px-2 py-2">
+        <div className="flex min-w-0 items-center gap-2">
           {leading}
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_84%,white_16%)] text-[var(--vscode-icon-foreground)]">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_84%,white_16%)] text-[var(--vscode-icon-foreground)]">
             {icon}
           </span>
           <div className="min-w-0">
@@ -41,14 +41,14 @@ export default function FeaturePageLayout({
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1">
           {status}
           {actions}
         </div>
       </div>
 
       {controls && (
-        <div className="border-b border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_94%,white_6%)] px-3 py-2.5">
+        <div className="border-b border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_94%,white_6%)] px-2 py-2">
           {controls}
         </div>
       )}
@@ -74,7 +74,7 @@ export function FeatureSearchInput({
   return (
     <div
       className={clsx(
-        "flex items-center gap-2 rounded-md border border-[var(--vscode-input-border)] bg-[var(--vscode-input-background)] px-2.5 py-1.5 focus-within:outline focus-within:outline-1 focus-within:outline-[var(--vscode-focusBorder)] focus-within:-outline-offset-1",
+        "flex items-center gap-1.5 rounded-md border border-[var(--vscode-input-border)] bg-[var(--vscode-input-background)] px-2 py-1 focus-within:outline focus-within:outline-1 focus-within:outline-[var(--vscode-focusBorder)] focus-within:-outline-offset-1",
         className,
       )}
     >

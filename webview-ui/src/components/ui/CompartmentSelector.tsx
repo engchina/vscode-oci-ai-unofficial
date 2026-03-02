@@ -158,7 +158,7 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
 
     if (availableCompartments.length === 0) {
         return (
-            <div className="flex items-center gap-2 px-3 py-2 text-[12px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] text-description rounded-[2px]">
+            <div className="flex items-center gap-2 rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-2 py-1.5 text-[12px] text-description">
                 <MonitorStop size={14} />
                 <span>Profile "{activeProfile}" has no compartments mapped in Settings.</span>
             </div>
@@ -169,14 +169,14 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
         <div className="relative z-10" ref={dropdownRef}>
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="w-full flex items-center justify-between gap-2 px-2 py-1.5 text-[12px] border border-[var(--vscode-dropdown-border,var(--vscode-input-border))] bg-[var(--vscode-dropdown-background,var(--vscode-input-background))] text-[var(--vscode-dropdown-foreground,var(--vscode-input-foreground))] rounded-[2px] hover:bg-[var(--vscode-list-hoverBackground)] transition-colors focus:outline focus:outline-1 focus:outline-[var(--vscode-focusBorder)] focus:-outline-offset-1"
+                className="flex w-full items-center justify-between gap-2 rounded-[2px] border border-[var(--vscode-dropdown-border,var(--vscode-input-border))] bg-[var(--vscode-dropdown-background,var(--vscode-input-background))] px-2 py-1.5 text-[12px] text-[var(--vscode-dropdown-foreground,var(--vscode-input-foreground))] transition-colors hover:bg-[var(--vscode-list-hoverBackground)] focus:outline focus:outline-1 focus:outline-[var(--vscode-focusBorder)] focus:-outline-offset-1"
             >
                 <span className="truncate">{selectionText}</span>
                 <ChevronDown size={14} className="text-[var(--vscode-icon-foreground)] shrink-0" />
             </button>
 
             {isOpen && (
-                <div className="absolute top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto border border-[var(--vscode-dropdown-border,var(--vscode-input-border))] bg-[var(--vscode-dropdown-background,var(--vscode-input-background))] rounded-[2px] shadow-lg py-1 z-50">
+                <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-[2px] border border-[var(--vscode-dropdown-border,var(--vscode-input-border))] bg-[var(--vscode-dropdown-background,var(--vscode-input-background))] py-0.5 shadow-lg">
                     {availableCompartments.map(comp => {
                         const isSelected = currentSelection.includes(comp.id)
                         return (
@@ -184,7 +184,7 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
                                 key={comp.id}
                                 onClick={(e) => handleToggle(comp.id, e)}
                                 disabled={isSaving}
-                                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-list-background-hover transition-colors"
+                                className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors hover:bg-list-background-hover"
                             >
                                 <div className={clsx(
                                     "w-3.5 h-3.5 flex shrink-0 items-center justify-center border rounded-sm",
@@ -194,9 +194,9 @@ export default function CompartmentSelector({ featureKey, multiple = false }: Co
                                 )}>
                                     {isSelected && <Check size={10} className={multiple ? "text-button-primary-foreground" : ""} />}
                                 </div>
-                                <div className="flex items-center gap-1 min-w-0">
+                                <div className="flex min-w-0 items-center gap-1">
                                     {comp.isRoot && <Lock size={10} className="shrink-0 text-description" />}
-                                    <div className="flex flex-col min-w-0">
+                                    <div className="flex min-w-0 flex-col">
                                         <span className="truncate text-foreground font-medium">{comp.name}</span>
                                         <span className="truncate text-description text-[10px]">{comp.id}</span>
                                     </div>

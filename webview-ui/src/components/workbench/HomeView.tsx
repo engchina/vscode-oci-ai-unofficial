@@ -62,21 +62,21 @@ export default function HomeView({
 }: HomeViewProps) {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-[var(--vscode-editor-background)]">
-      <section className="border-b border-[var(--vscode-panel-border)] bg-[radial-gradient(circle_at_top_left,rgba(108,162,255,0.18),transparent_42%),linear-gradient(180deg,color-mix(in_srgb,var(--vscode-editor-background)_90%,white_10%)_0%,var(--vscode-editor-background)_100%)] px-6 py-6">
+      <section className="border-b border-[var(--vscode-panel-border)] bg-[radial-gradient(circle_at_top_left,rgba(108,162,255,0.18),transparent_42%),linear-gradient(180deg,color-mix(in_srgb,var(--vscode-editor-background)_90%,white_10%)_0%,var(--vscode-editor-background)_100%)] px-5 py-5">
         <div className="max-w-5xl">
-          <div className="inline-flex items-center gap-2 rounded-full border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_86%,white_14%)] px-3 py-1 text-[11px] font-medium text-[var(--vscode-descriptionForeground)]">
+          <div className="inline-flex items-center gap-2 rounded-full border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_86%,white_14%)] px-2.5 py-1 text-[11px] font-medium text-[var(--vscode-descriptionForeground)]">
             <Layers size={12} />
             OCI Workbench
           </div>
-          <h1 className="mt-4 text-[28px] font-semibold tracking-tight text-[var(--vscode-foreground)]">
+          <h1 className="mt-3 text-[28px] font-semibold tracking-tight text-[var(--vscode-foreground)]">
             One workspace for chat, infrastructure, and database operations.
           </h1>
-          <p className="mt-3 max-w-3xl text-[14px] leading-6 text-[var(--vscode-descriptionForeground)]">
+          <p className="mt-2.5 max-w-3xl text-[14px] leading-6 text-[var(--vscode-descriptionForeground)]">
             Navigate by domain on the left, keep your global OCI context at the top, and use the main workspace for the
             task currently in focus.
           </p>
 
-          <div className="mt-6 flex flex-wrap gap-3">
+          <div className="mt-5 flex flex-wrap gap-2">
             <Button variant="primary" size="md" onClick={() => onOpenAction("chat")}>
               <MessageSquareText size={14} className="mr-1.5" />
               Open Chat
@@ -93,23 +93,23 @@ export default function HomeView({
         </div>
       </section>
 
-      <div className="flex flex-col gap-5 px-6 py-5">
+      <div className="flex flex-col gap-4 px-5 py-4">
         {!hasProfiles && (
           <Card className="overflow-hidden p-0">
-            <div className="border-b border-[var(--vscode-panel-border)] px-4 py-3">
+            <div className="border-b border-[var(--vscode-panel-border)] px-3 py-2.5">
               <div className="text-[13px] font-semibold text-[var(--vscode-foreground)]">Initial setup</div>
-              <div className="mt-1 text-[12px] text-[var(--vscode-descriptionForeground)]">
+              <div className="mt-0.5 text-[12px] text-[var(--vscode-descriptionForeground)]">
                 Configure OCI access before using resource and database features.
               </div>
             </div>
-            <div className="px-4 py-2">
+            <div className="px-3 py-2">
               <WelcomeGuide onOpenSettings={onOpenSettings} />
             </div>
           </Card>
         )}
 
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
-          <div className="flex min-w-0 flex-col gap-5">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+          <div className="flex min-w-0 flex-col gap-4">
             <Card title="Quick Actions">
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {quickActions.map((action) => (
@@ -117,7 +117,7 @@ export default function HomeView({
                     key={action.id}
                     type="button"
                     onClick={() => onOpenAction(action.id)}
-                    className="flex flex-col items-start gap-2 rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,white_8%)] px-4 py-4 text-left transition-colors hover:bg-[var(--vscode-list-hoverBackground)]"
+                    className="flex flex-col items-start gap-1.5 rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,white_8%)] px-3 py-3 text-left transition-colors hover:bg-[var(--vscode-list-hoverBackground)]"
                   >
                     <span className="flex h-9 w-9 items-center justify-center rounded-md bg-[color-mix(in_srgb,var(--vscode-button-background)_18%,transparent)] text-[var(--vscode-button-background)]">
                       {action.icon}
@@ -134,20 +134,20 @@ export default function HomeView({
                 {FEATURE_HIGHLIGHTS.map((item) => (
                   <div
                     key={item.title}
-                    className="rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_82%,white_18%)] px-4 py-4"
+                    className="rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_82%,white_18%)] px-3 py-3"
                   >
                     <div className="flex h-9 w-9 items-center justify-center rounded-md bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,white_18%)] text-[var(--vscode-icon-foreground)]">
                       {item.icon}
                     </div>
-                    <div className="mt-3 text-[13px] font-semibold text-[var(--vscode-foreground)]">{item.title}</div>
-                    <p className="mt-2 text-[12px] leading-5 text-[var(--vscode-descriptionForeground)]">{item.description}</p>
+                    <div className="mt-2.5 text-[13px] font-semibold text-[var(--vscode-foreground)]">{item.title}</div>
+                    <p className="mt-1.5 text-[12px] leading-5 text-[var(--vscode-descriptionForeground)]">{item.description}</p>
                   </div>
                 ))}
               </div>
             </Card>
           </div>
 
-          <div className="flex min-w-0 flex-col gap-5">
+          <div className="flex min-w-0 flex-col gap-4">
             <Card title="Environment">
               <InfoRow label="Active profile" value={activeProfile || "Not set"} icon={<Server size={14} />} />
               <InfoRow label="Primary region" value={region || "Not set"} icon={<Layers size={14} />} />
@@ -158,7 +158,7 @@ export default function HomeView({
 
             <Card title="Recent Destinations">
               {recentItems.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-[var(--vscode-panel-border)] px-4 py-6 text-center text-[12px] text-[var(--vscode-descriptionForeground)]">
+                <div className="rounded-lg border border-dashed border-[var(--vscode-panel-border)] px-3 py-5 text-center text-[12px] text-[var(--vscode-descriptionForeground)]">
                   Open a feature from the navigation to build a working set here.
                 </div>
               ) : (
@@ -168,10 +168,10 @@ export default function HomeView({
                       key={item.id}
                       type="button"
                       onClick={() => onOpenAction(item.id)}
-                      className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-3 py-3 text-left transition-colors hover:bg-[var(--vscode-list-hoverBackground)]"
+                      className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-2.5 py-2.5 text-left transition-colors hover:bg-[var(--vscode-list-hoverBackground)]"
                     >
                       <div className="text-[12px] font-semibold text-[var(--vscode-foreground)]">{item.label}</div>
-                      <div className="mt-1 text-[11px] leading-5 text-[var(--vscode-descriptionForeground)]">{item.description}</div>
+                      <div className="mt-0.5 text-[11px] leading-5 text-[var(--vscode-descriptionForeground)]">{item.description}</div>
                     </button>
                   ))}
                 </div>
@@ -186,13 +186,13 @@ export default function HomeView({
 
 function InfoRow({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,white_8%)] px-3 py-3">
+    <div className="flex items-center gap-2.5 rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,white_8%)] px-2.5 py-2.5">
       <span className="flex h-8 w-8 items-center justify-center rounded-md bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_84%,white_16%)] text-[var(--vscode-icon-foreground)]">
         {icon}
       </span>
       <span className="min-w-0">
         <span className="block text-[11px] uppercase tracking-[0.16em] text-[var(--vscode-descriptionForeground)]">{label}</span>
-        <span className="mt-1 block truncate text-[13px] font-medium text-[var(--vscode-foreground)]">{value}</span>
+        <span className="mt-0.5 block truncate text-[13px] font-medium text-[var(--vscode-foreground)]">{value}</span>
       </span>
     </div>
   )

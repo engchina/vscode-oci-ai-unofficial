@@ -62,6 +62,7 @@ import { buildWorkbenchResourceGuardrailDetails, createStartResourceGuardrail, c
 import WorkbenchQueryResult from "../workbench/WorkbenchQueryResult"
 import { WorkbenchRefreshButton, WorkbenchToolbarGroup, WorkbenchToolbarSpacer } from "../workbench/WorkbenchToolbar"
 import SplitWorkspaceLayout from "../workbench/SplitWorkspaceLayout"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/Tabs"
 
 type ActionState = { id: string; action: "starting" | "stopping" } | null
 type RecentActionState = {
@@ -637,9 +638,9 @@ export default function AdbView() {
         </div>
       )}
     >
-      <div className="flex h-full min-h-0 flex-col px-3 py-3">
+      <div className="flex h-full min-h-0 flex-col px-2 py-2">
         {error && (
-          <InlineNotice tone="danger" size="md" icon={<AlertCircle size={13} />} className="mb-3">
+          <InlineNotice tone="danger" size="md" icon={<AlertCircle size={13} />} className="mb-2">
             {error}
           </InlineNotice>
         )}
@@ -648,7 +649,7 @@ export default function AdbView() {
           <InlineNotice
             tone="info"
             icon={<CheckCircle2 size={14} className="text-[var(--vscode-testing-iconPassed)]" />}
-            className="mb-3"
+            className="mb-2"
             actions={(
               <>
                 <WorkbenchRevealButton onClick={() => revealDatabase(recentAction.resourceId)} title="Show this database in the list" label="Show Database" />
@@ -665,7 +666,7 @@ export default function AdbView() {
         {loading && databases.length === 0 ? (
           <WorkbenchLoadingState
             label="Loading databases..."
-            className="min-h-[140px] py-6"
+            className="min-h-[140px] py-4"
           />
         ) : databases.length === 0 ? (
           <div className="flex flex-1">
@@ -675,7 +676,7 @@ export default function AdbView() {
           <div className="min-h-0 flex-1">
             <SplitWorkspaceLayout
               sidebar={(
-                <div className="flex flex-col gap-2.5">
+                <div className="flex flex-col gap-2">
                   <WorkbenchInventorySummary
                     label="Database inventory"
                     count={filtered.length === databases.length
@@ -692,7 +693,7 @@ export default function AdbView() {
                         <WorkbenchInventoryGroupHeading>
                           {compartmentNameById.get(compartmentGroup.compartmentId) ?? compartmentGroup.compartmentId}
                         </WorkbenchInventoryGroupHeading>
-                        <div className="flex flex-col gap-2.5">
+                        <div className="flex flex-col gap-2">
                           {compartmentGroup.regions.map((regionGroup) => (
                             <div key={`${compartmentGroup.compartmentId}-${regionGroup.region}`} className="flex flex-col gap-2">
                               <WorkbenchInventoryRegionHeading>
@@ -727,7 +728,7 @@ export default function AdbView() {
                 </div>
               )}
               main={(
-                <div className="flex flex-col gap-2.5">
+                <div className="flex flex-col h-full min-h-0 gap-2">
                   <DatabaseWorkbenchHero
                     eyebrow="Autonomous Database"
                     title={selectedDatabase?.name ?? "No Database Selected"}
@@ -749,172 +750,184 @@ export default function AdbView() {
                       ]}
                     />
                   )}
-                  <OracleDiagnosticsPanel diagnostics={diagnostics} />
 
-                  <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                    <WorkbenchSection
-                      title="Connection"
-                      subtitle="Download wallets, keep a saved profile, and maintain the active database session."
-                    >
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <Input
-                          type="password"
-                          label="Wallet Password"
-                          value={walletPassword}
-                          onChange={e => setWalletPassword(e.target.value)}
-                          placeholder="At least 8 chars"
-                        />
-                        <div className="flex items-end">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            className="w-full gap-1.5"
-                            onClick={handleDownloadWallet}
-                            disabled={adbBusyAction !== null || !selectedAdbId || walletPassword.trim().length < 8}
-                          >
-                            {adbBusyAction === "wallet" ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-                            Download Wallet
-                          </Button>
-                        </div>
-                      </div>
+                  <div className="flex-1 min-h-0 flex flex-col">
+                    <Tabs defaultValue="overview" className="flex-1 min-h-0">
+                      <TabsList>
+                        <TabsTrigger value="overview">Overview</TabsTrigger>
+                        <TabsTrigger value="connection">Connection</TabsTrigger>
+                        <TabsTrigger value="query">Query</TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="overview" className="flex-1 overflow-auto pt-1.5">
+                        <OracleDiagnosticsPanel diagnostics={diagnostics} />
+                      </TabsContent>
+                      <TabsContent value="connection" className="flex-1 overflow-auto pt-1.5">
+                        <WorkbenchSection
+                          title="Connection"
+                          subtitle="Download wallets, keep a saved profile, and maintain the active database session."
+                        >
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <Input
+                              type="password"
+                              label="Wallet Password"
+                              value={walletPassword}
+                              onChange={e => setWalletPassword(e.target.value)}
+                              placeholder="At least 8 chars"
+                            />
+                            <div className="flex items-end">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                className="w-full gap-1.5"
+                                onClick={handleDownloadWallet}
+                                disabled={adbBusyAction !== null || !selectedAdbId || walletPassword.trim().length < 8}
+                              >
+                                {adbBusyAction === "wallet" ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                                Download Wallet
+                              </Button>
+                            </div>
+                          </div>
 
-                      <Input
-                        label="Wallet Path"
-                        value={walletPath}
-                        onChange={e => setWalletPath(e.target.value)}
-                        placeholder="Wallet directory path"
-                      />
-
-                      <div className="grid gap-2 sm:grid-cols-3">
-                        <Input
-                          label="Username"
-                          value={username}
-                          onChange={e => setUsername(e.target.value)}
-                          placeholder="ADMIN"
-                        />
-                        <Input
-                          type="password"
-                          label="Password"
-                          value={password}
-                          onChange={e => setPassword(e.target.value)}
-                          placeholder="Database password"
-                        />
-                        <div className="flex flex-col gap-1.5">
-                          <label className="text-xs font-medium text-description">Service Name</label>
-                          <input
-                            value={serviceName}
-                            onChange={e => setServiceName(e.target.value)}
-                            list="adb-service-names"
-                            placeholder="e.g. dbname_high"
-                            className="w-full rounded-md border border-input-border bg-input-background px-3 py-2 text-sm text-input-foreground outline-none focus:border-border placeholder:text-input-placeholder"
+                          <Input
+                            label="Wallet Path"
+                            value={walletPath}
+                            onChange={e => setWalletPath(e.target.value)}
+                            placeholder="Wallet directory path"
                           />
-                          <datalist id="adb-service-names">
-                            {serviceNames.map((name) => <option key={name} value={name} />)}
-                          </datalist>
-                        </div>
-                      </div>
 
-                      <WorkbenchToolbarGroup>
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="gap-1.5"
-                          onClick={handleConnect}
-                          disabled={
-                            adbBusyAction !== null ||
-                            Boolean(connectionId) ||
-                            !selectedAdbId ||
-                            !walletPath.trim() ||
-                            !walletPassword.trim() ||
-                            !username.trim() ||
-                            !password ||
-                            !serviceName.trim()
-                          }
-                        >
-                          {adbBusyAction === "connect" ? <Loader2 size={12} className="animate-spin" /> : <Plug size={12} />}
-                          Connect
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          className="gap-1.5"
-                          onClick={handleDisconnect}
-                          disabled={adbBusyAction !== null || !connectionId}
-                        >
-                          {adbBusyAction === "disconnect" ? <Loader2 size={12} className="animate-spin" /> : <Unplug size={12} />}
-                          Disconnect
-                        </Button>
-                        <WorkbenchActionButton
-                          type="button"
-                          onClick={handleDiagnostics}
-                          disabled={loadingDiagnostics}
-                        >
-                          {loadingDiagnostics ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
-                          Connection Diagnostic
-                        </WorkbenchActionButton>
-                        <WorkbenchToolbarSpacer>
-                          <WorkbenchInlineActionCluster>
-                            <WorkbenchActionButton
+                          <div className="grid gap-2 sm:grid-cols-3">
+                            <Input
+                              label="Username"
+                              value={username}
+                              onChange={e => setUsername(e.target.value)}
+                              placeholder="ADMIN"
+                            />
+                            <Input
+                              type="password"
+                              label="Password"
+                              value={password}
+                              onChange={e => setPassword(e.target.value)}
+                              placeholder="Database password"
+                            />
+                            <div className="flex flex-col gap-1.5">
+                              <label className="text-xs font-medium text-description">Service Name</label>
+                              <input
+                                value={serviceName}
+                                onChange={e => setServiceName(e.target.value)}
+                                list="adb-service-names"
+                                placeholder="e.g. dbname_high"
+                                className="w-full rounded-md border border-input-border bg-input-background px-3 py-2 text-sm text-input-foreground outline-none focus:border-border placeholder:text-input-placeholder"
+                              />
+                              <datalist id="adb-service-names">
+                                {serviceNames.map((name) => <option key={name} value={name} />)}
+                              </datalist>
+                            </div>
+                          </div>
+
+                          <WorkbenchToolbarGroup>
+                            <Button
                               type="button"
-                              onClick={handleSaveConnection}
+                              size="sm"
+                              className="gap-1.5"
+                              onClick={handleConnect}
                               disabled={
                                 adbBusyAction !== null ||
+                                Boolean(connectionId) ||
                                 !selectedAdbId ||
                                 !walletPath.trim() ||
+                                !walletPassword.trim() ||
                                 !username.trim() ||
+                                !password ||
                                 !serviceName.trim()
                               }
                             >
-                              {adbBusyAction === "save" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                              {hasSavedProfile ? "Saved" : "Save"}
+                              {adbBusyAction === "connect" ? <Loader2 size={12} className="animate-spin" /> : <Plug size={12} />}
+                              Connect
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              className="gap-1.5"
+                              onClick={handleDisconnect}
+                              disabled={adbBusyAction !== null || !connectionId}
+                            >
+                              {adbBusyAction === "disconnect" ? <Loader2 size={12} className="animate-spin" /> : <Unplug size={12} />}
+                              Disconnect
+                            </Button>
+                            <WorkbenchActionButton
+                              type="button"
+                              onClick={handleDiagnostics}
+                              disabled={loadingDiagnostics}
+                            >
+                              {loadingDiagnostics ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+                              Connection Diagnostic
                             </WorkbenchActionButton>
-                            {hasSavedProfile && (
-                              <WorkbenchDestructiveButton
-                                type="button"
-                                onClick={handleDeleteConnection}
-                                disabled={adbBusyAction !== null}
-                              >
-                                {adbBusyAction === "delete" ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                                Delete
-                              </WorkbenchDestructiveButton>
-                            )}
-                          </WorkbenchInlineActionCluster>
-                        </WorkbenchToolbarSpacer>
-                      </WorkbenchToolbarGroup>
-                    </WorkbenchSection>
+                            <WorkbenchToolbarSpacer>
+                              <WorkbenchInlineActionCluster>
+                                <WorkbenchActionButton
+                                  type="button"
+                                  onClick={handleSaveConnection}
+                                  disabled={
+                                    adbBusyAction !== null ||
+                                    !selectedAdbId ||
+                                    !walletPath.trim() ||
+                                    !username.trim() ||
+                                    !serviceName.trim()
+                                  }
+                                >
+                                  {adbBusyAction === "save" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                                  {hasSavedProfile ? "Saved" : "Save"}
+                                </WorkbenchActionButton>
+                                {hasSavedProfile && (
+                                  <WorkbenchDestructiveButton
+                                    type="button"
+                                    onClick={handleDeleteConnection}
+                                    disabled={adbBusyAction !== null}
+                                  >
+                                    {adbBusyAction === "delete" ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                                    Delete
+                                  </WorkbenchDestructiveButton>
+                                )}
+                              </WorkbenchInlineActionCluster>
+                            </WorkbenchToolbarSpacer>
+                          </WorkbenchToolbarGroup>
+                        </WorkbenchSection>
+                      </TabsContent>
+                      <TabsContent value="query" className="flex-1 overflow-auto pt-1.5">
+                        <WorkbenchSection
+                          title="SQL Runner"
+                          subtitle="Run statements against the current ADB session and inspect the returned rows."
+                        >
+                          <Textarea
+                            label="SQL"
+                            value={sql}
+                            onChange={e => setSql(e.target.value)}
+                            className="min-h-[140px] font-mono text-xs"
+                            placeholder="SELECT * FROM your_table FETCH FIRST 20 ROWS ONLY"
+                          />
+                          <WorkbenchActionButton
+                            type="button"
+                            className="w-fit"
+                            onClick={handleExecuteSql}
+                            disabled={adbBusyAction !== null || !connectionId || !sql.trim()}
+                          >
+                            {adbBusyAction === "execute" ? <Loader2 size={12} className="animate-spin" /> : <SquareTerminal size={12} />}
+                            Execute SQL
+                          </WorkbenchActionButton>
 
-                    <WorkbenchSection
-                      title="SQL Runner"
-                      subtitle="Run statements against the current ADB session and inspect the returned rows."
-                    >
-                      <Textarea
-                        label="SQL"
-                        value={sql}
-                        onChange={e => setSql(e.target.value)}
-                        className="min-h-[140px] font-mono text-xs"
-                        placeholder="SELECT * FROM your_table FETCH FIRST 20 ROWS ONLY"
-                      />
-                      <WorkbenchActionButton
-                        type="button"
-                        className="w-fit"
-                        onClick={handleExecuteSql}
-                        disabled={adbBusyAction !== null || !connectionId || !sql.trim()}
-                      >
-                        {adbBusyAction === "execute" ? <Loader2 size={12} className="animate-spin" /> : <SquareTerminal size={12} />}
-                        Execute SQL
-                      </WorkbenchActionButton>
-
-                      {sqlResult ? (
-                        <WorkbenchQueryResult result={sqlResult} />
-                      ) : (
-                        <WorkbenchEmptyState
-                          title="No query output yet"
-                          description="Connect to the selected database and execute a statement to populate this area."
-                        />
-                      )}
-                    </WorkbenchSection>
+                          {sqlResult ? (
+                            <WorkbenchQueryResult result={sqlResult} />
+                          ) : (
+                            <WorkbenchEmptyState
+                              title="No query output yet"
+                              description="Connect to the selected database and execute a statement to populate this area."
+                            />
+                          )}
+                        </WorkbenchSection>
+                      </TabsContent>
+                    </Tabs>
                   </div>
                 </div>
               )}

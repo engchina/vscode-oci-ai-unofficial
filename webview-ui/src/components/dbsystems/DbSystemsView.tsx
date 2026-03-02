@@ -70,6 +70,7 @@ import { buildWorkbenchResourceGuardrailDetails, createStartResourceGuardrail, c
 import WorkbenchQueryResult from "../workbench/WorkbenchQueryResult"
 import { WorkbenchRefreshButton, WorkbenchToolbarGroup, WorkbenchToolbarSpacer } from "../workbench/WorkbenchToolbar"
 import SplitWorkspaceLayout from "../workbench/SplitWorkspaceLayout"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/Tabs"
 
 type ActionState = { id: string; action: "starting" | "stopping" } | null
 type RecentActionState = {
@@ -674,9 +675,9 @@ export default function DbSystemsView() {
                 </div>
             )}
         >
-            <div className="flex h-full min-h-0 flex-col px-3 py-3">
+            <div className="flex h-full min-h-0 flex-col px-2 py-2">
                 {error && (
-                    <InlineNotice tone="danger" size="md" icon={<AlertCircle size={13} />} className="mb-3">
+                    <InlineNotice tone="danger" size="md" icon={<AlertCircle size={13} />} className="mb-2">
                         {error}
                     </InlineNotice>
                 )}
@@ -685,7 +686,7 @@ export default function DbSystemsView() {
                     <InlineNotice
                         tone="info"
                         icon={<CheckCircle2 size={14} className="text-[var(--vscode-testing-iconPassed)]" />}
-                        className="mb-3"
+                        className="mb-2"
                         actions={(
                             <>
                                 <WorkbenchRevealButton onClick={() => revealDbSystem(recentAction.resourceId)} title="Show this DB System in the list" label="Show DB System" />
@@ -702,7 +703,7 @@ export default function DbSystemsView() {
                 {loading && dbSystems.length === 0 ? (
                     <WorkbenchLoadingState
                         label="Loading DB Systems..."
-                        className="min-h-[140px] py-6"
+                        className="min-h-[140px] py-4"
                     />
                 ) : dbSystems.length === 0 ? (
                     <div className="flex flex-1">
@@ -712,7 +713,7 @@ export default function DbSystemsView() {
                     <div className="min-h-0 flex-1">
                         <SplitWorkspaceLayout
                             sidebar={(
-                                <div className="flex flex-col gap-2.5">
+                                <div className="flex flex-col gap-2">
                                     <WorkbenchInventorySummary
                                         label="System inventory"
                                         count={filtered.length === dbSystems.length
@@ -729,7 +730,7 @@ export default function DbSystemsView() {
                                                 <WorkbenchInventoryGroupHeading>
                                                     {compartmentNameById.get(compartmentGroup.compartmentId) ?? compartmentGroup.compartmentId}
                                                 </WorkbenchInventoryGroupHeading>
-                                                <div className="flex flex-col gap-2.5">
+                                                <div className="flex flex-col gap-2">
                                                     {compartmentGroup.regions.map((regionGroup) => (
                                                         <div key={`${compartmentGroup.compartmentId}-${regionGroup.region}`} className="flex flex-col gap-2">
                                                             <WorkbenchInventoryRegionHeading>
@@ -773,7 +774,7 @@ export default function DbSystemsView() {
                                 </div>
                             )}
                             main={(
-                                <div className="flex flex-col gap-2.5">
+                                <div className="flex flex-col h-full min-h-0 gap-2">
                                     <DatabaseWorkbenchHero
                                         eyebrow="DB System"
                                         title={selectedDatabase?.name ?? "No Database Selected"}
@@ -794,164 +795,176 @@ export default function DbSystemsView() {
                                             ]}
                                         />
                                     )}
-                                    <OracleDiagnosticsPanel diagnostics={diagnostics} />
 
-                                    <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                                        <WorkbenchSection
-                                            title="Connection"
-                                            subtitle="Pick a connect string, keep saved credentials nearby, and maintain the active DB session."
-                                        >
-                                            <div className="grid gap-2 sm:grid-cols-2">
-                                                <Input
-                                                    label="Connect String / Service Name"
-                                                    value={serviceName}
-                                                    onChange={e => setServiceName(e.target.value)}
-                                                    placeholder="e.g. 129.146.x.x:1521/<service_name>.<db_domain>"
-                                                    list={`db-strings-${selectedDbId}`}
-                                                />
-                                                {connectionStrings.length > 0 && (
-                                                    <datalist id={`db-strings-${selectedDbId}`}>
-                                                        {connectionStrings.map(cs => (
-                                                            <option key={cs.name} value={cs.value}>{cs.name}</option>
-                                                        ))}
-                                                    </datalist>
-                                                )}
-                                                <div className="col-span-1 sm:col-span-2 flex flex-col gap-1 -mt-1">
-                                                    {loadingStrings && <span className="text-[10px] text-description animate-pulse">Fetching connection strings...</span>}
-                                                    {!loadingStrings && connectionStrings.length > 0 && (
-                                                        <div className="flex flex-wrap gap-1">
-                                                            {connectionStrings.map(cs => (
-                                                                <WorkbenchMicroOptionButton
-                                                                    key={cs.name}
-                                                                    onClick={() => setServiceName(cs.value)}
-                                                                    title={cs.value}
-                                                                >
-                                                                    {cs.name}
-                                                                </WorkbenchMicroOptionButton>
-                                                            ))}
+                                    <div className="flex-1 min-h-0 flex flex-col">
+                                        <Tabs defaultValue="overview" className="flex-1 min-h-0">
+                                            <TabsList>
+                                                <TabsTrigger value="overview">Overview</TabsTrigger>
+                                                <TabsTrigger value="connection">Connection</TabsTrigger>
+                                                <TabsTrigger value="query">Query</TabsTrigger>
+                                            </TabsList>
+                                            <TabsContent value="overview" className="flex-1 overflow-auto pt-1.5">
+                                                <OracleDiagnosticsPanel diagnostics={diagnostics} />
+                                            </TabsContent>
+                                            <TabsContent value="connection" className="flex-1 overflow-auto pt-1.5">
+                                                <WorkbenchSection
+                                                    title="Connection"
+                                                    subtitle="Pick a connect string, keep saved credentials nearby, and maintain the active DB session."
+                                                >
+                                                    <div className="grid gap-2 sm:grid-cols-2">
+                                                        <Input
+                                                            label="Connect String / Service Name"
+                                                            value={serviceName}
+                                                            onChange={e => setServiceName(e.target.value)}
+                                                            placeholder="e.g. 129.146.x.x:1521/<service_name>.<db_domain>"
+                                                            list={`db-strings-${selectedDbId}`}
+                                                        />
+                                                        {connectionStrings.length > 0 && (
+                                                            <datalist id={`db-strings-${selectedDbId}`}>
+                                                                {connectionStrings.map(cs => (
+                                                                    <option key={cs.name} value={cs.value}>{cs.name}</option>
+                                                                ))}
+                                                            </datalist>
+                                                        )}
+                                                        <div className="col-span-1 sm:col-span-2 flex flex-col gap-1 -mt-1">
+                                                            {loadingStrings && <span className="text-[10px] text-description animate-pulse">Fetching connection strings...</span>}
+                                                            {!loadingStrings && connectionStrings.length > 0 && (
+                                                                <div className="flex flex-wrap gap-1">
+                                                                    {connectionStrings.map(cs => (
+                                                                        <WorkbenchMicroOptionButton
+                                                                            key={cs.name}
+                                                                            onClick={() => setServiceName(cs.value)}
+                                                                            title={cs.value}
+                                                                        >
+                                                                            {cs.name}
+                                                                        </WorkbenchMicroOptionButton>
+                                                                    ))}
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                    )}
-                                                </div>
-                                            </div>
+                                                    </div>
 
-                                            <div className="grid gap-2 sm:grid-cols-2">
-                                                <Input
-                                                    label="Username"
-                                                    value={username}
-                                                    onChange={e => setUsername(e.target.value)}
-                                                    placeholder="SYSTEM"
-                                                />
-                                                <Input
-                                                    type="password"
-                                                    label="Password"
-                                                    value={password}
-                                                    onChange={e => setPassword(e.target.value)}
-                                                    placeholder="Database password"
-                                                />
-                                            </div>
+                                                    <div className="grid gap-2 sm:grid-cols-2">
+                                                        <Input
+                                                            label="Username"
+                                                            value={username}
+                                                            onChange={e => setUsername(e.target.value)}
+                                                            placeholder="SYSTEM"
+                                                        />
+                                                        <Input
+                                                            type="password"
+                                                            label="Password"
+                                                            value={password}
+                                                            onChange={e => setPassword(e.target.value)}
+                                                            placeholder="Database password"
+                                                        />
+                                                    </div>
 
-                                            <WorkbenchToolbarGroup>
-                                                <Button
-                                                    type="button"
-                                                    size="sm"
-                                                    className="gap-1.5"
-                                                    onClick={handleConnect}
-                                                    disabled={
-                                                        dbBusyAction !== null ||
-                                                        Boolean(connectionId) ||
-                                                        !selectedDbId ||
-                                                        !username.trim() ||
-                                                        !password ||
-                                                        !serviceName.trim()
-                                                    }
+                                                    <WorkbenchToolbarGroup>
+                                                        <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            className="gap-1.5"
+                                                            onClick={handleConnect}
+                                                            disabled={
+                                                                dbBusyAction !== null ||
+                                                                Boolean(connectionId) ||
+                                                                !selectedDbId ||
+                                                                !username.trim() ||
+                                                                !password ||
+                                                                !serviceName.trim()
+                                                            }
+                                                        >
+                                                            {dbBusyAction === "connect" ? <Loader2 size={12} className="animate-spin" /> : <Plug size={12} />}
+                                                            Connect
+                                                        </Button>
+                                                        <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            variant="secondary"
+                                                            className="gap-1.5"
+                                                            onClick={handleDisconnect}
+                                                            disabled={dbBusyAction !== null || !connectionId}
+                                                        >
+                                                            {dbBusyAction === "disconnect" ? <Loader2 size={12} className="animate-spin" /> : <Unplug size={12} />}
+                                                            Disconnect
+                                                        </Button>
+                                                        <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            variant="secondary"
+                                                            className="gap-1.5"
+                                                            onClick={handleDiagnostics}
+                                                            disabled={loadingDiagnostics}
+                                                        >
+                                                            {loadingDiagnostics ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+                                                            Connection Diagnostic
+                                                        </Button>
+                                                        <WorkbenchToolbarSpacer>
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                variant="secondary"
+                                                                className="gap-1.5"
+                                                                onClick={handleSaveConnection}
+                                                                disabled={
+                                                                    dbBusyAction !== null ||
+                                                                    !selectedDbId ||
+                                                                    !username.trim() ||
+                                                                    !serviceName.trim()
+                                                                }
+                                                            >
+                                                                {dbBusyAction === "save" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                                                                {hasSavedProfile ? "Saved" : "Save"}
+                                                            </Button>
+                                                            {hasSavedProfile && (
+                                                                <WorkbenchDestructiveButton
+                                                                    type="button"
+                                                                    onClick={handleDeleteConnection}
+                                                                    disabled={dbBusyAction !== null}
+                                                                >
+                                                                    {dbBusyAction === "delete" ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                                                                    Delete
+                                                                </WorkbenchDestructiveButton>
+                                                            )}
+                                                        </WorkbenchToolbarSpacer>
+                                                    </WorkbenchToolbarGroup>
+                                                </WorkbenchSection>
+                                            </TabsContent>
+                                            <TabsContent value="query" className="flex-1 overflow-auto pt-1.5">
+                                                <WorkbenchSection
+                                                    title="SQL Runner"
+                                                    subtitle="Run statements against the connected DB System and inspect the returned rows."
                                                 >
-                                                    {dbBusyAction === "connect" ? <Loader2 size={12} className="animate-spin" /> : <Plug size={12} />}
-                                                    Connect
-                                                </Button>
-                                                <Button
-                                                    type="button"
-                                                    size="sm"
-                                                    variant="secondary"
-                                                    className="gap-1.5"
-                                                    onClick={handleDisconnect}
-                                                    disabled={dbBusyAction !== null || !connectionId}
-                                                >
-                                                    {dbBusyAction === "disconnect" ? <Loader2 size={12} className="animate-spin" /> : <Unplug size={12} />}
-                                                    Disconnect
-                                                </Button>
-                                                <Button
-                                                    type="button"
-                                                    size="sm"
-                                                    variant="secondary"
-                                                    className="gap-1.5"
-                                                    onClick={handleDiagnostics}
-                                                    disabled={loadingDiagnostics}
-                                                >
-                                                    {loadingDiagnostics ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
-                                                    Connection Diagnostic
-                                                </Button>
-                                                <WorkbenchToolbarSpacer>
+                                                    <Textarea
+                                                        label="SQL"
+                                                        value={sql}
+                                                        onChange={e => setSql(e.target.value)}
+                                                        className="min-h-[140px] font-mono text-xs"
+                                                        placeholder="SELECT * FROM your_table FETCH FIRST 20 ROWS ONLY"
+                                                    />
                                                     <Button
                                                         type="button"
                                                         size="sm"
-                                                        variant="secondary"
-                                                        className="gap-1.5"
-                                                        onClick={handleSaveConnection}
-                                                        disabled={
-                                                            dbBusyAction !== null ||
-                                                            !selectedDbId ||
-                                                            !username.trim() ||
-                                                            !serviceName.trim()
-                                                        }
+                                                        className="w-fit gap-1.5"
+                                                        onClick={handleExecuteSql}
+                                                        disabled={dbBusyAction !== null || !connectionId || !sql.trim()}
                                                     >
-                                                        {dbBusyAction === "save" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                                                        {hasSavedProfile ? "Saved" : "Save"}
+                                                        {dbBusyAction === "execute" ? <Loader2 size={12} className="animate-spin" /> : <SquareTerminal size={12} />}
+                                                        Execute SQL
                                                     </Button>
-                                                    {hasSavedProfile && (
-                                                        <WorkbenchDestructiveButton
-                                                            type="button"
-                                                            onClick={handleDeleteConnection}
-                                                            disabled={dbBusyAction !== null}
-                                                        >
-                                                            {dbBusyAction === "delete" ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                                                            Delete
-                                                        </WorkbenchDestructiveButton>
+
+                                                    {sqlResult ? (
+                                                        <WorkbenchQueryResult result={sqlResult} />
+                                                    ) : (
+                                                        <WorkbenchEmptyState
+                                                            title="No query output yet"
+                                                            description="Connect to the selected DB System and execute a statement to populate this area."
+                                                        />
                                                     )}
-                                                </WorkbenchToolbarSpacer>
-                                            </WorkbenchToolbarGroup>
-                                        </WorkbenchSection>
-
-                                        <WorkbenchSection
-                                            title="SQL Runner"
-                                            subtitle="Run statements against the connected DB System and inspect the returned rows."
-                                        >
-                                            <Textarea
-                                                label="SQL"
-                                                value={sql}
-                                                onChange={e => setSql(e.target.value)}
-                                                className="min-h-[140px] font-mono text-xs"
-                                                placeholder="SELECT * FROM your_table FETCH FIRST 20 ROWS ONLY"
-                                            />
-                                            <Button
-                                                type="button"
-                                                size="sm"
-                                                className="w-fit gap-1.5"
-                                                onClick={handleExecuteSql}
-                                                disabled={dbBusyAction !== null || !connectionId || !sql.trim()}
-                                            >
-                                                {dbBusyAction === "execute" ? <Loader2 size={12} className="animate-spin" /> : <SquareTerminal size={12} />}
-                                                Execute SQL
-                                            </Button>
-
-                                            {sqlResult ? (
-                                                <WorkbenchQueryResult result={sqlResult} />
-                                            ) : (
-                                                <WorkbenchEmptyState
-                                                    title="No query output yet"
-                                                    description="Connect to the selected DB System and execute a statement to populate this area."
-                                                />
-                                            )}
-                                        </WorkbenchSection>
+                                                </WorkbenchSection>
+                                            </TabsContent>
+                                        </Tabs>
                                     </div>
                                 </div>
                             )}

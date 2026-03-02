@@ -30,7 +30,7 @@ export default function WorkbenchActionInventoryCard({
     <div
       ref={cardRef}
       className={clsx(
-        "flex flex-col gap-1.5 rounded-[2px] border p-2 transition-colors",
+        "flex flex-col gap-1 rounded-[2px] border p-1.5 transition-colors",
         onSelect && "cursor-pointer",
         selected && highlighted
           ? "border-[var(--vscode-focusBorder)] bg-[color-mix(in_srgb,var(--vscode-list-hoverBackground)_82%,var(--vscode-button-background)_18%)]"
@@ -46,7 +46,7 @@ export default function WorkbenchActionInventoryCard({
         }
       }}
     >
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-start justify-between gap-1.5">
         <div className="flex min-w-0 flex-col">
           <span className="truncate text-[13px] font-medium text-[var(--vscode-foreground)]">{title}</span>
           {subtitle && <span className="truncate text-[11px] text-description">{subtitle}</span>}
@@ -56,7 +56,7 @@ export default function WorkbenchActionInventoryCard({
       </div>
 
       {children}
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      {actions && <div className="flex items-center gap-1.5">{actions}</div>}
     </div>
   )
 }

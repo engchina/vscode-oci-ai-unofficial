@@ -36,7 +36,7 @@ export default function WorkbenchInventoryCard({
       ref={buttonRef}
       onClick={onClick}
       className={clsx(
-        "w-full rounded-[2px] border px-2.5 py-2 text-left transition-colors",
+        "w-full rounded-[2px] border px-2 py-1.5 text-left transition-colors",
         selected
           ? "border-[var(--vscode-focusBorder)] bg-[var(--vscode-list-activeSelectionBackground)] text-[var(--vscode-list-activeSelectionForeground)]"
           : highlighted
@@ -46,19 +46,19 @@ export default function WorkbenchInventoryCard({
               : "border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] text-[var(--vscode-foreground)] hover:bg-[var(--vscode-list-hoverBackground)]",
       )}
     >
-      <div className="flex items-start justify-between gap-2.5">
+      <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="truncate text-[12px] font-medium">{title}</div>
           {subtitle && <div className={clsx("mt-0.5 truncate text-[10px]", mutedClassName)}>{subtitle}</div>}
           {details.length > 0 && (
-            <div className={clsx("mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[10px]", mutedClassName)}>
+            <div className={clsx("mt-1 flex flex-wrap gap-x-2.5 gap-y-0.5 text-[10px]", mutedClassName)}>
               {details.map((detail) => (
                 <span key={detail}>{detail}</span>
               ))}
             </div>
           )}
           {chips.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap gap-1">
+            <div className="mt-1 flex flex-wrap gap-1">
               {chips.map((chip) => (
                 <span key={chip} className={clsx("rounded-full border border-current/15 px-2 py-0.5 text-[10px]", mutedClassName)}>
                   {chip}

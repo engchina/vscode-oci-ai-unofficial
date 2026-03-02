@@ -20,6 +20,7 @@ import {
 import { WorkbenchRefreshButton } from "../workbench/WorkbenchToolbar"
 import SplitWorkspaceLayout from "../workbench/SplitWorkspaceLayout"
 import SecurityListView from "./SecurityListView"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/Tabs"
 
 export default function VcnView() {
     const { activeProfile, profilesConfig, tenancyOcid, vcnCompartmentIds, navigateToView } = useExtensionState()
@@ -272,9 +273,9 @@ export default function VcnView() {
                 </div>
             )}
         >
-            <div className="flex h-full min-h-0 flex-col px-3 py-3">
+            <div className="flex h-full min-h-0 flex-col px-2 py-2">
                 {error && (
-                    <InlineNotice tone="danger" size="md" icon={<AlertCircle size={13} />} className="mb-3">
+                    <InlineNotice tone="danger" size="md" icon={<AlertCircle size={13} />} className="mb-2">
                         {error}
                     </InlineNotice>
                 )}
@@ -282,7 +283,7 @@ export default function VcnView() {
                 {loading && vcns.length === 0 ? (
                     <WorkbenchLoadingState
                         label="Loading VCNs..."
-                        className="min-h-[140px] py-6"
+                        className="min-h-[140px] py-4"
                     />
                 ) : vcns.length === 0 ? (
                     <div className="flex flex-1">
@@ -292,7 +293,7 @@ export default function VcnView() {
                     <div className="min-h-0 flex-1">
                         <SplitWorkspaceLayout
                             sidebar={(
-                                <div className="flex flex-col gap-2.5">
+                                <div className="flex flex-col gap-2">
                                     <WorkbenchInventorySummary
                                         label="VCN inventory"
                                         count={filtered.length === vcns.length
@@ -348,7 +349,7 @@ export default function VcnView() {
                                         />
                                     </div>
                                 ) : (
-                                    <div className="flex h-full min-h-0 flex-col gap-2.5">
+                                    <div className="flex h-full min-h-0 flex-col gap-2">
                                         <WorkbenchHero
                                             eyebrow="Virtual Cloud Network"
                                             title={selectedVcn.name}
@@ -356,33 +357,47 @@ export default function VcnView() {
                                             badge={<LifecycleBadge state={selectedVcn.lifecycleState} />}
                                             metaItems={[
                                                 { label: "Region", value: selectedVcn.region || "default" },
-                                                { label: "CIDR Blocks", value: `${selectedVcn.cidrBlocks.length}` },
                                                 { label: "Compartment", value: compartmentNameById.get(selectedVcn.compartmentId) ?? selectedVcn.compartmentId },
                                             ]}
                                         />
-                                        <WorkbenchSection
-                                            title="Security Lists"
-                                            subtitle="Review attached security lists here, or open the dedicated workspace to modify them."
-                                            actions={(
-                                                <WorkbenchActionButton onClick={() => setShowSecurityListWorkspace(true)}>
-                                                    Open Workspace
-                                                </WorkbenchActionButton>
-                                            )}
-                                        >
-                                            <div className="flex flex-wrap gap-2">
-                                                {selectedVcn.cidrBlocks.map((cidr) => (
-                                                    <span key={cidr} className="rounded-full border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-2.5 py-1 text-[11px] text-description">
-                                                        {cidr}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                            <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)]">
-                                                <SecurityListView
-                                                    vcn={selectedVcn}
-                                                    embedded
-                                                />
-                                            </div>
-                                        </WorkbenchSection>
+                                        <div className="flex-1 min-h-0 flex flex-col">
+                                            <Tabs defaultValue="overview" className="flex-1 min-h-0">
+                                                <TabsList>
+                                                    <TabsTrigger value="overview">Overview</TabsTrigger>
+                                                    <TabsTrigger value="security-lists">Security Lists</TabsTrigger>
+                                                </TabsList>
+                                                <TabsContent value="overview" className="flex-1 overflow-auto pt-1.5">
+                                                    <WorkbenchSection title="CIDR Blocks">
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {selectedVcn.cidrBlocks.length > 0 ? selectedVcn.cidrBlocks.map((cidr) => (
+                                                                <span key={cidr} className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-2.5 py-1 text-[11px] text-[var(--vscode-foreground)] shadow-sm">
+                                                                    {cidr}
+                                                                </span>
+                                                            )) : <span className="text-[12px] text-description">No CIDR blocks configured.</span>}
+                                                        </div>
+                                                    </WorkbenchSection>
+                                                </TabsContent>
+                                                <TabsContent value="security-lists" className="min-h-0 flex-1 flex flex-col pt-1.5">
+                                                    <WorkbenchSection
+                                                        title="Security Lists"
+                                                        subtitle="Review attached security lists here, or open the dedicated workspace to modify them."
+                                                        actions={(
+                                                            <WorkbenchActionButton onClick={() => setShowSecurityListWorkspace(true)}>
+                                                                Open Workspace
+                                                            </WorkbenchActionButton>
+                                                        )}
+                                                        className="flex-1 flex flex-col min-h-0"
+                                                    >
+                                                        <div className="min-h-0 flex-1 overflow-hidden rounded-[2px] border border-[var(--vscode-panel-border)] mt-1.5">
+                                                            <SecurityListView
+                                                                vcn={selectedVcn}
+                                                                embedded
+                                                            />
+                                                        </div>
+                                                    </WorkbenchSection>
+                                                </TabsContent>
+                                            </Tabs>
+                                        </div>
                                     </div>
                                 )
                             ) : (
