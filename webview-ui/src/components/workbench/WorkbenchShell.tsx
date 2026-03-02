@@ -55,6 +55,14 @@ export default function WorkbenchShell({
   aside,
   children,
 }: WorkbenchShellProps) {
+  const secondaryItems = secondaryGroups.flatMap((group) =>
+    group.items.map((item) => ({
+      ...item,
+      groupTitle: group.title,
+    })),
+  )
+  const activeSecondaryItem = secondaryItems.find((item) => item.id === activeViewId) ?? secondaryItems[0]
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--vscode-editor-background)] text-[var(--vscode-foreground)]">
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_88%,black_12%)] px-2">
@@ -106,68 +114,72 @@ export default function WorkbenchShell({
           })}
         </aside>
 
-        <aside className="flex w-[260px] shrink-0 flex-col border-r border-[var(--vscode-panel-border)] bg-[var(--vscode-sideBar-background)]">
-          <div className="border-b border-[var(--vscode-panel-border)] px-2 py-2">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--vscode-descriptionForeground)]">
-              Navigation
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-2 py-2">
-            <div className="flex flex-col gap-2">
-              {secondaryGroups.map((group) => (
-                <section key={group.title} className="flex flex-col gap-1">
-                  <h2 className="px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--vscode-descriptionForeground)]">
-                    {group.title}
-                  </h2>
-                  <div className="flex flex-col gap-1">
-                    {group.items.map((item) => {
-                      const isActive = item.id === activeViewId
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => onSelectView(item.id)}
-                          className={clsx(
-                            "flex items-start gap-2 rounded-lg px-2 py-1.5 text-left transition-colors",
-                            isActive
-                              ? "bg-[var(--vscode-list-activeSelectionBackground)] text-[var(--vscode-list-activeSelectionForeground)]"
-                              : "text-[var(--vscode-foreground)] hover:bg-[var(--vscode-list-hoverBackground)] hover:text-[var(--vscode-list-hoverForeground)]",
-                          )}
-                        >
-                          {item.icon && (
-                            <span className="mt-0.5 shrink-0 text-[var(--vscode-icon-foreground)]">{item.icon}</span>
-                          )}
-                          <span className="min-w-0">
-                            <span className="block truncate text-[12px] font-medium">{item.label}</span>
-                            <span
+        <div className="flex min-w-0 flex-1 overflow-hidden">
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            {secondaryGroups.length > 0 && (
+              <div className="shrink-0 border-b border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_82%,black_18%)]">
+                <div className="flex items-center gap-3 overflow-x-auto px-3 py-2">
+                  {secondaryGroups.map((group) => (
+                    <section key={group.title} className="flex shrink-0 items-center gap-2">
+                      <h2 className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--vscode-descriptionForeground)]">
+                        {group.title}
+                      </h2>
+                      <div
+                        role="tablist"
+                        aria-label={`${group.title} navigation`}
+                        className="flex items-center gap-1 rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,white_8%)] p-1"
+                      >
+                        {group.items.map((item) => {
+                          const isActive = item.id === activeViewId
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              role="tab"
+                              aria-selected={isActive}
+                              onClick={() => onSelectView(item.id)}
+                              title={item.description}
                               className={clsx(
-                                "mt-0.5 block text-[11px] leading-relaxed",
+                                "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[12px] font-medium whitespace-nowrap transition-colors",
                                 isActive
-                                  ? "text-[color-mix(in_srgb,var(--vscode-list-activeSelectionForeground)_72%,transparent)]"
-                                  : "text-[var(--vscode-descriptionForeground)]",
+                                  ? "border-[var(--vscode-list-activeSelectionBackground)] bg-[var(--vscode-list-activeSelectionBackground)] text-[var(--vscode-list-activeSelectionForeground)]"
+                                  : "border-transparent text-[var(--vscode-descriptionForeground)] hover:bg-[var(--vscode-list-hoverBackground)] hover:text-[var(--vscode-foreground)]",
                               )}
                             >
-                              {item.description}
-                            </span>
-                          </span>
-                        </button>
-                      )
-                    })}
+                              {item.icon && <span className="shrink-0">{item.icon}</span>}
+                              <span>{item.label}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+
+                {activeSecondaryItem && (
+                  <div className="flex items-center gap-2 border-t border-[var(--vscode-panel-border)] px-3 py-1.5 text-[11px]">
+                    <span className="rounded-full border border-[var(--vscode-panel-border)] px-2 py-0.5 font-semibold uppercase tracking-[0.14em] text-[var(--vscode-descriptionForeground)]">
+                      {activeSecondaryItem.groupTitle}
+                    </span>
+                    {activeSecondaryItem.icon && (
+                      <span className="shrink-0 text-[var(--vscode-icon-foreground)]">{activeSecondaryItem.icon}</span>
+                    )}
+                    <span className="font-medium text-[var(--vscode-foreground)]">{activeSecondaryItem.label}</span>
+                    <span className="truncate text-[var(--vscode-descriptionForeground)]">{activeSecondaryItem.description}</span>
                   </div>
-                </section>
-              ))}
-            </div>
+                )}
+              </div>
+            )}
+
+            <main className="min-w-0 flex-1 overflow-hidden">{children}</main>
           </div>
-        </aside>
 
-        <main className="min-w-0 flex-1 overflow-hidden">{children}</main>
-
-        {aside && (
-          <aside className="hidden w-[300px] shrink-0 border-l border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_84%,black_16%)] xl:block">
-            <div className="h-full overflow-y-auto p-2">{aside}</div>
-          </aside>
-        )}
+          {aside && (
+            <aside className="hidden w-[300px] shrink-0 border-l border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-sideBar-background)_84%,black_16%)] xl:block">
+              <div className="h-full overflow-y-auto p-2">{aside}</div>
+            </aside>
+          )}
+        </div>
       </div>
 
       {statusBar && (
