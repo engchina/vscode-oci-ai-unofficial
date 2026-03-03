@@ -818,7 +818,7 @@ export class OciService {
       method: params.method,
       defaultHeaders: params.headerParams?.accept ? {} : { accept: "application/json" },
       pathParams: params.pathParams,
-      queryParams: params.queryParams,
+      queryParams: encodeObjectStorageQueryParams(params.queryParams),
       headerParams: params.headerParams,
       bodyContent: params.bodyContent,
     });
@@ -938,6 +938,24 @@ function readOptionalString(value: unknown): string | undefined {
 function readOptionalNumber(value: unknown): number | undefined {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function encodeObjectStorageQueryParams(params?: common.Params): common.Params | undefined {
+  if (!params) {
+    return undefined;
+  }
+
+  const encodedEntries = Object.entries(params).map(([key, value]) => {
+    if (Array.isArray(value)) {
+      return [key, value.map((item) => encodeURIComponent(String(item)))] as const;
+    }
+    if (value === undefined || value === null) {
+      return [key, value] as const;
+    }
+    return [key, encodeURIComponent(String(value))] as const;
+  });
+
+  return Object.fromEntries(encodedEntries);
 }
 
 async function formatObjectStorageError(response: Response): Promise<string> {

@@ -1077,6 +1077,7 @@ export default function SqlWorkbenchView() {
 
   function applySqlSnippet(entry: SqlFavoriteEntry | SqlHistoryEntry): void {
     setSql(entry.sql)
+    setWorkspaceTab("query")
     if (entry.connectionType && entry.connectionType !== targetType) {
       setTargetType(entry.connectionType)
     }
@@ -1268,7 +1269,14 @@ export default function SqlWorkbenchView() {
                                       Run Assistant
                                     </WorkbenchSubmitButton>
                                     {assistantResult?.suggestedSql && (
-                                      <WorkbenchActionButton type="button" variant="secondary" onClick={() => setSql(assistantResult.suggestedSql ?? "")}>
+                                      <WorkbenchActionButton
+                                        type="button"
+                                        variant="secondary"
+                                        onClick={() => {
+                                          setSql(assistantResult.suggestedSql ?? "")
+                                          setWorkspaceTab("query")
+                                        }}
+                                      >
                                         Use Suggested SQL
                                       </WorkbenchActionButton>
                                     )}
