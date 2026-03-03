@@ -19,6 +19,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useExtensionState } from "../../context/ExtensionStateContext"
 import { toneFromLifecycleState, useWorkbenchInsight } from "../../context/WorkbenchInsightContext"
+import { useScrollFlashTarget } from "../../hooks/useScrollFlashTarget"
 import { ResourceServiceClient } from "../../services/grpc-client"
 import type {
     DbSystemResource,
@@ -38,7 +39,6 @@ import StatusBadge, { LifecycleBadge } from "../ui/StatusBadge"
 import Textarea from "../ui/Textarea"
 import {
     DatabaseContextStrip,
-    DatabaseWorkbenchHero,
     WorkbenchLoadingState,
     WorkbenchEmptyState,
     WorkbenchSection,
@@ -104,6 +104,7 @@ export default function DbSystemsView() {
     const [connectionId, setConnectionId] = useState("")
     const [connectionTarget, setConnectionTarget] = useState<Pick<ConnectDbSystemResponse, "dbSystemId" | "serviceName"> | null>(null)
     const [sql, setSql] = useState("SELECT SYSDATE AS CURRENT_TIME FROM DUAL")
+    const [activeTab, setActiveTab] = useState("overview")
     const [sqlResult, setSqlResult] = useState<ExecuteAdbSqlResponse | null>(null)
     const [dbBusyAction, setDbBusyAction] = useState<"connect" | "disconnect" | "execute" | "save" | "delete" | null>(null)
     const [hasSavedProfile, setHasSavedProfile] = useState(false)
@@ -126,6 +127,8 @@ export default function DbSystemsView() {
     const actionTimerRef = useRef<number | null>(null)
     const highlightTimerRef = useRef<number | null>(null)
     const dbSystemItemRefs = useRef(new Map<string, HTMLDivElement>())
+    const diagnosticsFocus = useScrollFlashTarget()
+    const errorFocus = useScrollFlashTarget()
 
     const selectedDatabase = useMemo(
         () => dbSystems.find((db) => db.id === selectedDbId) ?? null,
@@ -637,22 +640,35 @@ export default function DbSystemsView() {
         }
     }, [selectedDatabase])
 
+    useEffect(() => {
+        diagnosticsFocus.consumePendingFocus(!loadingDiagnostics && Boolean(diagnostics) && activeTab === "overview")
+    }, [activeTab, diagnostics, diagnosticsFocus, loadingDiagnostics])
+
+    useEffect(() => {
+        errorFocus.consumePendingFocus(!loadingDiagnostics && Boolean(error) && activeTab === "overview")
+    }, [activeTab, error, errorFocus, loadingDiagnostics])
+
     const handleDiagnostics = useCallback(async () => {
         setError(null)
+        setActiveTab("overview")
+        diagnosticsFocus.requestFocus()
+        errorFocus.requestFocus()
         setLoadingDiagnostics(true)
         try {
             const response = await ResourceServiceClient.getOracleDbDiagnostics()
             setDiagnostics(response)
         } catch (err) {
+            diagnosticsFocus.cancelFocus()
             setError(err instanceof Error ? err.message : String(err))
         } finally {
             setLoadingDiagnostics(false)
         }
-    }, [])
+    }, [diagnosticsFocus, errorFocus])
 
     const revealDbSystem = useCallback((dbSystemId: string) => {
         setQuery("")
         setSelectedDbId(dbSystemId)
+        setActiveTab("overview")
         setShowDbSystemWorkspace(false)
         setHighlightedDbSystemId(dbSystemId)
     }, [])
@@ -660,9 +676,9 @@ export default function DbSystemsView() {
     return (
         <FeaturePageLayout
             title="DB Systems"
-            description="Browse Base Database Service systems and related operations, then connect over SQL and keep SSH context nearby."
-            icon={<Database size={16} />}
-            status={isPolling ? <StatusBadge label="Auto-refreshing" tone="warning" className="animate-pulse" /> : undefined}
+        description="Browse Base Database Service systems and related operations, then connect over SQL and keep SSH context nearby."
+        icon={<Database size={16} />}
+            status={isPolling ? <StatusBadge label="Auto-refreshing" tone="warning" size="compact" className="animate-pulse" /> : undefined}
             actions={(
                 <WorkbenchRefreshButton
                     onClick={load}
@@ -686,9 +702,17 @@ export default function DbSystemsView() {
         >
             <div className="flex h-full min-h-0 flex-col px-2 py-2">
                 {error && (
-                    <InlineNotice tone="danger" size="md" icon={<AlertCircle size={13} />} className="mb-2">
-                        {error}
-                    </InlineNotice>
+                    <div
+                        ref={errorFocus.targetRef}
+                        className={clsx(
+                            "rounded-md transition-all duration-500",
+                            errorFocus.isFlashing && "bg-[color-mix(in_srgb,var(--vscode-errorForeground)_10%,transparent)] ring-1 ring-[color-mix(in_srgb,var(--vscode-errorForeground)_40%,transparent)]"
+                        )}
+                    >
+                        <InlineNotice tone="danger" size="md" icon={<AlertCircle size={13} />} className="mb-2">
+                            {error}
+                        </InlineNotice>
+                    </div>
                 )}
 
                 {recentAction && (
@@ -722,36 +746,31 @@ export default function DbSystemsView() {
                     <div className="min-h-0 flex-1">
                         {showDbSystemWorkspace && selectedDatabase ? (
                             <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-shell)]">
-                                <div className="flex items-center gap-2 border-b border-[var(--vscode-panel-border)] px-3 py-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowDbSystemWorkspace(false)}
-                                        className="flex h-6 w-6 items-center justify-center rounded-[2px] hover:bg-[var(--vscode-toolbar-hoverBackground)]"
-                                        title="Back to DB Systems"
-                                    >
-                                        <ChevronLeft size={14} />
-                                    </button>
-                                    <div className="min-w-0">
-                                        <div className="truncate text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)]">
-                                            DB System
+                                <div className="flex items-center justify-between gap-2 border-b border-[var(--vscode-panel-border)] px-3 py-2">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowDbSystemWorkspace(false)}
+                                            className="flex h-6 w-6 items-center justify-center rounded-[2px] hover:bg-[var(--vscode-toolbar-hoverBackground)]"
+                                            title="Back to DB Systems"
+                                        >
+                                            <ChevronLeft size={14} />
+                                        </button>
+                                        <div className="min-w-0">
+                                            <div className="truncate text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)]">
+                                                DB System
+                                            </div>
+                                            <div className="truncate text-[10px] text-description">{selectedDatabase.name}</div>
                                         </div>
-                                        <div className="truncate text-[10px] text-description">{selectedDatabase.name}</div>
                                     </div>
+                                    <StatusBadge
+                                        label={connectionId ? "Connected" : "Disconnected"}
+                                        tone={connectionId ? "success" : "neutral"}
+                                        size="compact"
+                                    />
                                 </div>
 
                                 <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
-                                    <DatabaseWorkbenchHero
-                                        eyebrow="DB System"
-                                        title={selectedDatabase.name}
-                                        resourceId={selectedDatabase.id}
-                                        connected={Boolean(connectionId)}
-                                        metaItems={[
-                                            { label: "DB System", value: selectedDatabase.name },
-                                            { label: "Region", value: selectedDatabase.region || "default" },
-                                            { label: "Lifecycle", value: selectedDatabase.lifecycleState },
-                                        ]}
-                                    />
-
                                     {connectionTarget && (
                                         <DatabaseContextStrip
                                             items={[
@@ -762,14 +781,22 @@ export default function DbSystemsView() {
                                     )}
 
                                     <div className="flex-1 min-h-0 flex flex-col">
-                                        <Tabs defaultValue="overview" className="flex-1 min-h-0">
+                                        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 min-h-0">
                                             <TabsList>
                                                 <TabsTrigger value="overview">Overview</TabsTrigger>
                                                 <TabsTrigger value="connection">Connection</TabsTrigger>
                                                 <TabsTrigger value="query">Query</TabsTrigger>
                                             </TabsList>
                                             <TabsContent value="overview" className="flex-1 overflow-auto pt-1.5">
+                                                <div
+                                                    ref={diagnosticsFocus.targetRef}
+                                                    className={clsx(
+                                                        "rounded-md transition-all duration-500",
+                                                        diagnosticsFocus.isFlashing && "bg-[color-mix(in_srgb,var(--vscode-focusBorder)_12%,transparent)] ring-1 ring-[color-mix(in_srgb,var(--vscode-focusBorder)_55%,transparent)]"
+                                                    )}
+                                                >
                                                 <OracleDiagnosticsPanel diagnostics={diagnostics} />
+                                                </div>
                                             </TabsContent>
                                             <TabsContent value="connection" className="flex-1 overflow-auto pt-1.5">
                                                 <WorkbenchSection
@@ -1082,7 +1109,7 @@ function DatabaseCard({
             onSelect={() => onSelect(dbSystem.id)}
             trailing={(
                 <div className="flex shrink-0 flex-col items-end gap-1">
-                    <LifecycleBadge state={effectiveState} />
+                    <LifecycleBadge state={effectiveState} size="compact" />
                     {dbSystem.nodeLifecycleState && dbSystem.nodeLifecycleState !== dbSystem.lifecycleState && (
                         <span className="text-[9px] text-description">
                             System: {dbSystem.lifecycleState} / Node: {dbSystem.nodeLifecycleState}

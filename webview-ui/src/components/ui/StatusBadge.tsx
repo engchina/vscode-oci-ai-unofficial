@@ -24,12 +24,14 @@ interface StatusBadgeProps {
   tone?: WorkbenchInsightTone
   className?: string
   title?: string
+  size?: "default" | "compact"
 }
 
 interface LifecycleBadgeProps {
   state?: string
   fallbackLabel?: string
   className?: string
+  size?: "default" | "compact"
 }
 
 export default function StatusBadge({
@@ -37,12 +39,16 @@ export default function StatusBadge({
   tone = "neutral",
   className,
   title,
+  size = "default",
 }: StatusBadgeProps) {
   return (
     <span
       title={title}
       className={clsx(
-        "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
+        "shrink-0 border font-medium uppercase",
+        size === "compact"
+          ? "rounded-md px-1.5 py-0 text-[9px] leading-4 tracking-[0.12em]"
+          : "rounded-full px-2 py-0.5 text-[10px] tracking-[0.14em]",
         toneClassNames[tone],
         className,
       )}
@@ -56,12 +62,14 @@ export function LifecycleBadge({
   state,
   fallbackLabel = "Unknown",
   className,
+  size = "default",
 }: LifecycleBadgeProps) {
   const label = state?.trim() || fallbackLabel
   return (
     <StatusBadge
       label={label}
       tone={toneFromLifecycleState(state)}
+      size={size}
       className={clsx(lifecycleStateClassName(state), className)}
     />
   )

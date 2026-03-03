@@ -1,7 +1,6 @@
 import { clsx } from "clsx"
 import {
   AlertCircle,
-  ArrowDownToLine,
   CheckCircle2,
   ChevronLeft,
   Copy,
@@ -25,14 +24,15 @@ import type {
 import GuardrailDialog from "../common/GuardrailDialog"
 import CompartmentSelector from "../ui/CompartmentSelector"
 import InlineNotice from "../ui/InlineNotice"
-import { WorkbenchEmptyState, WorkbenchHero, WorkbenchLoadingState, WorkbenchSection } from "../workbench/DatabaseWorkbenchChrome"
+import StatusBadge from "../ui/StatusBadge"
+import { WorkbenchEmptyState, WorkbenchLoadingState, WorkbenchSection } from "../workbench/DatabaseWorkbenchChrome"
 import {
   WorkbenchActionButton,
   WorkbenchCompactActionCluster,
   WorkbenchDismissButton,
   WorkbenchIconActionButton,
-  WorkbenchInlineActionCluster,
   WorkbenchRevealButton,
+  WorkbenchSelectButton,
 } from "../workbench/WorkbenchActionButtons"
 import FeaturePageLayout, { FeatureSearchInput } from "../workbench/FeaturePageLayout"
 import { WorkbenchMicroOptionButton } from "../workbench/WorkbenchCompactControls"
@@ -680,6 +680,13 @@ export default function ObjectStorageView() {
                       <div className="truncate text-[10px] text-description">{selectedBucket.name}</div>
                     </div>
                   </div>
+                  {selectedBucket.publicAccessType ? (
+                    <StatusBadge
+                      label={selectedBucket.publicAccessType}
+                      tone="neutral"
+                      size="compact"
+                    />
+                  ) : null}
                 </div>
 
                 <div className="min-h-0 flex-1 overflow-hidden p-2">
@@ -777,21 +784,6 @@ export default function ObjectStorageView() {
                     </div>
                   ) : (
                     <div className="flex flex-col h-full min-h-0 gap-2">
-                      <WorkbenchHero
-                        eyebrow="Object Storage Bucket"
-                        title={selectedBucket.name}
-                        resourceId={`${selectedBucket.namespaceName} • ${selectedBucket.region}`}
-                        badge={selectedBucket.publicAccessType ? (
-                          <span className="rounded-[2px] border border-[var(--vscode-panel-border)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--vscode-descriptionForeground)]">
-                            {selectedBucket.publicAccessType}
-                          </span>
-                        ) : undefined}
-                        metaItems={[
-                          { label: "Namespace", value: selectedBucket.namespaceName },
-                          { label: "Region", value: selectedBucket.region },
-                        ]}
-                      />
-
                       <div className="flex-1 min-h-0 flex flex-col">
                         <Tabs defaultValue="overview" className="flex-1 min-h-0">
                           <TabsList>
@@ -1002,7 +994,18 @@ function BucketList({
                     ]}
                     selected={Boolean(selectedBucket && isSameBucket(bucket, selectedBucket))}
                     onClick={() => onSelect(bucket)}
-                    rightSlot={<ArrowDownToLine size={12} className="rotate-[-90deg] text-description" />}
+                    navigationAffordance
+                    footer={(
+                      <WorkbenchCompactActionCluster>
+                        <WorkbenchSelectButton
+                          selected={Boolean(selectedBucket && isSameBucket(bucket, selectedBucket))}
+                          onClick={() => onSelect(bucket)}
+                        />
+                        <WorkbenchActionButton onClick={() => onSelect(bucket)}>
+                          Open Workspace
+                        </WorkbenchActionButton>
+                      </WorkbenchCompactActionCluster>
+                    )}
                   />
                 ))}
               </div>

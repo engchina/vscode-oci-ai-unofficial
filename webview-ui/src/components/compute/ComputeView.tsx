@@ -1,4 +1,3 @@
-import { clsx } from "clsx"
 import { AlertCircle, CheckCircle2, Loader2, MonitorPlay, MonitorStop, Server, SquareTerminal } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useExtensionState } from "../../context/ExtensionStateContext"
@@ -11,6 +10,7 @@ import CompartmentSelector from "../ui/CompartmentSelector"
 import InlineNotice from "../ui/InlineNotice"
 import StatusBadge, { LifecycleBadge } from "../ui/StatusBadge"
 import { WorkbenchEmptyState, WorkbenchLoadingState } from "../workbench/DatabaseWorkbenchChrome"
+import WorkbenchActionInventoryCard from "../workbench/WorkbenchActionInventoryCard"
 import {
   WorkbenchInventoryFilterEmpty,
   WorkbenchInventoryGroupHeading,
@@ -19,10 +19,11 @@ import {
 } from "../workbench/WorkbenchInventoryScaffold"
 import {
   WorkbenchActionButton,
+  WorkbenchCompactActionCluster,
   WorkbenchDismissButton,
   WorkbenchGuardrailActionButton,
-  WorkbenchInlineActionCluster,
   WorkbenchRevealButton,
+  WorkbenchSelectButton,
 } from "../workbench/WorkbenchActionButtons"
 import { WorkbenchCompactFieldRow, WorkbenchCompactInput } from "../workbench/WorkbenchCompactControls"
 import FeaturePageLayout, { FeatureSearchInput } from "../workbench/FeaturePageLayout"
@@ -424,7 +425,7 @@ export default function ComputeView() {
       title="Compute Instances"
       description="Browse instances by compartment, manage lifecycle, and launch SSH workflows from the workbench."
       icon={<Server size={16} />}
-      status={isPolling ? <StatusBadge label="Auto-refreshing" tone="warning" className="animate-pulse" /> : undefined}
+      status={isPolling ? <StatusBadge label="Auto-refreshing" tone="warning" size="compact" className="animate-pulse" /> : undefined}
       actions={(
         <WorkbenchRefreshButton
           onClick={load}
@@ -597,7 +598,7 @@ function InstanceCard({
   connectingId: string | null
   selected: boolean
   highlighted: boolean
-  onRegisterRef: (node: HTMLElement | null) => void
+  onRegisterRef: (node: HTMLDivElement | null) => void
   onSelect: () => void
   sshConfig: SshConfig
   sshUserOverride: string
@@ -631,26 +632,17 @@ function InstanceCard({
   const _showLifecycle = showLifecycle ?? true
 
   return (
-    <div
-      ref={onRegisterRef}
-      onMouseDownCapture={onSelect}
-      onFocusCapture={onSelect}
-      className={clsx(
-        "flex flex-col gap-2 rounded-[2px] border bg-[var(--vscode-editor-background)] p-2 transition-colors",
-        selected && highlighted
-          ? "border-[var(--vscode-focusBorder)] bg-[color-mix(in_srgb,var(--vscode-list-hoverBackground)_82%,var(--vscode-button-background)_18%)]"
-          : selected
-            ? "border-[var(--vscode-focusBorder)] bg-[var(--vscode-list-hoverBackground)]"
-            : highlighted
-              ? "border-[color-mix(in_srgb,var(--vscode-button-background)_45%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,var(--vscode-button-background)_18%)]"
-              : "border-[var(--vscode-panel-border)] hover:bg-[var(--vscode-list-hoverBackground)]",
-      )}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 flex-col">
-          <span className="truncate text-[13px] font-medium text-[var(--vscode-foreground)]">{instance.name}</span>
-          <span className="truncate text-[11px] text-description">{instance.id}</span>
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+    <WorkbenchActionInventoryCard
+      cardRef={onRegisterRef}
+      title={instance.name}
+      subtitle={instance.id}
+      selected={selected}
+      highlighted={highlighted}
+      onSelect={onSelect}
+      trailing={<LifecycleBadge state={instance.lifecycleState} size="compact" />}
+      meta={(
+        <>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
             <span className="text-[11px] text-description">Public IP: {instance.publicIp || "-"}</span>
             <span className="text-[11px] text-description">Private IP: {instance.privateIp || "-"}</span>
           </div>
@@ -678,69 +670,70 @@ function InstanceCard({
               </WorkbenchCompactFieldRow>
             </>
           )}
-        </div>
-        <LifecycleBadge state={instance.lifecycleState} />
-      </div>
-
-      <WorkbenchInlineActionCluster>
-        {_showLifecycle && (
-          <WorkbenchGuardrailActionButton
-            disabled={isActing || !isStopped}
-            guardrail={createStartResourceGuardrail({
-              resourceKind: "compute-instance",
-              details: buildWorkbenchResourceGuardrailDetails({
-                resourceLabel: "Instance",
-                resourceName: instance.name,
-                region: instance.region || "default",
-                extras: [
-                  { label: "Public IP", value: instance.publicIp || "None" },
-                ],
-              }),
-              onConfirm: async () => {
-                await onStart(instance.id, instance.region)
-              },
-            })}
-            onRequestGuardrail={onRequestGuardrail}
-            busy={isActing && actionState?.action === "starting"}
-            idleIcon={<MonitorPlay size={12} />}
-            label="Start"
-          />
-        )}
-        {_showLifecycle && (
-          <WorkbenchGuardrailActionButton
-            disabled={isActing || !isRunning}
-            guardrail={createStopResourceGuardrail({
-              resourceKind: "compute-instance",
-              details: buildWorkbenchResourceGuardrailDetails({
-                resourceLabel: "Instance",
-                resourceName: instance.name,
-                region: instance.region || "default",
-                extras: [
-                  { label: "Private IP", value: instance.privateIp || "None" },
-                ],
-              }),
-              onConfirm: async () => {
-                await onStop(instance.id, instance.region)
-              },
-            })}
-            onRequestGuardrail={onRequestGuardrail}
-            busy={isActing && actionState?.action === "stopping"}
-            idleIcon={<MonitorStop size={12} />}
-            label="Stop"
-          />
-        )}
-        {_showConnection && (
-          <WorkbenchActionButton
-            disabled={!canConnect}
-            onClick={() => onConnect(instance)}
-            title={connectReason}
-          >
-            {isConnecting ? <Loader2 size={12} className="animate-spin" /> : <SquareTerminal size={12} />}
-            SSH Connect
-          </WorkbenchActionButton>
-        )}
-      </WorkbenchInlineActionCluster>
-    </div>
+        </>
+      )}
+      actions={(
+        <WorkbenchCompactActionCluster>
+          <WorkbenchSelectButton selected={selected} onClick={onSelect} />
+          {_showLifecycle && (
+            <WorkbenchGuardrailActionButton
+              disabled={isActing || !isStopped}
+              guardrail={createStartResourceGuardrail({
+                resourceKind: "compute-instance",
+                details: buildWorkbenchResourceGuardrailDetails({
+                  resourceLabel: "Instance",
+                  resourceName: instance.name,
+                  region: instance.region || "default",
+                  extras: [
+                    { label: "Public IP", value: instance.publicIp || "None" },
+                  ],
+                }),
+                onConfirm: async () => {
+                  await onStart(instance.id, instance.region)
+                },
+              })}
+              onRequestGuardrail={onRequestGuardrail}
+              busy={isActing && actionState?.action === "starting"}
+              idleIcon={<MonitorPlay size={12} />}
+              label="Start"
+            />
+          )}
+          {_showLifecycle && (
+            <WorkbenchGuardrailActionButton
+              disabled={isActing || !isRunning}
+              guardrail={createStopResourceGuardrail({
+                resourceKind: "compute-instance",
+                details: buildWorkbenchResourceGuardrailDetails({
+                  resourceLabel: "Instance",
+                  resourceName: instance.name,
+                  region: instance.region || "default",
+                  extras: [
+                    { label: "Private IP", value: instance.privateIp || "None" },
+                  ],
+                }),
+                onConfirm: async () => {
+                  await onStop(instance.id, instance.region)
+                },
+              })}
+              onRequestGuardrail={onRequestGuardrail}
+              busy={isActing && actionState?.action === "stopping"}
+              idleIcon={<MonitorStop size={12} />}
+              label="Stop"
+            />
+          )}
+          {_showConnection && (
+            <WorkbenchActionButton
+              disabled={!canConnect}
+              onClick={() => onConnect(instance)}
+              title={connectReason}
+            >
+              {isConnecting ? <Loader2 size={12} className="animate-spin" /> : <SquareTerminal size={12} />}
+              SSH Connect
+            </WorkbenchActionButton>
+          )}
+        </WorkbenchCompactActionCluster>
+      )}
+    />
   )
 }
 

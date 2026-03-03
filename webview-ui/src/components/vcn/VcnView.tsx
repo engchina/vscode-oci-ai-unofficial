@@ -9,7 +9,7 @@ import CompartmentSelector from "../ui/CompartmentSelector"
 import InlineNotice from "../ui/InlineNotice"
 import { LifecycleBadge } from "../ui/StatusBadge"
 import { WorkbenchEmptyState, WorkbenchLoadingState } from "../workbench/DatabaseWorkbenchChrome"
-import { WorkbenchActionButton } from "../workbench/WorkbenchActionButtons"
+import { WorkbenchActionButton, WorkbenchCompactActionCluster, WorkbenchSelectButton } from "../workbench/WorkbenchActionButtons"
 import FeaturePageLayout, { FeatureSearchInput } from "../workbench/FeaturePageLayout"
 import WorkbenchInventoryCard from "../workbench/WorkbenchInventoryCard"
 import {
@@ -420,14 +420,17 @@ function VcnListItem({
             selected={selected}
             highlighted={highlighted}
             onClick={onSelect}
-            rightSlot={<LifecycleBadge state={vcn.lifecycleState} />}
+            rightSlot={<LifecycleBadge state={vcn.lifecycleState} size="compact" />}
             footer={(
-                <WorkbenchActionButton
-                    type="button"
-                    onClick={onOpenSecurityLists}
-                >
-                    Manage Security Lists
-                </WorkbenchActionButton>
+                <WorkbenchCompactActionCluster>
+                    <WorkbenchSelectButton selected={selected} onClick={onSelect} />
+                    <WorkbenchActionButton
+                        type="button"
+                        onClick={onOpenSecurityLists}
+                    >
+                        Manage Security Lists
+                    </WorkbenchActionButton>
+                </WorkbenchCompactActionCluster>
             )}
         />
     )

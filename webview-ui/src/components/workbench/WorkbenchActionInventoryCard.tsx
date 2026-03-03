@@ -59,11 +59,11 @@ export default function WorkbenchActionInventoryCard({
           {subtitle && <span className="truncate text-[11px] text-description">{subtitle}</span>}
           {meta && <div className="mt-1">{meta}</div>}
         </div>
-        {trailing && <div className="shrink-0">{trailing}</div>}
+        {trailing && <div className="shrink-0 self-start pt-0.5">{trailing}</div>}
       </div>
 
       {children}
-      {actions && <div className="flex items-center gap-1.5">{actions}</div>}
+      {actions && <div className="mt-1.5 flex flex-wrap items-center gap-1">{actions}</div>}
     </div>
   )
 }

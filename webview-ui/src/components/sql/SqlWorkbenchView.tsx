@@ -50,7 +50,7 @@ import {
   WorkbenchActionToggleButton,
   WorkbenchCompactActionCluster,
   WorkbenchDestructiveButton,
-  WorkbenchInlineActionCluster,
+  WorkbenchSelectButton,
 } from "../workbench/WorkbenchActionButtons"
 import FeaturePageLayout, { FeatureSearchInput } from "../workbench/FeaturePageLayout"
 import WorkbenchInventoryCard from "../workbench/WorkbenchInventoryCard"
@@ -1193,6 +1193,10 @@ export default function SqlWorkbenchView() {
                                   selected={target.id === selectedTargetId}
                                   connected={Boolean(connectionSummary && connectionSummary.targetId === target.id)}
                                   onSelect={() => setSelectedTargetId(target.id)}
+                                  onOpenWorkspace={() => {
+                                    setSelectedTargetId(target.id)
+                                    setShowSqlWorkspace(true)
+                                  }}
                                 />
                               ))}
                             </div>
@@ -1445,11 +1449,13 @@ function SqlTargetListItem({
   selected,
   connected,
   onSelect,
+  onOpenWorkspace,
 }: {
   target: SqlTarget
   selected: boolean
   connected: boolean
   onSelect: () => void
+  onOpenWorkspace: () => void
 }) {
   return (
     <WorkbenchInventoryCard
@@ -1459,7 +1465,16 @@ function SqlTargetListItem({
       selected={selected}
       subtle
       onClick={onSelect}
-      rightSlot={connected ? <StatusBadge label="Live" tone="success" /> : undefined}
+      navigationAffordance={!connected}
+      rightSlot={connected ? <StatusBadge label="Live" tone="success" size="compact" /> : undefined}
+      footer={(
+        <WorkbenchCompactActionCluster>
+          <WorkbenchSelectButton selected={selected} onClick={onSelect} />
+          <WorkbenchActionButton type="button" onClick={onOpenWorkspace}>
+            Open SQL Workspace
+          </WorkbenchActionButton>
+        </WorkbenchCompactActionCluster>
+      )}
     />
   )
 }

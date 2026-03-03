@@ -1,4 +1,5 @@
 import { clsx } from "clsx"
+import { ArrowDownToLine } from "lucide-react"
 import type { ReactNode } from "react"
 
 interface WorkbenchInventoryCardProps {
@@ -13,6 +14,7 @@ interface WorkbenchInventoryCardProps {
   subtle?: boolean
   onClick: () => void
   buttonRef?: (node: HTMLButtonElement | null) => void
+  navigationAffordance?: boolean
 }
 
 export default function WorkbenchInventoryCard({
@@ -27,6 +29,7 @@ export default function WorkbenchInventoryCard({
   subtle = false,
   onClick,
   buttonRef,
+  navigationAffordance = false,
 }: WorkbenchInventoryCardProps) {
   const mutedClassName = selected
     ? "text-[var(--vscode-list-activeSelectionForeground)]/80"
@@ -65,7 +68,13 @@ export default function WorkbenchInventoryCard({
           </div>
         )}
       </div>
-      {rightSlot && <div className="shrink-0">{rightSlot}</div>}
+      {rightSlot ? (
+        <div className="shrink-0 self-start pt-0.5">{rightSlot}</div>
+      ) : navigationAffordance ? (
+        <div className="shrink-0 self-start pt-0.5 text-[var(--vscode-descriptionForeground)]">
+          <ArrowDownToLine size={12} className="rotate-[-90deg]" />
+        </div>
+      ) : null}
     </div>
   )
 
@@ -92,7 +101,7 @@ export default function WorkbenchInventoryCard({
       >
         {content}
       </button>
-      <div className="mt-2">{footer}</div>
+      <div className="mt-1.5">{footer}</div>
     </div>
   )
 }
