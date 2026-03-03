@@ -85,7 +85,7 @@ const VIEW_DEFINITIONS: Record<WorkbenchView, ViewDefinition> = {
   },
   adb: {
     id: "adb",
-    label: "Autonomous DB",
+    label: "Autonomous Database",
     description: "Work with Autonomous Database resources and lifecycle actions.",
     primary: "databases",
     icon: <Database size={15} />,

@@ -154,7 +154,7 @@ export default function AdbView() {
     setResource({
       view: "adb",
       title: selectedDatabase.name,
-      eyebrow: "Selected Autonomous DB",
+      eyebrow: "Selected Autonomous Database",
       resourceId: selectedDatabase.id,
       badge: connectionId
         ? { label: "Connected", tone: "success" }
@@ -639,7 +639,7 @@ export default function AdbView() {
   return (
     <FeaturePageLayout
       title="Autonomous Database"
-      description="Work with Autonomous Database resources and lifecycle actions, then connect through wallets and run SQL from the same page."
+      description="Browse Autonomous Databases, manage lifecycle actions, and run SQL from the same page."
       icon={<Database size={16} />}
       status={isPolling ? <StatusBadge label="Auto-refreshing" tone="warning" size="compact" className="animate-pulse" /> : undefined}
       actions={(
@@ -657,7 +657,7 @@ export default function AdbView() {
             <FeatureSearchInput
               value={query}
               onChange={setQuery}
-              placeholder="Filter databases..."
+              placeholder="Filter autonomous databases..."
             />
           )}
         </div>
@@ -715,7 +715,7 @@ export default function AdbView() {
                     type="button"
                     onClick={() => setShowDatabaseWorkspace(false)}
                     className="flex h-6 w-6 items-center justify-center rounded-[2px] hover:bg-[var(--vscode-toolbar-hoverBackground)]"
-                    title="Back to databases"
+                    title="Back to Autonomous Databases"
                   >
                     <ChevronLeft size={14} />
                   </button>
@@ -939,13 +939,13 @@ export default function AdbView() {
                     <WorkbenchInventorySummary
                       label="Database inventory"
                       count={filtered.length === databases.length
-                        ? `${databases.length} database${databases.length !== 1 ? "s" : ""}`
-                        : `${filtered.length} of ${databases.length} databases`}
-                      description="Select a database to manage lifecycle, wallet download, and SQL execution."
+                        ? `${databases.length} autonomous database${databases.length !== 1 ? "s" : ""}`
+                        : `${filtered.length} of ${databases.length} autonomous databases`}
+                      description="Select an Autonomous Database to manage lifecycle, wallet download, and SQL execution."
                     />
 
                     {filtered.length === 0 ? (
-                      <WorkbenchInventoryFilterEmpty message="No databases match your filter." />
+                      <WorkbenchInventoryFilterEmpty message="No Autonomous Databases match your filter." />
                     ) : (
                       grouped.map((compartmentGroup) => (
                         <div key={compartmentGroup.compartmentId} className="mb-1">
@@ -1104,9 +1104,9 @@ function formatRecentActionAge(timestamp: number): string {
 function EmptyState({ hasSelectedCompartments }: { hasSelectedCompartments: boolean }) {
   return (
     <WorkbenchEmptyState
-      title={hasSelectedCompartments ? "No Autonomous Databases found." : "No compartment selected"}
+      title={hasSelectedCompartments ? "No Autonomous Databases Found" : "No Compartment Selected"}
       description={hasSelectedCompartments
-        ? "No databases found in the selected compartments."
+        ? "No Autonomous Databases were found in the selected compartments."
         : "Please select one or more compartments."}
       icon={<Database size={24} className="opacity-70" />}
     />

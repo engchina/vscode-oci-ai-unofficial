@@ -676,7 +676,7 @@ export default function DbSystemsView() {
     return (
         <FeaturePageLayout
             title="DB Systems"
-        description="Browse Base Database Service systems and related operations, then connect over SQL and keep SSH context nearby."
+        description="Browse DB Systems, manage related operations, and connect over SQL with SSH context nearby."
         icon={<Database size={16} />}
             status={isPolling ? <StatusBadge label="Auto-refreshing" tone="warning" size="compact" className="animate-pulse" /> : undefined}
             actions={(
@@ -967,9 +967,9 @@ export default function DbSystemsView() {
                                         <WorkbenchInventorySummary
                                             label="System inventory"
                                             count={filtered.length === dbSystems.length
-                                                ? `${dbSystems.length} DB system${dbSystems.length !== 1 ? "s" : ""}`
-                                                : `${filtered.length} of ${dbSystems.length} DB systems`}
-                                            description="Select a DB system to manage lifecycle, SSH access, and SQL connectivity."
+                                                ? `${dbSystems.length} DB System${dbSystems.length !== 1 ? "s" : ""}`
+                                                : `${filtered.length} of ${dbSystems.length} DB Systems`}
+                                            description="Select a DB System to manage lifecycle, SSH access, and SQL connectivity."
                                         />
 
                                         {filtered.length === 0 ? (
@@ -1233,9 +1233,9 @@ function formatRecentActionAge(timestamp: number): string {
 function EmptyState({ hasSelectedCompartments }: { hasSelectedCompartments: boolean }) {
     return (
         <WorkbenchEmptyState
-            title={hasSelectedCompartments ? "No DB Systems found." : "No compartment selected"}
+            title={hasSelectedCompartments ? "No DB Systems Found" : "No Compartment Selected"}
             description={hasSelectedCompartments
-                ? "No DB Systems found in the selected compartments."
+                ? "No DB Systems were found in the selected compartments."
                 : "Please select one or more compartments."}
             icon={<Database size={24} className="opacity-70" />}
         />

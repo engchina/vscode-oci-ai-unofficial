@@ -92,7 +92,7 @@ export default function HomeView({
             </Button>
             <Button variant="secondary" size="md" onClick={() => onOpenAction("adb")}>
               <Database size={14} className="mr-1.5" />
-              Autonomous DB
+              Autonomous Database
             </Button>
             <Button variant="secondary" size="md" onClick={onOpenSettings}>
               <Settings2 size={14} className="mr-1.5" />

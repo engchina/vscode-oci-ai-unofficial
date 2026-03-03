@@ -139,7 +139,7 @@ export default function ComputeView() {
           }]
           : []),
         {
-          label: selectedInstance.vcnId ? "Open VCN" : "Open VCN Inventory",
+          label: selectedInstance.vcnId ? "Open VCN" : "Open VCNs",
           run: () => {
             if (selectedInstance.vcnId) {
               setPendingSelection({
@@ -423,7 +423,7 @@ export default function ComputeView() {
   return (
     <FeaturePageLayout
       title="Compute Instances"
-      description="Browse instances by compartment, manage lifecycle, and launch SSH workflows from the workbench."
+      description="Browse compute instances by compartment, manage lifecycle, and launch SSH workflows from the workbench."
       icon={<Server size={16} />}
       status={isPolling ? <StatusBadge label="Auto-refreshing" tone="warning" size="compact" className="animate-pulse" /> : undefined}
       actions={(
@@ -748,9 +748,9 @@ function formatRecentActionAge(timestamp: number): string {
 function EmptyState({ hasSelectedCompartments }: { hasSelectedCompartments: boolean }) {
   return (
     <WorkbenchEmptyState
-      title={hasSelectedCompartments ? "No compute instances found" : "No compartment selected"}
+      title={hasSelectedCompartments ? "No Compute Instances Found" : "No Compartment Selected"}
       description={hasSelectedCompartments
-        ? "No instances found in the selected compartments."
+        ? "No compute instances were found in the selected compartments."
         : "Please select one or more compartments."}
       icon={<Server size={22} />}
     />

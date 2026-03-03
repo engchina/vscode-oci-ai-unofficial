@@ -123,6 +123,7 @@ function resolveWorkbenchGuardrailResourceTemplate(resourceKind?: WorkbenchGuard
     case "db-system":
       return {
         resourceTitle: "DB System",
+        confirmTarget: "DB System",
         subject: "DB System",
         effects: {
           start: "resumes database node workloads and billing.",

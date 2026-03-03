@@ -272,7 +272,7 @@ export default function SecurityListView({
                                 type="button"
                                 onClick={() => setQuery("")}
                                 className="flex h-5 w-5 items-center justify-center rounded-[2px] text-description hover:bg-[var(--vscode-toolbar-hoverBackground)] hover:text-[var(--vscode-foreground)]"
-                                title="Clear filter"
+                                title="Clear Filter"
                             >
                                 <X size={12} />
                             </button>
@@ -298,7 +298,7 @@ export default function SecurityListView({
                                 {recentAction.securityListId && recentAction.kind !== "deleted" && (
                                     <WorkbenchRevealButton
                                         onClick={() => revealSecurityList(recentAction.securityListId ?? "")}
-                                        title="Show this security list in the list"
+                                        title="Show Security List"
                                         label="Show Security List"
                                     />
                                 )}
@@ -333,16 +333,16 @@ export default function SecurityListView({
                 )}
 
                 {loading ? (
-                    <WorkbenchLoadingState label="Loading security lists..." />
+                    <WorkbenchLoadingState label="Loading Security Lists..." />
                 ) : securityLists.length === 0 ? (
                     <WorkbenchEmptyState
-                        title="No security lists found"
-                        description="No security lists are attached to this VCN yet."
+                        title="No Security Lists Found"
+                        description="No Security Lists are attached to this VCN yet."
                     />
                 ) : filteredSecurityLists.length === 0 ? (
                     <WorkbenchEmptyState
-                        title="No matches"
-                        description="No security lists match the current filter."
+                        title="No Matches"
+                        description="No Security Lists match the current filter."
                     />
                 ) : (
                     <div className="flex flex-col gap-2.5">
@@ -372,12 +372,12 @@ export default function SecurityListView({
                                         <div className="text-[11px] text-description mt-0.5 truncate" title={sl.id}>{sl.id}</div>
                                     </div>
                                     <WorkbenchInlineActionCluster className="gap-1 shrink-0">
-                                        <WorkbenchEditIconButton onClick={() => setEditingList(sl)} title="Edit security list" />
+                                        <WorkbenchEditIconButton onClick={() => setEditingList(sl)} title="Edit Security List" />
                                         <WorkbenchIconDestructiveButton
                                             icon={<Trash2 size={12} />}
                                             onClick={() => handleDelete(sl.id)}
                                             disabled={deletingId === sl.id}
-                                            title="Delete security list"
+                                            title="Delete Security List"
                                             busy={deletingId === sl.id}
                                         />
                                     </WorkbenchInlineActionCluster>

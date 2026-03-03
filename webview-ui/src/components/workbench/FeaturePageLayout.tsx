@@ -104,7 +104,7 @@ export function FeatureSearchInput({
           type="button"
           variant="icon"
           size="icon"
-          title="Clear filter"
+          title="Clear Filter"
           icon={(
             <svg
               viewBox="0 0 24 24"

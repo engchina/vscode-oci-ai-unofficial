@@ -50,6 +50,7 @@ import {
   WorkbenchActionToggleButton,
   WorkbenchCompactActionCluster,
   WorkbenchDestructiveButton,
+  WorkbenchInlineActionCluster,
   WorkbenchSelectButton,
 } from "../workbench/WorkbenchActionButtons"
 import FeaturePageLayout, { FeatureSearchInput } from "../workbench/FeaturePageLayout"
@@ -157,7 +158,7 @@ export default function SqlWorkbenchView() {
     () => targets.find((item) => item.id === selectedTargetId) ?? null,
     [selectedTargetId, targets],
   )
-  const targetTypeLabel = targetType === "adb" ? "Autonomous DB" : "DB System"
+  const targetTypeLabel = targetType === "adb" ? "Autonomous Database" : "DB System"
   const requiresWallet = targetType === "adb"
   const canManageConnection = Boolean(
     selectedTargetId
@@ -182,7 +183,7 @@ export default function SqlWorkbenchView() {
     setResource({
       view: "sqlWorkbench",
       title: selectedTarget.name,
-      eyebrow: targetType === "adb" ? "SQL Target • ADB" : "SQL Target • DB System",
+      eyebrow: targetType === "adb" ? "SQL Target • Autonomous Database" : "SQL Target • DB System",
       resourceId: selectedTarget.id,
       badge: isConnectedToSelection
         ? { label: "Connected", tone: "success" }
@@ -200,7 +201,7 @@ export default function SqlWorkbenchView() {
       actions: [
         ...(workspacePanel !== "results"
           ? [{
-            label: "Show Results",
+            label: "Open Results",
             run: () => setWorkspacePanel("results"),
             variant: "ghost" as const,
           }]
@@ -214,13 +215,13 @@ export default function SqlWorkbenchView() {
           : []),
         ...(workspacePanel !== "assistant"
           ? [{
-            label: "Ask Assistant",
+            label: "Open Assistant",
             run: () => setWorkspacePanel("assistant"),
             variant: "secondary" as const,
           }]
           : []),
         {
-          label: targetType === "adb" ? "Open ADB" : "Open DB Systems",
+          label: targetType === "adb" ? "Open Autonomous Databases" : "Open DB Systems",
           run: () => {
             if (!selectedTarget) {
               return
@@ -447,7 +448,7 @@ export default function SqlWorkbenchView() {
 
   async function handleTestConnection(): Promise<void> {
     if (!selectedTarget) {
-      setError("Select a database target first.")
+      setError("Select a target first.")
       return
     }
     setBusyAction("test")
@@ -479,7 +480,7 @@ export default function SqlWorkbenchView() {
 
   async function handleConnect(): Promise<void> {
     if (!selectedTarget) {
-      setError("Select a database target first.")
+      setError("Select a target first.")
       return
     }
     setBusyAction("connect")
@@ -907,7 +908,7 @@ export default function SqlWorkbenchView() {
                     type="button"
                     onClick={() => setShowSqlWorkspace(false)}
                     className="flex h-6 w-6 items-center justify-center rounded-[2px] hover:bg-[var(--vscode-toolbar-hoverBackground)]"
-                    title="Back to target inventory"
+                    title="Back to Target Inventory"
                   >
                     <ChevronLeft size={14} />
                   </button>
@@ -1120,7 +1121,7 @@ export default function SqlWorkbenchView() {
                                   <WorkbenchInlineActionCluster className="pt-0.5">
                                     <WorkbenchActionButton type="button" onClick={() => void handleAskAssistant()} disabled={busyAction !== null || (!assistantPrompt.trim() && !sql.trim())}>
                                       {busyAction === "assistant" ? <Loader2 size={12} className="animate-spin" /> : <SquareTerminal size={12} />}
-                                      Ask Assistant
+                                      Run Assistant
                                     </WorkbenchActionButton>
                                     {assistantResult?.suggestedSql && (
                                       <WorkbenchActionButton type="button" variant="secondary" onClick={() => setSql(assistantResult.suggestedSql ?? "")}>
@@ -1159,9 +1160,9 @@ export default function SqlWorkbenchView() {
                     <WorkbenchInventorySummary
                       label="Target inventory"
                       count={filteredTargets.length === targets.length
-                        ? `${targets.length} ${targetType === "adb" ? "databases" : "systems"}`
+                        ? `${targets.length} ${targetType === "adb" ? "autonomous databases" : "DB Systems"}`
                         : `${filteredTargets.length} of ${targets.length} visible`}
-                      description="Choose a target, configure the connection profile, then open the SQL workspace."
+                      description="Select a target, configure the connection profile, then open the SQL workspace."
                     />
 
                     <div className="grid gap-2 xl:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.1fr)]">
@@ -1170,7 +1171,7 @@ export default function SqlWorkbenchView() {
                           value={targetType}
                           onChange={setTargetType}
                           items={[
-                            { value: "adb", label: "Autonomous DB" },
+                            { value: "adb", label: "Autonomous Database" },
                             { value: "dbSystem", label: "DB System" },
                           ]}
                         />
@@ -1178,7 +1179,7 @@ export default function SqlWorkbenchView() {
                         <FeatureSearchInput
                           value={targetFilter}
                           onChange={setTargetFilter}
-                          placeholder={`Filter ${targetType === "adb" ? "databases" : "systems"}...`}
+                          placeholder={`Filter ${targetType === "adb" ? "autonomous databases" : "DB Systems"}...`}
                         />
 
                         {filteredTargets.length === 0 ? (
@@ -1227,9 +1228,9 @@ export default function SqlWorkbenchView() {
                         ) : (
                           <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)] px-6 py-10 text-center">
                             <div className="max-w-sm">
-                              <div className="text-[13px] font-semibold text-[var(--vscode-foreground)]">Select a target to open the SQL workbench</div>
+                              <div className="text-[13px] font-semibold text-[var(--vscode-foreground)]">Select a target to open the SQL workspace</div>
                               <div className="mt-2 text-[11px] leading-5 text-[var(--vscode-descriptionForeground)]">
-                                Choose an Autonomous Database or DB System from the inventory to configure a connection and start editing SQL.
+                                Select an Autonomous Database or DB System from the inventory to configure a connection and start editing SQL.
                               </div>
                             </div>
                           </div>

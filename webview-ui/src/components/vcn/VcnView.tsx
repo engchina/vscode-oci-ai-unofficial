@@ -249,7 +249,7 @@ export default function VcnView() {
     return (
         <FeaturePageLayout
             title="Virtual Cloud Networks"
-            description="Inspect VCNs, regions, and attached security lists by compartment, then jump into security list management."
+            description="Inspect VCNs, regions, and attached Security Lists by compartment."
             icon={<Network size={16} />}
             actions={(
                 <WorkbenchRefreshButton
@@ -352,7 +352,7 @@ function VcnInventoryPanel({
                 count={filtered.length === vcns.length
                     ? `${vcns.length} VCN${vcns.length !== 1 ? "s" : ""}`
                     : `${filtered.length} of ${vcns.length} VCNs`}
-                description="Open security lists directly from each VCN card."
+                description="Select a VCN to inspect its attached Security Lists."
             />
 
             {filtered.length === 0 ? (
@@ -428,7 +428,7 @@ function VcnListItem({
                         type="button"
                         onClick={onOpenSecurityLists}
                     >
-                        Manage Security Lists
+                        Open Security Lists
                     </WorkbenchActionButton>
                 </WorkbenchCompactActionCluster>
             )}
@@ -439,9 +439,9 @@ function VcnListItem({
 function EmptyState({ hasSelectedCompartments }: { hasSelectedCompartments: boolean }) {
     return (
         <WorkbenchEmptyState
-            title={hasSelectedCompartments ? "No Virtual Cloud Networks found" : "No compartment selected"}
+            title={hasSelectedCompartments ? "No Virtual Cloud Networks Found" : "No Compartment Selected"}
             description={hasSelectedCompartments
-                ? "No VCNs found in the selected compartments."
+                ? "No VCNs were found in the selected compartments."
                 : "Please select one or more compartments."}
             icon={<Network size={22} />}
         />

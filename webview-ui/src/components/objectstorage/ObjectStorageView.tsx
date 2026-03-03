@@ -1,6 +1,7 @@
 import { clsx } from "clsx"
 import {
   AlertCircle,
+  ArrowDownToLine,
   CheckCircle2,
   ChevronLeft,
   Copy,
@@ -597,7 +598,7 @@ export default function ObjectStorageView() {
     <FeaturePageLayout
       title="Object Storage"
       description={selectedBucket && showBucketWorkspace
-        ? `${selectedBucket.name} - Manage buckets and objects without leaving the current workspace.`
+        ? `${selectedBucket.name} • Manage buckets and objects without leaving the current workspace.`
         : "Manage buckets and objects without leaving the current workspace."}
       icon={<PackageOpen size={16} />}
       actions={(
@@ -653,7 +654,7 @@ export default function ObjectStorageView() {
           <WorkbenchLoadingState label="Loading buckets..." />
         ) : buckets.length === 0 ? (
           <EmptyState
-            title={selectedCompartmentIds.length > 0 ? "No buckets found" : "No compartment selected"}
+            title={selectedCompartmentIds.length > 0 ? "No Buckets Found" : "No Compartment Selected"}
             description={selectedCompartmentIds.length > 0 ? "No buckets were found in the selected compartments." : "Select one or more compartments first."}
           />
         ) : (
@@ -669,7 +670,7 @@ export default function ObjectStorageView() {
                         setShowBucketWorkspace(false)
                       }}
                       className="flex h-6 w-6 items-center justify-center rounded-[2px] hover:bg-[var(--vscode-toolbar-hoverBackground)]"
-                      title="Back to buckets"
+                      title="Back to Buckets"
                     >
                       <ChevronLeft size={14} />
                     </button>
@@ -697,7 +698,7 @@ export default function ObjectStorageView() {
                         subtitle="Browse prefixes, inspect object metadata, and create download or PAR actions without leaving the selected bucket."
                         actions={(
                           <WorkbenchActionButton onClick={() => setShowObjectBrowserWorkspace(false)} variant="secondary">
-                            {"< Back to Overview"}
+                            Back to Overview
                           </WorkbenchActionButton>
                         )}
                         className="flex-1 flex flex-col min-h-0"
@@ -706,7 +707,7 @@ export default function ObjectStorageView() {
                           {loadingObjects ? (
                             <WorkbenchLoadingState label="Loading objects..." />
                           ) : filteredFolders.length === 0 && filteredObjects.length === 0 ? (
-                            <EmptyState title="No objects found" description="This prefix is empty or does not match your filter." />
+                            <EmptyState title="No Objects Found" description="This prefix is empty or does not match your filter." />
                           ) : (
                             <div className="flex flex-col gap-1 p-1.5">
                               {filteredFolders.map((folderPrefix) => (
@@ -872,7 +873,7 @@ export default function ObjectStorageView() {
                               subtitle="Browse prefixes, inspect object metadata, and create download or PAR actions without leaving the selected bucket."
                               actions={(
                                 <WorkbenchActionButton onClick={() => setShowObjectBrowserWorkspace(true)}>
-                                  Open Workspace
+                                  Open Object Browser
                                 </WorkbenchActionButton>
                               )}
                               className="flex-1 flex flex-col min-h-0"
@@ -882,7 +883,7 @@ export default function ObjectStorageView() {
                                   <PackageOpen size={32} className="text-[var(--vscode-icon-foreground)] opacity-50" />
                                   <div className="text-[13px] text-[var(--vscode-foreground)]">Explore objects in a dedicated workspace view</div>
                                   <WorkbenchActionButton onClick={() => setShowObjectBrowserWorkspace(true)}>
-                                    Open Workspace
+                                    Open Object Browser
                                   </WorkbenchActionButton>
                                 </div>
                               </div>
@@ -1002,7 +1003,7 @@ function BucketList({
                           onClick={() => onSelect(bucket)}
                         />
                         <WorkbenchActionButton onClick={() => onSelect(bucket)}>
-                          Open Workspace
+                          Open Bucket Workspace
                         </WorkbenchActionButton>
                       </WorkbenchCompactActionCluster>
                     )}

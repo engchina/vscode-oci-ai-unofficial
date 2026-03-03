@@ -127,7 +127,7 @@ function buildGuide(diagnostics: OracleDbDiagnosticsResponse): Guide {
       steps: [
         "Enable Thick mode and ensure Instant Client can be loaded.",
         "Keep ociAi.oracleDbDriverMode as thick/auto and set oracleClientLibDir if auto-discovery fails.",
-        "If this machine cannot install Instant Client, use SSH into DB system and connect via sqlplus as fallback.",
+        "If this machine cannot install Instant Client, use SSH into a DB System and connect via sqlplus as fallback.",
       ],
       commands: getInstantClientCommands(diagnostics, isLinux, isWindows),
     }
