@@ -49,6 +49,7 @@ import type {
   UploadObjectStorageObjectResponse,
   DownloadObjectStorageObjectRequest,
   DownloadObjectStorageObjectResponse,
+  DeleteObjectStorageObjectRequest,
   CreateObjectStorageParRequest,
   CreateObjectStorageParResponse,
   DeleteSqlFavoriteRequest,
@@ -312,6 +313,10 @@ export class ResourceServiceClient extends ProtoBusClient {
 
   static downloadObjectStorageObject(request: DownloadObjectStorageObjectRequest): Promise<DownloadObjectStorageObjectResponse> {
     return this.makeUnaryRequest<DownloadObjectStorageObjectResponse>("downloadObjectStorageObject", request, 120000)
+  }
+
+  static deleteObjectStorageObject(request: DeleteObjectStorageObjectRequest): Promise<void> {
+    return this.makeUnaryRequest<void>("deleteObjectStorageObject", request, 120000)
   }
 
   static createObjectStoragePar(request: CreateObjectStorageParRequest): Promise<CreateObjectStorageParResponse> {

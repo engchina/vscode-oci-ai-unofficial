@@ -561,16 +561,30 @@ function SecurityListForm({
                     rules={ingressRules}
                     onUpdateRule={(idx, field, val) => updateRule("ingress", idx, field as any, val)}
                     onRemoveRule={(idx) => removeRule("ingress", idx)}
-                    onAddRule={() => addRule("ingress")}
                 />
+
+                <div className="flex justify-end">
+                    <WorkbenchInlineActionCluster>
+                        <WorkbenchActionButton variant="secondary" onClick={() => addRule("ingress")}>
+                            Add Ingress Rule
+                        </WorkbenchActionButton>
+                    </WorkbenchInlineActionCluster>
+                </div>
 
                 <SecurityRuleTable
                     type="egress"
                     rules={egressRules}
                     onUpdateRule={(idx, field, val) => updateRule("egress", idx, field as any, val)}
                     onRemoveRule={(idx) => removeRule("egress", idx)}
-                    onAddRule={() => addRule("egress")}
                 />
+
+                <div className="flex justify-end">
+                    <WorkbenchInlineActionCluster>
+                        <WorkbenchActionButton variant="secondary" onClick={() => addRule("egress")}>
+                            Add Egress Rule
+                        </WorkbenchActionButton>
+                    </WorkbenchInlineActionCluster>
+                </div>
 
             </div>
         </div>
@@ -686,21 +700,16 @@ function SecurityRuleTable({
     rules,
     onUpdateRule,
     onRemoveRule,
-    onAddRule
 }: {
     type: "ingress" | "egress"
     rules: SecurityRule[]
     onUpdateRule: (index: number, field: string, value: any) => void
     onRemoveRule: (index: number) => void
-    onAddRule: () => void
 }) {
     return (
         <div className="flex flex-col gap-2.5">
             <div className="flex items-center justify-between">
                 <h4 className="text-sm font-semibold">{type === "ingress" ? "Ingress Rules" : "Egress Rules"}</h4>
-                <WorkbenchInlineActionCluster>
-                    <WorkbenchActionButton variant="secondary" onClick={onAddRule}>Add {type === "ingress" ? "Ingress" : "Egress"} Rule</WorkbenchActionButton>
-                </WorkbenchInlineActionCluster>
             </div>
             <div className="overflow-x-auto border border-border-panel rounded-lg">
                 <table className="w-full text-left text-xs whitespace-nowrap">
@@ -798,10 +807,10 @@ function SecurityRuleTable({
                                 </td>
                                 <td className="px-3 py-2 text-right">
                                     <WorkbenchIconDestructiveButton
-                                        icon={<Trash2 size={14} />}
+                                        icon={<Trash2 size={12} className="shrink-0" />}
                                         onClick={() => onRemoveRule(idx)}
                                         title="Delete Rule"
-                                        className="h-7 w-7"
+                                        className="h-7 w-7 px-0"
                                     />
                                 </td>
                             </tr>

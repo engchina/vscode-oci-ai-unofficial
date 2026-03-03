@@ -327,6 +327,11 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
       }
       return result;
     },
+    deleteObjectStorageObject: async (c, msg) => {
+      await c.deleteObjectStorageObject(msg);
+      showStatusMessage("Object deleted.");
+      return {};
+    },
     createObjectStoragePar: async (c, msg) => {
       const result = await c.createObjectStoragePar(msg);
       showStatusMessage("Pre-authenticated request created.");

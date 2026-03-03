@@ -1124,6 +1124,24 @@ export class Controller {
     return { cancelled: false };
   }
 
+  public async deleteObjectStorageObject(
+    request: import("../shared/services").DeleteObjectStorageObjectRequest
+  ): Promise<void> {
+    const namespaceName = String(request.namespaceName ?? "").trim();
+    const bucketName = String(request.bucketName ?? "").trim();
+    const objectName = String(request.objectName ?? "").trim();
+    if (!namespaceName || !bucketName || !objectName) {
+      throw new Error("namespaceName, bucketName, and objectName are required.");
+    }
+
+    await this.ociService.deleteObjectStorageObject(
+      namespaceName,
+      bucketName,
+      objectName,
+      typeof request.region === "string" ? request.region : undefined
+    );
+  }
+
   public async createObjectStoragePar(
     request: import("../shared/services").CreateObjectStorageParRequest
   ): Promise<CreateObjectStorageParResponse> {

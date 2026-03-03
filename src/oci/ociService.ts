@@ -547,6 +547,24 @@ export class OciService {
     return new Uint8Array(await response.arrayBuffer());
   }
 
+  public async deleteObjectStorageObject(
+    namespaceName: string,
+    bucketName: string,
+    objectName: string,
+    region?: string
+  ): Promise<void> {
+    await this.sendObjectStorageRequest({
+      method: "DELETE",
+      region,
+      path: "/n/{namespaceName}/b/{bucketName}/o/{objectName}",
+      pathParams: {
+        "{namespaceName}": namespaceName,
+        "{bucketName}": bucketName,
+        "{objectName}": objectName,
+      },
+    });
+  }
+
   public async createObjectStoragePreauthenticatedRequest(
     namespaceName: string,
     bucketName: string,

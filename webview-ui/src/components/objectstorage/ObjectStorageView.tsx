@@ -10,6 +10,7 @@ import {
   KeyRound,
   Loader2,
   PackageOpen,
+  Trash2,
   Upload,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -36,6 +37,7 @@ import {
 import FeaturePageLayout, { FeatureSearchInput } from "../workbench/FeaturePageLayout"
 import { WorkbenchMicroOptionButton } from "../workbench/WorkbenchCompactControls"
 import {
+  createDeleteResourceGuardrail,
   createCreateLinkResourceGuardrail,
   buildWorkbenchResourceGuardrailDetails,
   createWorkbenchGuardrail,
@@ -57,7 +59,7 @@ type BucketStatOverride = {
 
 type RecentActionState =
   | {
-    kind: "upload" | "download"
+    kind: "upload" | "download" | "delete"
     objectName: string
     timestamp: number
   }
@@ -75,6 +77,7 @@ export default function ObjectStorageView() {
   const [loadingObjects, setLoadingObjects] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [downloadingObjectName, setDownloadingObjectName] = useState<string | null>(null)
+  const [deletingObjectName, setDeletingObjectName] = useState<string | null>(null)
   const [recentlyUploadedObjectName, setRecentlyUploadedObjectName] = useState<string | null>(null)
   const [recentAction, setRecentAction] = useState<RecentActionState>(null)
   const [error, setError] = useState<string | null>(null)
@@ -363,7 +366,7 @@ export default function ObjectStorageView() {
 
   const groupedBuckets = useMemo(() => groupBucketsByCompartmentAndRegion(buckets), [buckets])
   const breadcrumbSegments = useMemo(() => buildBreadcrumbs(prefix), [prefix])
-  const actionBusy = busy || uploading || downloadingObjectName !== null
+  const actionBusy = busy || uploading || downloadingObjectName !== null || deletingObjectName !== null
   const uploadedObjectHiddenByFilter = Boolean(
     recentlyUploadedObjectName &&
     query.trim() &&
@@ -523,6 +526,61 @@ export default function ObjectStorageView() {
       },
     }))
   }, [openGuardrail, selectedBucket])
+
+  const handleDelete = useCallback((object: ObjectStorageObjectResource) => {
+    if (!selectedBucket) return
+    openGuardrail(createDeleteResourceGuardrail({
+      resourceTitle: "Object Storage Object",
+      confirmTarget: "Object",
+      subject: "object",
+      effect: "permanently removes it from the selected bucket.",
+      details: buildWorkbenchResourceGuardrailDetails({
+        resourceLabel: "Bucket",
+        resourceName: selectedBucket.name,
+        region: selectedBucket.region,
+        extras: [
+          { label: "Object", value: object.name },
+          { label: "Size", value: formatBytes(object.size) },
+        ],
+      }),
+      onConfirm: async () => {
+        setDeletingObjectName(object.name)
+        try {
+          await ResourceServiceClient.deleteObjectStorageObject({
+            namespaceName: selectedBucket.namespaceName,
+            bucketName: selectedBucket.name,
+            objectName: object.name,
+            region: selectedBucket.region,
+          })
+
+          setObjects((current) => current.filter((item) => item.name !== object.name))
+          objectItemRefs.current.delete(object.name)
+          applyBucketStats(
+            selectedBucket,
+            (selectedBucket.approximateCount ?? 0) - 1,
+            (selectedBucket.approximateSize ?? 0) - (object.size ?? 0),
+          )
+          setRecentAction({
+            kind: "delete",
+            objectName: object.name,
+            timestamp: Date.now(),
+          })
+          if (recentlyUploadedObjectName === object.name) {
+            setRecentlyUploadedObjectName(null)
+          }
+          if (latestPar?.objectName === object.name) {
+            setLatestPar(null)
+          }
+          setGuardrail(null)
+
+          void loadBuckets({ silent: true })
+          void loadObjects({ silent: true })
+        } finally {
+          setDeletingObjectName(null)
+        }
+      },
+    }))
+  }, [applyBucketStats, latestPar?.objectName, loadBuckets, loadObjects, openGuardrail, recentlyUploadedObjectName, selectedBucket])
 
   const copyLatestPar = useCallback(async () => {
     if (!latestPar?.fullUrl) return
@@ -701,6 +759,13 @@ export default function ObjectStorageView() {
                                         disabled={actionBusy}
                                         title="Create a 24-hour pre-authenticated download link"
                                       />
+                                      <WorkbenchIconActionButton
+                                        icon={<Trash2 size={12} />}
+                                        onClick={() => handleDelete(object)}
+                                        disabled={actionBusy}
+                                        title={deletingObjectName === object.name ? "Deleting object" : "Delete this object from the bucket"}
+                                        busy={deletingObjectName === object.name}
+                                      />
                                     </WorkbenchCompactActionCluster>
                                   </div>
                                 </div>
@@ -785,7 +850,11 @@ export default function ObjectStorageView() {
                                 )}
                               >
                                 <div className="min-w-0">
-                                  {recentAction.kind === "upload" ? "Uploaded" : "Saved locally"}{" "}
+                                  {recentAction.kind === "upload"
+                                    ? "Uploaded"
+                                    : recentAction.kind === "download"
+                                      ? "Saved locally"
+                                      : "Deleted"}{" "}
                                   <span className="text-[var(--vscode-foreground)]">{pathTail(recentAction.objectName)}</span>{" "}
                                   {formatRecentActionAge(recentAction.timestamp)}
                                 </div>

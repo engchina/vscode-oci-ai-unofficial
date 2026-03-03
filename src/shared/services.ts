@@ -402,6 +402,13 @@ export interface DownloadObjectStorageObjectResponse {
   cancelled?: boolean;
 }
 
+export interface DeleteObjectStorageObjectRequest {
+  namespaceName: string;
+  bucketName: string;
+  objectName: string;
+  region?: string;
+}
+
 export interface CreateObjectStorageParRequest {
   namespaceName: string;
   bucketName: string;
