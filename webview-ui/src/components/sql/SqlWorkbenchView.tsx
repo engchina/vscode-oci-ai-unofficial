@@ -39,8 +39,6 @@ import StatusBadge from "../ui/StatusBadge"
 import Textarea from "../ui/Textarea"
 import {
   DatabaseContextStrip,
-  DatabaseWorkbenchHero,
-  SummaryMetaCard,
   WorkbenchEmptyState,
   WorkbenchSurface,
   WorkbenchSection,
@@ -172,6 +170,145 @@ export default function SqlWorkbenchView() {
     && connectionSummary
     && selectedTarget
     && connectionSummary.targetId === selectedTarget.id,
+  )
+  const connectionProfileCard = (
+    <Card title="Connection Profile">
+      {connectionSummary && selectedTarget && connectionSummary.targetId === selectedTarget.id && (
+        <InlineNotice tone="success">
+          Connected via {connectionSummary.serviceName}
+        </InlineNotice>
+      )}
+
+      {targetType === "adb" && (
+        <>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Input
+              type="password"
+              label="Wallet Password"
+              value={walletPassword}
+              onChange={(event) => setWalletPassword(event.target.value)}
+              placeholder="At least 8 chars"
+            />
+            <div className="flex items-end">
+              <WorkbenchActionButton
+                type="button"
+                variant="secondary"
+                className="w-full"
+                onClick={() => void handleDownloadWallet()}
+                disabled={!selectedTargetId || walletPassword.trim().length < 8 || busyAction !== null}
+              >
+                {busyAction === "wallet" ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                Download Wallet
+              </WorkbenchActionButton>
+            </div>
+          </div>
+          <Input
+            label="Wallet Path"
+            value={walletPath}
+            onChange={(event) => setWalletPath(event.target.value)}
+            placeholder="Wallet directory path"
+          />
+        </>
+      )}
+
+      <div className="grid gap-2 sm:grid-cols-3">
+        <Input
+          label="Username"
+          value={username}
+          onChange={(event) => setUsername(event.target.value)}
+          placeholder={targetType === "adb" ? "ADMIN" : "SYSTEM"}
+        />
+        <Input
+          type="password"
+          label="Password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          placeholder="Database password"
+        />
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[13px] leading-none text-foreground">Service Name</label>
+          <input
+            value={serviceName}
+            onChange={(event) => setServiceName(event.target.value)}
+            list={targetType === "adb" ? "sql-workbench-adb-services" : "sql-workbench-db-services"}
+            placeholder={targetType === "adb" ? "dbname_high" : "host:1521/service"}
+            className="h-[26px] rounded-[2px] border border-input-border bg-input-background px-2 text-[13px] text-input-foreground outline-none focus:border-border focus:outline focus:outline-1 focus:outline-[var(--vscode-focusBorder)] focus:-outline-offset-1"
+          />
+          <datalist id="sql-workbench-adb-services">
+            {serviceNames.map((item) => <option key={item} value={item} />)}
+          </datalist>
+          <datalist id="sql-workbench-db-services">
+            {connectionStrings.map((item) => <option key={item.value} value={item.value}>{item.name}</option>)}
+          </datalist>
+        </div>
+      </div>
+
+      {targetType === "dbSystem" && connectionStrings.length > 0 && (
+        <div className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_96%,black_4%)] px-2.5 py-2 text-[11px] text-description">
+          {connectionStrings.slice(0, 4).map((item) => (
+            <div key={item.value}>
+              <span className="text-foreground">{item.name}:</span> {item.value}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <WorkbenchToolbarGroup>
+        <WorkbenchCompactActionCluster>
+          <WorkbenchActionButton
+            type="button"
+            variant="secondary"
+            onClick={() => void handleTestConnection()}
+            disabled={!canManageConnection || busyAction !== null}
+          >
+            {busyAction === "test" ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+            Test Connection
+          </WorkbenchActionButton>
+          <WorkbenchActionButton
+            type="button"
+            onClick={() => void handleConnect()}
+            disabled={!canManageConnection || Boolean(connectionId) || busyAction !== null}
+          >
+            {busyAction === "connect" ? <Loader2 size={12} className="animate-spin" /> : <Plug size={12} />}
+            Connect
+          </WorkbenchActionButton>
+          <WorkbenchActionButton
+            type="button"
+            variant="secondary"
+            onClick={() => void handleDisconnect()}
+            disabled={!connectionId || busyAction !== null}
+          >
+            {busyAction === "disconnect" ? <Loader2 size={12} className="animate-spin" /> : <Unplug size={12} />}
+            Disconnect
+          </WorkbenchActionButton>
+          <WorkbenchActionButton
+            type="button"
+            variant="secondary"
+            onClick={requestSaveProfile}
+            disabled={!selectedTargetId || !serviceName.trim() || !username.trim() || busyAction !== null}
+          >
+            {busyAction === "saveProfile" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+            {hasSavedProfile ? "Saved" : "Save Profile"}
+          </WorkbenchActionButton>
+          {hasSavedProfile && (
+            <WorkbenchDestructiveButton
+              type="button"
+              onClick={requestDeleteProfile}
+              disabled={busyAction !== null}
+            >
+              {busyAction === "deleteProfile" ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+              Delete Profile
+            </WorkbenchDestructiveButton>
+          )}
+        </WorkbenchCompactActionCluster>
+      </WorkbenchToolbarGroup>
+
+      {testResult && (
+        <div className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_96%,green_4%)] px-2.5 py-2 text-[11px] text-description">
+          {testResult.message} {testResult.latencyMs > 0 ? `(${testResult.latencyMs} ms)` : ""}
+        </div>
+      )}
+    </Card>
   )
 
   useEffect(() => {
@@ -903,38 +1040,32 @@ export default function SqlWorkbenchView() {
           <div className="min-h-0 flex-1">
             {showSqlWorkspace && selectedTarget ? (
               <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-shell)]">
-                <div className="flex items-center gap-2 border-b border-[var(--vscode-panel-border)] px-3 py-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowSqlWorkspace(false)}
-                    className="flex h-6 w-6 items-center justify-center rounded-[2px] hover:bg-[var(--vscode-toolbar-hoverBackground)]"
-                    title="Back to Target Inventory"
-                  >
-                    <ChevronLeft size={14} />
-                  </button>
-                  <div className="min-w-0">
-                    <div className="truncate text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)]">
-                      SQL Workspace
+                <div className="flex items-center justify-between gap-2 border-b border-[var(--vscode-panel-border)] px-3 py-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowSqlWorkspace(false)}
+                      className="flex h-6 w-6 items-center justify-center rounded-[2px] hover:bg-[var(--vscode-toolbar-hoverBackground)]"
+                      title="Back to Target Inventory"
+                    >
+                      <ChevronLeft size={14} />
+                    </button>
+                    <div className="min-w-0">
+                      <div className="truncate text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)]">
+                        SQL Workspace
+                      </div>
+                      <div className="truncate text-[10px] text-description">{selectedTarget.name}</div>
                     </div>
-                    <div className="truncate text-[10px] text-description">{selectedTarget.name}</div>
                   </div>
+                  <StatusBadge
+                    label={isConnectedToSelection ? "Connected" : "Disconnected"}
+                    tone={isConnectedToSelection ? "success" : "neutral"}
+                  />
                 </div>
 
                 <div className="min-h-0 flex-1 overflow-y-auto p-2">
                   <div className="flex h-full min-h-0 flex-col gap-2">
-                    <DatabaseWorkbenchHero
-                      eyebrow={targetTypeLabel}
-                      title={selectedTarget.name}
-                      resourceId={selectedTarget.id}
-                      connected={isConnectedToSelection}
-                      metaItems={[
-                        { label: "Target", value: selectedTarget.name },
-                        { label: "Region", value: selectedTarget.region || "default" },
-                        { label: "Lifecycle", value: selectedTarget.lifecycleState || "Unknown" },
-                        { label: "Service", value: serviceName || "Not set" },
-                        { label: "User", value: username || "Not set" },
-                      ]}
-                    />
+                    {connectionProfileCard}
 
                     <div className="flex min-h-0 flex-1 flex-col gap-2">
                       <WorkbenchSection
@@ -1162,10 +1293,10 @@ export default function SqlWorkbenchView() {
                       count={filteredTargets.length === targets.length
                         ? `${targets.length} ${targetType === "adb" ? "autonomous databases" : "DB Systems"}`
                         : `${filteredTargets.length} of ${targets.length} visible`}
-                      description="Select a target, configure the connection profile, then open the SQL workspace."
+                      description="Select a target, then open the SQL workspace to configure the connection profile."
                     />
 
-                    <div className="grid gap-2 xl:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.1fr)]">
+                    <div className="grid gap-2">
                       <Card title="Target Inventory">
                         <WorkbenchSegmentedControl
                           value={targetType}
@@ -1204,170 +1335,6 @@ export default function SqlWorkbenchView() {
                           </div>
                         )}
                       </Card>
-
-                      <div className="flex flex-col gap-2">
-                        {selectedTarget ? (
-                          <Card title="Selected Target">
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              <SummaryMetaCard label="Name" value={selectedTarget.name} />
-                              <SummaryMetaCard label="Type" value={targetTypeLabel} />
-                              <SummaryMetaCard label="Region" value={selectedTarget.region || "default"} />
-                              <SummaryMetaCard label="Lifecycle" value={selectedTarget.lifecycleState || "Unknown"} />
-                            </div>
-                            {connectionSummary && connectionSummary.targetId === selectedTarget.id && (
-                              <InlineNotice tone="success">
-                                Connected via {connectionSummary.serviceName}
-                              </InlineNotice>
-                            )}
-                            <WorkbenchCompactActionCluster>
-                              <WorkbenchActionButton type="button" onClick={() => setShowSqlWorkspace(true)}>
-                                Open SQL Workspace
-                              </WorkbenchActionButton>
-                            </WorkbenchCompactActionCluster>
-                          </Card>
-                        ) : (
-                          <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)] px-6 py-10 text-center">
-                            <div className="max-w-sm">
-                              <div className="text-[13px] font-semibold text-[var(--vscode-foreground)]">Select a target to open the SQL workspace</div>
-                              <div className="mt-2 text-[11px] leading-5 text-[var(--vscode-descriptionForeground)]">
-                                Select an Autonomous Database or DB System from the inventory to configure a connection and start editing SQL.
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        <Card title="Connection Profile">
-                          {targetType === "adb" && (
-                            <>
-                              <div className="grid gap-2 sm:grid-cols-2">
-                                <Input
-                                  type="password"
-                                  label="Wallet Password"
-                                  value={walletPassword}
-                                  onChange={(event) => setWalletPassword(event.target.value)}
-                                  placeholder="At least 8 chars"
-                                />
-                                <div className="flex items-end">
-                                  <WorkbenchActionButton
-                                    type="button"
-                                    variant="secondary"
-                                    className="w-full"
-                                    onClick={() => void handleDownloadWallet()}
-                                    disabled={!selectedTargetId || walletPassword.trim().length < 8 || busyAction !== null}
-                                  >
-                                    {busyAction === "wallet" ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-                                    Download Wallet
-                                  </WorkbenchActionButton>
-                                </div>
-                              </div>
-                              <Input
-                                label="Wallet Path"
-                                value={walletPath}
-                                onChange={(event) => setWalletPath(event.target.value)}
-                                placeholder="Wallet directory path"
-                              />
-                            </>
-                          )}
-
-                          <div className="grid gap-2 sm:grid-cols-3">
-                            <Input
-                              label="Username"
-                              value={username}
-                              onChange={(event) => setUsername(event.target.value)}
-                              placeholder={targetType === "adb" ? "ADMIN" : "SYSTEM"}
-                            />
-                            <Input
-                              type="password"
-                              label="Password"
-                              value={password}
-                              onChange={(event) => setPassword(event.target.value)}
-                              placeholder="Database password"
-                            />
-                            <div className="flex flex-col gap-1.5">
-                              <label className="text-[13px] leading-none text-foreground">Service Name</label>
-                              <input
-                                value={serviceName}
-                                onChange={(event) => setServiceName(event.target.value)}
-                                list={targetType === "adb" ? "sql-workbench-adb-services" : "sql-workbench-db-services"}
-                                placeholder={targetType === "adb" ? "dbname_high" : "host:1521/service"}
-                                className="h-[26px] rounded-[2px] border border-input-border bg-input-background px-2 text-[13px] text-input-foreground outline-none focus:border-border focus:outline focus:outline-1 focus:outline-[var(--vscode-focusBorder)] focus:-outline-offset-1"
-                              />
-                              <datalist id="sql-workbench-adb-services">
-                                {serviceNames.map((item) => <option key={item} value={item} />)}
-                              </datalist>
-                              <datalist id="sql-workbench-db-services">
-                                {connectionStrings.map((item) => <option key={item.value} value={item.value}>{item.name}</option>)}
-                              </datalist>
-                            </div>
-                          </div>
-
-                          {targetType === "dbSystem" && connectionStrings.length > 0 && (
-                            <div className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_96%,black_4%)] px-2.5 py-2 text-[11px] text-description">
-                              {connectionStrings.slice(0, 4).map((item) => (
-                                <div key={item.value}>
-                                  <span className="text-foreground">{item.name}:</span> {item.value}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          <WorkbenchToolbarGroup>
-                            <WorkbenchCompactActionCluster>
-                              <WorkbenchActionButton
-                                type="button"
-                                variant="secondary"
-                                onClick={() => void handleTestConnection()}
-                                disabled={!canManageConnection || busyAction !== null}
-                              >
-                                {busyAction === "test" ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
-                                Test Connection
-                              </WorkbenchActionButton>
-                              <WorkbenchActionButton
-                                type="button"
-                                onClick={() => void handleConnect()}
-                                disabled={!canManageConnection || Boolean(connectionId) || busyAction !== null}
-                              >
-                                {busyAction === "connect" ? <Loader2 size={12} className="animate-spin" /> : <Plug size={12} />}
-                                Connect
-                              </WorkbenchActionButton>
-                              <WorkbenchActionButton
-                                type="button"
-                                variant="secondary"
-                                onClick={() => void handleDisconnect()}
-                                disabled={!connectionId || busyAction !== null}
-                              >
-                                {busyAction === "disconnect" ? <Loader2 size={12} className="animate-spin" /> : <Unplug size={12} />}
-                                Disconnect
-                              </WorkbenchActionButton>
-                              <WorkbenchActionButton
-                                type="button"
-                                variant="secondary"
-                                onClick={requestSaveProfile}
-                                disabled={!selectedTargetId || !serviceName.trim() || !username.trim() || busyAction !== null}
-                              >
-                                {busyAction === "saveProfile" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                                {hasSavedProfile ? "Saved" : "Save Profile"}
-                              </WorkbenchActionButton>
-                              {hasSavedProfile && (
-                                <WorkbenchDestructiveButton
-                                  type="button"
-                                  onClick={requestDeleteProfile}
-                                  disabled={busyAction !== null}
-                                >
-                                  {busyAction === "deleteProfile" ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                                  Delete Profile
-                                </WorkbenchDestructiveButton>
-                              )}
-                            </WorkbenchCompactActionCluster>
-                          </WorkbenchToolbarGroup>
-
-                          {testResult && (
-                            <div className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_96%,green_4%)] px-2.5 py-2 text-[11px] text-description">
-                              {testResult.message} {testResult.latencyMs > 0 ? `(${testResult.latencyMs} ms)` : ""}
-                            </div>
-                          )}
-                        </Card>
-                      </div>
                     </div>
                   </div>
                 </div>
