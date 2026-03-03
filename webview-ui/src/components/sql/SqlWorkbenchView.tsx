@@ -59,13 +59,12 @@ import {
 } from "../workbench/WorkbenchInventoryScaffold"
 import { WorkbenchSegmentedControl } from "../workbench/WorkbenchCompactControls"
 import WorkbenchQueryResult from "../workbench/WorkbenchQueryResult"
-import { WorkbenchRefreshButton, WorkbenchToolbarGroup } from "../workbench/WorkbenchToolbar"
+import { WorkbenchRefreshButton, WorkbenchToolbarGroup, WorkbenchToolbarSpacer } from "../workbench/WorkbenchToolbar"
 import {
   createClearResourceGuardrail,
   buildWorkbenchResourceGuardrailDetails,
   createDeleteResourceGuardrail,
   createOverwriteResourceGuardrail,
-  createSaveResourceGuardrail,
   type WorkbenchGuardrailState,
 } from "../workbench/guardrail"
 
@@ -281,26 +280,30 @@ export default function SqlWorkbenchView() {
             {busyAction === "disconnect" ? <Loader2 size={12} className="animate-spin" /> : <Unplug size={12} />}
             Disconnect
           </WorkbenchActionButton>
-          <WorkbenchActionButton
-            type="button"
-            variant="secondary"
-            onClick={requestSaveProfile}
-            disabled={!selectedTargetId || !serviceName.trim() || !username.trim() || busyAction !== null}
-          >
-            {busyAction === "saveProfile" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-            {hasSavedProfile ? "Saved" : "Save Profile"}
-          </WorkbenchActionButton>
-          {hasSavedProfile && (
-            <WorkbenchDestructiveButton
-              type="button"
-              onClick={requestDeleteProfile}
-              disabled={busyAction !== null}
-            >
-              {busyAction === "deleteProfile" ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-              Delete Profile
-            </WorkbenchDestructiveButton>
-          )}
         </WorkbenchCompactActionCluster>
+        <WorkbenchToolbarSpacer>
+          <WorkbenchInlineActionCluster>
+            <WorkbenchActionButton
+              type="button"
+              variant="secondary"
+              onClick={requestSaveProfile}
+              disabled={!selectedTargetId || !serviceName.trim() || !username.trim() || busyAction !== null}
+            >
+              {busyAction === "saveProfile" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+              {hasSavedProfile ? "Saved" : "Save"}
+            </WorkbenchActionButton>
+            {hasSavedProfile && (
+              <WorkbenchDestructiveButton
+                type="button"
+                onClick={requestDeleteProfile}
+                disabled={busyAction !== null}
+              >
+                {busyAction === "deleteProfile" ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                Delete
+              </WorkbenchDestructiveButton>
+            )}
+          </WorkbenchInlineActionCluster>
+        </WorkbenchToolbarSpacer>
       </WorkbenchToolbarGroup>
 
       {testResult && (
@@ -343,18 +346,18 @@ export default function SqlWorkbenchView() {
             variant: "ghost" as const,
           }]
           : []),
-        ...(workspacePanel !== "library"
-          ? [{
-            label: "Open Library",
-            run: () => setWorkspacePanel("library"),
-            variant: "ghost" as const,
-          }]
-          : []),
         ...(workspacePanel !== "assistant"
           ? [{
             label: "Open Assistant",
             run: () => setWorkspacePanel("assistant"),
             variant: "secondary" as const,
+          }]
+          : []),
+        ...(workspacePanel !== "library"
+          ? [{
+            label: "Open Library",
+            run: () => setWorkspacePanel("library"),
+            variant: "ghost" as const,
           }]
           : []),
         {
@@ -1100,7 +1103,8 @@ export default function SqlWorkbenchView() {
                           label="SQL"
                           value={sql}
                           onChange={(event) => setSql(event.target.value)}
-                          className="min-h-[240px] flex-1 font-mono text-[12px]"
+                          rows={5}
+                          className="min-h-0 font-mono text-[12px]"
                           placeholder="SELECT * FROM your_table FETCH FIRST 20 ROWS ONLY"
                         />
                       </WorkbenchSection>
@@ -1108,25 +1112,25 @@ export default function SqlWorkbenchView() {
                       <WorkbenchSection
                         className="min-h-[320px] flex-1"
                         title="Workspace Panels"
-                        subtitle="Switch between execution output, snippet library, and AI assistance without leaving the editor."
+                        subtitle="Switch between execution output, AI assistance, and snippet library without leaving the editor."
                         bodyClassName="min-h-0 gap-2"
                       >
                         <div className="flex flex-col gap-2 rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface-subtle)] p-2 md:flex-row md:items-center md:justify-between">
                           <div className="min-w-0">
                             <div className="text-[11px] uppercase tracking-[0.14em] text-[var(--vscode-descriptionForeground)]">Panel Selector</div>
                             <div className="mt-1 text-[11px] leading-5 text-[var(--vscode-descriptionForeground)]">
-                              Keep execution results, saved snippets, and AI guidance in one place.
+                              Keep execution results, AI guidance, and saved snippets in one place.
                             </div>
                           </div>
                           <WorkbenchCompactActionCluster className="w-full flex-wrap gap-2 md:w-auto md:justify-end">
                             <WorkbenchActionToggleButton active={workspacePanel === "results"} onClick={() => setWorkspacePanel("results")}>
                               Results
                             </WorkbenchActionToggleButton>
-                            <WorkbenchActionToggleButton active={workspacePanel === "library"} onClick={() => setWorkspacePanel("library")}>
-                              Library
-                            </WorkbenchActionToggleButton>
                             <WorkbenchActionToggleButton active={workspacePanel === "assistant"} onClick={() => setWorkspacePanel("assistant")}>
                               AI Assistant
+                            </WorkbenchActionToggleButton>
+                            <WorkbenchActionToggleButton active={workspacePanel === "library"} onClick={() => setWorkspacePanel("library")}>
+                              Library
                             </WorkbenchActionToggleButton>
                           </WorkbenchCompactActionCluster>
                         </div>

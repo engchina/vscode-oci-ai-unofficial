@@ -676,8 +676,8 @@ export default function DbSystemsView() {
     return (
         <FeaturePageLayout
             title="DB Systems"
-        description="Browse DB Systems, manage related operations, and connect over SQL with SSH context nearby."
-        icon={<Database size={16} />}
+            description="Browse DB Systems, manage related operations, and connect over SQL with SSH context nearby."
+            icon={<Database size={16} />}
             status={isPolling ? <StatusBadge label="Auto-refreshing" tone="warning" size="compact" className="animate-pulse" /> : undefined}
             actions={(
                 <WorkbenchRefreshButton
@@ -795,7 +795,7 @@ export default function DbSystemsView() {
                                                         diagnosticsFocus.isFlashing && "bg-[color-mix(in_srgb,var(--vscode-focusBorder)_12%,transparent)] ring-1 ring-[color-mix(in_srgb,var(--vscode-focusBorder)_55%,transparent)]"
                                                     )}
                                                 >
-                                                <OracleDiagnosticsPanel diagnostics={diagnostics} />
+                                                    <OracleDiagnosticsPanel diagnostics={diagnostics} />
                                                 </div>
                                             </TabsContent>
                                             <TabsContent value="connection" className="flex-1 overflow-auto pt-1.5">
@@ -932,7 +932,8 @@ export default function DbSystemsView() {
                                                         label="SQL"
                                                         value={sql}
                                                         onChange={e => setSql(e.target.value)}
-                                                        className="min-h-[140px] font-mono text-xs"
+                                                        rows={5}
+                                                        className="min-h-0 font-mono text-xs"
                                                         placeholder="SELECT * FROM your_table FETCH FIRST 20 ROWS ONLY"
                                                     />
                                                     <Button

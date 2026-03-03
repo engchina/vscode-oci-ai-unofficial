@@ -711,20 +711,20 @@ export default function AdbView() {
               <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-shell)]">
                 <div className="flex items-center justify-between gap-2 border-b border-[var(--vscode-panel-border)] px-3 py-2">
                   <div className="flex min-w-0 items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowDatabaseWorkspace(false)}
-                    className="flex h-6 w-6 items-center justify-center rounded-[2px] hover:bg-[var(--vscode-toolbar-hoverBackground)]"
-                    title="Back to Autonomous Databases"
-                  >
-                    <ChevronLeft size={14} />
-                  </button>
-                  <div className="min-w-0">
-                    <div className="truncate text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)]">
-                      Autonomous Database
+                    <button
+                      type="button"
+                      onClick={() => setShowDatabaseWorkspace(false)}
+                      className="flex h-6 w-6 items-center justify-center rounded-[2px] hover:bg-[var(--vscode-toolbar-hoverBackground)]"
+                      title="Back to Autonomous Databases"
+                    >
+                      <ChevronLeft size={14} />
+                    </button>
+                    <div className="min-w-0">
+                      <div className="truncate text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)]">
+                        Autonomous Database
+                      </div>
+                      <div className="truncate text-[10px] text-description">{selectedDatabase.name}</div>
                     </div>
-                    <div className="truncate text-[10px] text-description">{selectedDatabase.name}</div>
-                  </div>
                   </div>
                   <StatusBadge
                     label={connectionId ? "Connected" : "Disconnected"}
@@ -759,7 +759,7 @@ export default function AdbView() {
                             diagnosticsFocus.isFlashing && "bg-[color-mix(in_srgb,var(--vscode-focusBorder)_12%,transparent)] ring-1 ring-[color-mix(in_srgb,var(--vscode-focusBorder)_55%,transparent)]"
                           )}
                         >
-                        <OracleDiagnosticsPanel diagnostics={diagnostics} />
+                          <OracleDiagnosticsPanel diagnostics={diagnostics} />
                         </div>
                       </TabsContent>
                       <TabsContent value="connection" className="flex-1 overflow-auto pt-1.5">
@@ -905,7 +905,8 @@ export default function AdbView() {
                             label="SQL"
                             value={sql}
                             onChange={e => setSql(e.target.value)}
-                            className="min-h-[140px] font-mono text-xs"
+                            rows={5}
+                            className="min-h-0 font-mono text-xs"
                             placeholder="SELECT * FROM your_table FETCH FIRST 20 ROWS ONLY"
                           />
                           <WorkbenchActionButton
