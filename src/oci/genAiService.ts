@@ -95,7 +95,7 @@ export class GenAiService {
       triedVariants.push(variant.name);
       const request = {
         chatDetails: {
-          compartmentId: cfg.get<string>("chatCompartmentId", "").trim() || this.factory.getCompartmentId(),
+          compartmentId: cfg.get<string>("chatCompartmentId", "").trim() || await this.factory.getChatFallbackCompartmentId(),
           servingMode: {
             servingType: "ON_DEMAND",
             modelId: modelName

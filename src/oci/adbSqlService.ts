@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { Readable } from "stream";
@@ -25,6 +25,7 @@ import type {
 type DbConnection = {
   execute: (sql: string, binds: unknown[], options: Record<string, unknown>) => Promise<any>;
   close: () => Promise<void>;
+  callTimeout?: number;
 };
 
 type ConnectionEntry = {
@@ -32,8 +33,13 @@ type ConnectionEntry = {
   autonomousDatabaseId: string;
 };
 
+const TRANSPORT_CONNECT_TIMEOUT_SECONDS = 10;
+const CONNECT_TIMEOUT_SECONDS = 15;
+const SQL_CALL_TIMEOUT_MS = 30_000;
+
 export class AdbSqlService {
   private readonly walletRoot: string;
+  private readonly walletConfigRoot: string;
   private readonly connections = new Map<string, ConnectionEntry>();
   private readonly walletPasswords = new Map<string, string>();
 
@@ -42,6 +48,7 @@ export class AdbSqlService {
     storageRoot: string,
   ) {
     this.walletRoot = path.join(storageRoot, "adb-wallets");
+    this.walletConfigRoot = path.join(storageRoot, "adb-wallet-configs");
   }
 
   public async downloadWallet(request: DownloadAdbWalletRequest): Promise<DownloadAdbWalletResponse> {
@@ -86,8 +93,6 @@ export class AdbSqlService {
     if (!autonomousDatabaseId) {
       throw new Error("autonomousDatabaseId is required.");
     }
-    // Keep exactly one active SQL connection to avoid session leaks and DB context mix-ups.
-    await this.disconnectAll();
 
     const { connection, serviceName, walletPath } = await this.openAdbConnection(request);
 
@@ -121,8 +126,6 @@ export class AdbSqlService {
     const dbSystemId = request.dbSystemId.trim();
 
     if (!dbSystemId) throw new Error("dbSystemId is required.");
-
-    await this.disconnectAll();
 
     const { connection, serviceName } = await this.openDbSystemConnection(request);
 
@@ -326,20 +329,32 @@ export class AdbSqlService {
     }
 
     const oracledb = loadOracleDb();
+    const runtime = getOracleDbRuntimeStatus();
+    const isThickMode = runtime?.mode === "thick";
+    const walletFiles = await this.readWalletNetworkFiles(walletPath);
     const walletPassword = request.walletPassword?.trim() || this.walletPasswords.get(walletPath);
-    if (!walletPassword) {
+    if (!isThickMode && !walletPassword) {
       throw new Error("walletPassword is required for this wallet path.");
     }
 
     try {
-      const connection = (await oracledb.getConnection({
+      const connectionOptions: Record<string, unknown> = {
         user: username,
         password: request.password,
-        connectString: serviceName,
-        configDir: walletPath,
-        walletLocation: walletPath,
-        walletPassword,
-      })) as DbConnection;
+        connectString: isThickMode
+          ? resolveThickAdbConnectString(serviceName, walletFiles.tnsnamesContent, walletPath)
+          : serviceName,
+        connectTimeout: CONNECT_TIMEOUT_SECONDS,
+        transportConnectTimeout: TRANSPORT_CONNECT_TIMEOUT_SECONDS,
+      };
+      if (!isThickMode) {
+        connectionOptions.configDir = await this.prepareWalletConfigDir(walletPath, walletFiles);
+        connectionOptions.walletLocation = walletPath;
+        connectionOptions.walletPassword = walletPassword;
+      }
+
+      const connection = (await oracledb.getConnection(connectionOptions)) as DbConnection;
+      applyConnectionTimeouts(connection);
       return {
         connection,
         serviceName,
@@ -369,7 +384,10 @@ export class AdbSqlService {
         user: username,
         password: request.password,
         connectString: serviceName,
+        connectTimeout: CONNECT_TIMEOUT_SECONDS,
+        transportConnectTimeout: TRANSPORT_CONNECT_TIMEOUT_SECONDS,
       })) as DbConnection;
+      applyConnectionTimeouts(connection);
       return {
         connection,
         serviceName,
@@ -395,7 +413,49 @@ export class AdbSqlService {
   public async dispose(): Promise<void> {
     await this.disconnectAll();
   }
+
+  private async readWalletNetworkFiles(walletPath: string): Promise<WalletNetworkFiles> {
+    const walletDirStats = await fs.promises.stat(walletPath).catch(() => undefined);
+    if (!walletDirStats?.isDirectory()) {
+      throw new Error(`Wallet path not found or not a directory: ${walletPath}`);
+    }
+
+    const tnsnamesSource = path.join(walletPath, "tnsnames.ora");
+    const sqlnetSource = path.join(walletPath, "sqlnet.ora");
+    const [tnsnamesContent, sqlnetContent] = await Promise.all([
+      fs.promises.readFile(tnsnamesSource, "utf8").catch(() => {
+        throw new Error(`Wallet is missing tnsnames.ora: ${tnsnamesSource}`);
+      }),
+      fs.promises.readFile(sqlnetSource, "utf8").catch(() => {
+        throw new Error(`Wallet is missing sqlnet.ora: ${sqlnetSource}`);
+      }),
+    ]);
+
+    return {
+      tnsnamesContent,
+      sqlnetContent,
+    };
+  }
+
+  private async prepareWalletConfigDir(walletPath: string, walletFiles: WalletNetworkFiles): Promise<string> {
+    const configHash = createHash("sha1").update(walletPath).digest("hex");
+    const configDir = path.join(this.walletConfigRoot, configHash);
+    const resolvedSqlnet = rewriteWalletLocation(walletFiles.sqlnetContent, walletPath);
+
+    await fs.promises.mkdir(configDir, { recursive: true });
+    await Promise.all([
+      fs.promises.writeFile(path.join(configDir, "tnsnames.ora"), walletFiles.tnsnamesContent, "utf8"),
+      fs.promises.writeFile(path.join(configDir, "sqlnet.ora"), resolvedSqlnet, "utf8"),
+    ]);
+
+    return configDir;
+  }
 }
+
+type WalletNetworkFiles = {
+  tnsnamesContent: string;
+  sqlnetContent: string;
+};
 
 async function writeToFile(source: unknown, destinationPath: string): Promise<void> {
   if (typeof source === "string" || Buffer.isBuffer(source)) {
@@ -486,6 +546,139 @@ function inferRegionFromAutonomousDatabaseId(autonomousDatabaseId: string): stri
   // OCID pattern for ADB commonly contains ".oc1.<region>." (e.g. ".oc1.ap-osaka-1.")
   const match = autonomousDatabaseId.match(/\.oc1\.([a-z0-9-]+)\./i);
   return match?.[1]?.trim() ?? "";
+}
+
+function resolveThickAdbConnectString(serviceName: string, tnsnamesContent: string, walletPath: string): string {
+  const descriptor = looksLikeConnectDescriptor(serviceName)
+    ? serviceName.trim()
+    : extractTnsDescriptor(tnsnamesContent, serviceName);
+  return injectDescriptorTimeouts(injectMyWalletDirectory(descriptor, walletPath));
+}
+
+function looksLikeConnectDescriptor(value: string): boolean {
+  return value.trim().startsWith("(");
+}
+
+function extractTnsDescriptor(tnsnamesContent: string, serviceName: string): string {
+  const aliasPattern = new RegExp(`(^|\\r?\\n)\\s*${escapeRegExp(serviceName)}\\s*=`, "i");
+  const match = aliasPattern.exec(tnsnamesContent);
+  if (!match) {
+    throw new Error(`Service name "${serviceName}" was not found in wallet tnsnames.ora.`);
+  }
+
+  const searchStart = match.index + match[0].length;
+  const descriptorStart = tnsnamesContent.indexOf("(", searchStart);
+  if (descriptorStart < 0) {
+    throw new Error(`Service name "${serviceName}" in tnsnames.ora does not contain a connect descriptor.`);
+  }
+
+  let depth = 0;
+  for (let i = descriptorStart; i < tnsnamesContent.length; i += 1) {
+    const ch = tnsnamesContent[i];
+    if (ch === "(") {
+      depth += 1;
+    } else if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        return tnsnamesContent.slice(descriptorStart, i + 1).trim();
+      }
+    }
+  }
+
+  throw new Error(`Service name "${serviceName}" in tnsnames.ora has an incomplete connect descriptor.`);
+}
+
+function injectMyWalletDirectory(descriptor: string, walletPath: string): string {
+  const normalizedWalletPath = normalizeDescriptorValue(walletPath);
+  const walletToken = `(MY_WALLET_DIRECTORY=${normalizedWalletPath})`;
+
+  if (/my_wallet_directory\s*=/i.test(descriptor)) {
+    return descriptor.replace(/\(\s*MY_WALLET_DIRECTORY\s*=\s*[^()]*\)/i, walletToken);
+  }
+  if (/wallet_location\s*=/i.test(descriptor)) {
+    return descriptor.replace(/\(\s*WALLET_LOCATION\s*=\s*[^()]*\)/i, walletToken);
+  }
+
+  const securityMatch = findDescriptorSection(descriptor, "SECURITY");
+  if (securityMatch) {
+    const { start, end } = securityMatch;
+    return `${descriptor.slice(0, end)}${walletToken}${descriptor.slice(end)}`;
+  }
+
+  const descriptionMatch = findDescriptorSection(descriptor, "DESCRIPTION");
+  if (!descriptionMatch) {
+    return `${descriptor}${walletToken}`;
+  }
+  return `${descriptor.slice(0, descriptionMatch.end)}(SECURITY=${walletToken})${descriptor.slice(descriptionMatch.end)}`;
+}
+
+function injectDescriptorTimeouts(descriptor: string): string {
+  const tokens: string[] = [];
+  if (!/\(\s*TRANSPORT_CONNECT_TIMEOUT\s*=/i.test(descriptor)) {
+    tokens.push(`(TRANSPORT_CONNECT_TIMEOUT=${TRANSPORT_CONNECT_TIMEOUT_SECONDS})`);
+  }
+  if (!/\(\s*CONNECT_TIMEOUT\s*=/i.test(descriptor)) {
+    tokens.push(`(CONNECT_TIMEOUT=${CONNECT_TIMEOUT_SECONDS})`);
+  }
+  if (tokens.length === 0) {
+    return descriptor;
+  }
+
+  const descriptionMatch = findDescriptorSection(descriptor, "DESCRIPTION");
+  if (!descriptionMatch) {
+    return descriptor;
+  }
+  return `${descriptor.slice(0, descriptionMatch.end)}${tokens.join("")}${descriptor.slice(descriptionMatch.end)}`;
+}
+
+function findDescriptorSection(
+  descriptor: string,
+  sectionName: string,
+): { start: number; end: number } | null {
+  const upperDescriptor = descriptor.toUpperCase();
+  const needle = `(${sectionName.toUpperCase()}=`;
+  const start = upperDescriptor.indexOf(needle);
+  if (start < 0) {
+    return null;
+  }
+
+  let depth = 0;
+  for (let i = start; i < descriptor.length; i += 1) {
+    const ch = descriptor[i];
+    if (ch === "(") {
+      depth += 1;
+    } else if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        return { start, end: i };
+      }
+    }
+  }
+
+  return null;
+}
+
+function normalizeDescriptorValue(value: string): string {
+  return value.replace(/\\/g, "/");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function rewriteWalletLocation(sqlnetContent: string, walletPath: string): string {
+  const normalizedWalletPath = normalizeDescriptorValue(walletPath);
+  const walletLocationLine =
+    `WALLET_LOCATION = (SOURCE = (METHOD = file) (METHOD_DATA = (DIRECTORY="${normalizedWalletPath}")))`;
+  const hasWalletLocation = /(^|\n)\s*WALLET_LOCATION\s*=/i.test(sqlnetContent);
+  const nextContent = hasWalletLocation
+    ? sqlnetContent.replace(/^\s*WALLET_LOCATION\s*=.*$/im, walletLocationLine)
+    : `${walletLocationLine}\n${sqlnetContent.trim()}\n`;
+  return nextContent.endsWith("\n") ? nextContent : `${nextContent}\n`;
+}
+
+function applyConnectionTimeouts(connection: DbConnection): void {
+  connection.callTimeout = SQL_CALL_TIMEOUT_MS;
 }
 
 function enrichConnectError(error: unknown, autonomousDatabaseId: string, serviceName: string): Error {

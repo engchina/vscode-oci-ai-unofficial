@@ -167,6 +167,12 @@ export class AuthManager {
     };
   }
 
+  public async getTenancyOcid(profile?: string): Promise<string | undefined> {
+    const p = profile ?? this.getProfile();
+    const tenancyOcid = ((await this.context.secrets.get(secretKey(p, "tenancyOcid"))) ?? "").trim();
+    return tenancyOcid.length > 0 ? tenancyOcid : undefined;
+  }
+
   public async updateCompartmentId(compartmentId: string): Promise<void> {
     await vscode.workspace
       .getConfiguration("ociAi")

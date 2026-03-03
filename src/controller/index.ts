@@ -116,13 +116,15 @@ export class Controller {
     const cfg = vscode.workspace.getConfiguration("ociAi");
     const activeProfile = String(cfg.get<string>("activeProfile", "DEFAULT") ?? "").trim() || "DEFAULT";
     const compartmentId = cfg.get<string>("compartmentId", "").trim();
+    const chatCompartmentId = cfg.get<string>("chatCompartmentId", "").trim();
     const genAiLlmModelIdRaw =
       cfg.get<string>("genAiLlmModelId", "").trim() || cfg.get<string>("genAiModelId", "").trim();
     const hasModelName = splitModelNames(genAiLlmModelIdRaw).length > 0;
     const secrets = await this.authManager.getApiKeySecrets();
+    const effectiveChatCompartmentId = chatCompartmentId || secrets.tenancyOcid.trim() || compartmentId;
 
     const warnings: string[] = [];
-    if (!compartmentId) warnings.push("Compartment ID not set (Settings → Compartment ID).");
+    if (!effectiveChatCompartmentId) warnings.push("Chat compartment not set (select one in Chat, or configure Tenancy OCID).");
     if (!hasModelName) warnings.push("LLM Model Name not set (Settings → LLM Model Name).");
     const missingApiKeyFields = getMissingApiKeyFields(secrets);
     if (missingApiKeyFields.length > 0) {
@@ -134,7 +136,7 @@ export class Controller {
       region: await this.authManager.getRegionForProfile(activeProfile),
       compartmentId,
       computeCompartmentIds: Array.isArray(cfg.get("computeCompartmentIds")) ? cfg.get<string[]>("computeCompartmentIds") as string[] : [],
-      chatCompartmentId: cfg.get<string>("chatCompartmentId", ""),
+      chatCompartmentId,
       adbCompartmentIds: Array.isArray(cfg.get("adbCompartmentIds")) ? cfg.get<string[]>("adbCompartmentIds") as string[] : [],
       dbSystemCompartmentIds: Array.isArray(cfg.get("dbSystemCompartmentIds")) ? cfg.get<string[]>("dbSystemCompartmentIds") as string[] : [],
       vcnCompartmentIds: Array.isArray(cfg.get("vcnCompartmentIds")) ? cfg.get<string[]>("vcnCompartmentIds") as string[] : [],

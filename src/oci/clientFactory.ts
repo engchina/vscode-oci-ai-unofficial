@@ -18,6 +18,20 @@ export class OciClientFactory {
     return compartmentId;
   }
 
+  public async getChatFallbackCompartmentId(): Promise<string> {
+    const compartmentId = this.authManager.getCompartmentId();
+    if (compartmentId) {
+      return compartmentId;
+    }
+
+    const tenancyOcid = await this.authManager.getTenancyOcid();
+    if (tenancyOcid) {
+      return tenancyOcid;
+    }
+
+    throw new Error("Missing chat compartment. Select a Chat compartment or configure Tenancy OCID.");
+  }
+
   /** Returns the active auth provider using SecretStorage API key material only. */
   public async createAuthenticationProviderAsync(): Promise<common.AuthenticationDetailsProvider> {
     const secrets = await this.authManager.getApiKeySecrets();
