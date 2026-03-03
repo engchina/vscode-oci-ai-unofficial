@@ -8,11 +8,13 @@ import Button from "../ui/Button"
 import InlineNotice from "../ui/InlineNotice"
 import {
     WorkbenchActionButton,
+    WorkbenchBackButton,
     WorkbenchDismissButton,
     WorkbenchEditIconButton,
     WorkbenchIconDestructiveButton,
     WorkbenchInlineActionCluster,
     WorkbenchRevealButton,
+    WorkbenchSubmitButton,
 } from "../workbench/WorkbenchActionButtons"
 import { WorkbenchEmptyState, WorkbenchLoadingState } from "../workbench/DatabaseWorkbenchChrome"
 import {
@@ -20,6 +22,7 @@ import {
     createDeleteResourceGuardrail,
     type WorkbenchGuardrailState,
 } from "../workbench/guardrail"
+import { backToLabel, showInListLabel } from "../workbench/navigationLabels"
 import { WorkbenchRefreshButton, WorkbenchToolbarGroup } from "../workbench/WorkbenchToolbar"
 
 type RecentActionState = {
@@ -228,13 +231,7 @@ export default function SecurityListView({
             <div className="flex items-center justify-between gap-2.5 border-b border-[var(--vscode-panel-border)] px-3 py-2 bg-[var(--vscode-editor-background)]">
                 <div className="flex min-w-0 items-center gap-2">
                     {onBack && !embedded && (
-                        <button
-                            onClick={onBack}
-                            className="flex h-6 w-6 items-center justify-center rounded-[2px] hover:bg-[var(--vscode-toolbar-hoverBackground)] hover:text-[var(--vscode-toolbar-hoverOutline)]"
-                            title="Back to VCNs"
-                        >
-                            <ChevronLeft size={14} />
-                        </button>
+                        <WorkbenchBackButton onClick={onBack} label={backToLabel("VCNs")} />
                     )}
                     <div className="flex min-w-0 flex-col">
                         <span className="text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)] truncate">
@@ -244,9 +241,9 @@ export default function SecurityListView({
                     </div>
                 </div>
                 <WorkbenchToolbarGroup className="items-center gap-1">
-                    <Button variant="secondary" size="sm" onClick={() => setIsCreating(true)} className="flex items-center gap-1.5 h-6">
+                    <WorkbenchSubmitButton type="button" onClick={() => setIsCreating(true)} className="h-6">
                         <Plus size={14} /> Create
-                    </Button>
+                    </WorkbenchSubmitButton>
                     <WorkbenchRefreshButton
                         onClick={load}
                         disabled={loading}
@@ -298,8 +295,8 @@ export default function SecurityListView({
                                 {recentAction.securityListId && recentAction.kind !== "deleted" && (
                                     <WorkbenchRevealButton
                                         onClick={() => revealSecurityList(recentAction.securityListId ?? "")}
-                                        title="Show Security List"
-                                        label="Show Security List"
+                                        title={showInListLabel("Security List")}
+                                        label={showInListLabel("Security List")}
                                     />
                                 )}
                                 <WorkbenchDismissButton onClick={() => setRecentAction(null)} title="Dismiss" />
@@ -530,9 +527,9 @@ function SecurityListForm({
                 <span className="text-sm font-semibold">{initialData ? "Edit Security List" : "Create Security List"}</span>
                 <div className="ml-auto">
                     <WorkbenchInlineActionCluster>
-                        <WorkbenchActionButton onClick={handleSave} disabled={saving}>
+                        <WorkbenchSubmitButton type="button" variant="secondary" onClick={handleSave} disabled={saving}>
                             {saving ? <Loader2 size={14} className="animate-spin" /> : "Save"}
-                        </WorkbenchActionButton>
+                        </WorkbenchSubmitButton>
                     </WorkbenchInlineActionCluster>
                 </div>
             </div>

@@ -57,7 +57,7 @@ export function TabsList({
     return (
         <div
             className={clsx(
-                "flex w-full items-center gap-1.5 border-b border-[var(--vscode-panelTitle-activeBorder,var(--vscode-panel-border))]",
+                "flex w-full items-end gap-1 border-b border-[var(--vscode-panelTitle-activeBorder,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_94%,white_6%)] px-1 pt-1",
                 className
             )}
             role="tablist"
@@ -87,10 +87,10 @@ export function TabsTrigger({
             aria-selected={isActive}
             onClick={() => context.setActiveTab(value)}
             className={clsx(
-                "relative flex items-center justify-center whitespace-nowrap pb-1 pt-1 text-[12px] font-medium transition-colors hover:text-[var(--vscode-panelTitle-activeForeground)] focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50",
+                "relative inline-flex min-h-[30px] items-center justify-center whitespace-nowrap rounded-t-md border px-3 py-1.5 text-[12px] font-medium transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50",
                 isActive
-                    ? "border-b-2 border-[var(--vscode-panelTitle-activeBorder)] text-[var(--vscode-panelTitle-activeForeground)]"
-                    : "border-b-2 border-transparent text-[var(--vscode-panelTitle-inactiveForeground)]",
+                    ? "border-[var(--vscode-panel-border)] border-b-[var(--vscode-editor-background)] bg-[var(--vscode-editor-background)] text-[var(--vscode-panelTitle-activeForeground)]"
+                    : "border-transparent text-[var(--vscode-panelTitle-inactiveForeground)] hover:bg-[var(--vscode-list-hoverBackground)] hover:text-[var(--vscode-panelTitle-activeForeground)]",
                 className
             )}
         >

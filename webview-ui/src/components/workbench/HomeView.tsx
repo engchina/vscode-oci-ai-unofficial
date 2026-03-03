@@ -3,6 +3,7 @@ import type { ReactNode } from "react"
 import Button from "../ui/Button"
 import Card from "../ui/Card"
 import WelcomeGuide from "../ui/WelcomeGuide"
+import { openViewLabel } from "./navigationLabels"
 
 export interface HomeQuickAction {
   id: string
@@ -88,15 +89,15 @@ export default function HomeView({
           <div className="mt-5 flex flex-wrap gap-2">
             <Button variant="primary" size="md" onClick={() => onOpenAction("chat")}>
               <MessageSquareText size={14} className="mr-1.5" />
-              Open Chat
+              {openViewLabel("Chat")}
             </Button>
             <Button variant="secondary" size="md" onClick={() => onOpenAction("adb")}>
               <Database size={14} className="mr-1.5" />
-              Autonomous Database
+              {openViewLabel("Autonomous Database")}
             </Button>
             <Button variant="secondary" size="md" onClick={onOpenSettings}>
               <Settings2 size={14} className="mr-1.5" />
-              Open Settings
+              {openViewLabel("Settings")}
             </Button>
           </div>
         </div>

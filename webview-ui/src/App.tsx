@@ -13,11 +13,13 @@ import StatusBadge from "./components/ui/StatusBadge"
 import VcnView from "./components/vcn/VcnView"
 import {
   WorkbenchActionButton,
-  WorkbenchCompactActionCluster,
+  WorkbenchNavigationCluster,
+  WorkbenchNavigationButton,
   WorkbenchShortcutTileButton,
 } from "./components/workbench/WorkbenchActionButtons"
 import HomeView from "./components/workbench/HomeView"
 import { WorkbenchLoadingState } from "./components/workbench/DatabaseWorkbenchChrome"
+import { openViewLabel } from "./components/workbench/navigationLabels"
 import WorkbenchShell, {
   type WorkbenchPrimaryItem,
   type WorkbenchSecondaryGroup,
@@ -43,7 +45,7 @@ interface ViewDefinition {
 const VIEW_DEFINITIONS: Record<WorkbenchView, ViewDefinition> = {
   home: {
     id: "home",
-    label: "Overview",
+    label: "Home",
     description: "Landing page with quick actions, environment context, and recent destinations.",
     primary: "home",
     icon: <Layers size={15} />,
@@ -118,7 +120,7 @@ const PRIMARY_ITEMS: WorkbenchPrimaryItem[] = [
   { id: "assistant", label: "Assistant", icon: <Bot size={18} /> },
   { id: "resources", label: "Resources", icon: <Network size={18} /> },
   { id: "databases", label: "Databases", icon: <Database size={18} /> },
-  { id: "administration", label: "Admin", icon: <Settings2 size={18} /> },
+  { id: "administration", label: "Settings", icon: <Settings2 size={18} /> },
 ]
 
 const DEFAULT_VIEW_BY_PRIMARY: Record<PrimarySection, WorkbenchView> = {
@@ -150,7 +152,7 @@ const PRIMARY_GROUPS: Record<Exclude<PrimarySection, "home">, WorkbenchSecondary
   ],
   administration: [
     {
-      title: "Administration",
+      title: "Settings",
       items: SETTINGS_TABS.map(toSettingsSecondaryItem),
     },
   ],
@@ -297,12 +299,16 @@ function AppContent() {
         </>
       }
       headerActions={
-        <>
-          <TopActionButton label="Home" onClick={() => navigateToView("home")} />
-          <TopActionButton label="Chat" onClick={() => navigateToView("chat")} />
-          <TopActionButton label="Settings" onClick={() => navigateToView("settings")} />
-          <TopActionButton label="Profile" onClick={() => void StateServiceClient.switchProfile()} />
-        </>
+        <div className="flex items-center gap-2">
+          <WorkbenchNavigationCluster>
+            <TopActionButton label={openViewLabel("Home")} active={activeView === "home"} onClick={() => navigateToView("home")} />
+            <TopActionButton label={openViewLabel("Chat")} active={activeView === "chat"} onClick={() => navigateToView("chat")} />
+            <TopActionButton label={openViewLabel("Settings")} active={activeView === "settings"} onClick={() => navigateToView("settings")} />
+          </WorkbenchNavigationCluster>
+          <WorkbenchActionButton type="button" variant="secondary" onClick={() => void StateServiceClient.switchProfile()}>
+            Switch Profile
+          </WorkbenchActionButton>
+        </div>
       }
 
       statusBar={
@@ -426,11 +432,11 @@ function HeaderBadge({ label, value }: { label: string; value: string }) {
   )
 }
 
-function TopActionButton({ label, onClick }: { label: string; onClick: () => void }) {
+function TopActionButton({ label, onClick, active = false }: { label: string; onClick: () => void; active?: boolean }) {
   return (
-    <WorkbenchActionButton type="button" variant="secondary" onClick={onClick}>
+    <WorkbenchNavigationButton type="button" active={active} onClick={onClick}>
       {label}
-    </WorkbenchActionButton>
+    </WorkbenchNavigationButton>
   )
 }
 

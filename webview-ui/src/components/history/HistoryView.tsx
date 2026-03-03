@@ -1,12 +1,13 @@
-import { ArrowLeft, MessageSquareText, Trash2 } from "lucide-react"
+import { MessageSquareText, Trash2 } from "lucide-react"
 import { useState } from "react"
 import GuardrailDialog from "../common/GuardrailDialog"
-import { WorkbenchActionButton, WorkbenchCompactActionCluster } from "../workbench/WorkbenchActionButtons"
+import { WorkbenchActionButton, WorkbenchBackButton, WorkbenchCompactActionCluster } from "../workbench/WorkbenchActionButtons"
 import {
   buildWorkbenchResourceGuardrailDetails,
   createClearResourceGuardrail,
   type WorkbenchGuardrailState,
 } from "../workbench/guardrail"
+import { backToLabel } from "../workbench/navigationLabels"
 
 interface HistoryViewProps {
   messages: Array<{ role: "user" | "model"; text: string }>
@@ -48,10 +49,7 @@ export default function HistoryView({ messages, onBack, onClear }: HistoryViewPr
           </div>
           <WorkbenchCompactActionCluster>
             {onBack && (
-              <WorkbenchActionButton variant="secondary" onClick={onBack}>
-                <ArrowLeft size={12} className="mr-1" />
-                Back
-              </WorkbenchActionButton>
+              <WorkbenchBackButton onClick={onBack} label={backToLabel("Chat")} />
             )}
             <WorkbenchActionButton variant="secondary" onClick={requestClear} disabled={messages.length === 0}>
               <Trash2 size={12} className="mr-1" />

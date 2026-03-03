@@ -84,7 +84,10 @@ export default function WorkbenchInventoryCard({
         type="button"
         ref={buttonRef}
         onClick={onClick}
-        className={cardClassName}
+        className={clsx(
+          cardClassName,
+          "focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)] focus-visible:-outline-offset-1",
+        )}
       >
         {content}
       </button>
@@ -92,12 +95,12 @@ export default function WorkbenchInventoryCard({
   }
 
   return (
-    <div className={cardClassName}>
+    <div className={clsx(cardClassName, "focus-within:outline focus-within:outline-1 focus-within:outline-[var(--vscode-focusBorder)] focus-within:-outline-offset-1")}>
       <button
         type="button"
         ref={buttonRef}
         onClick={onClick}
-        className="w-full text-left"
+        className="w-full text-left outline-none"
       >
         {content}
       </button>

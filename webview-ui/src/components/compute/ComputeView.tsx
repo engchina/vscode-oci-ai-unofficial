@@ -24,11 +24,13 @@ import {
   WorkbenchGuardrailActionButton,
   WorkbenchRevealButton,
   WorkbenchSelectButton,
+  WorkbenchSubmitButton,
 } from "../workbench/WorkbenchActionButtons"
 import { WorkbenchCompactFieldRow, WorkbenchCompactInput } from "../workbench/WorkbenchCompactControls"
 import FeaturePageLayout, { FeatureSearchInput } from "../workbench/FeaturePageLayout"
 import type { WorkbenchGuardrailState } from "../workbench/guardrail"
 import { buildWorkbenchResourceGuardrailDetails, createStartResourceGuardrail, createStopResourceGuardrail } from "../workbench/guardrail"
+import { openViewLabel, showInListLabel } from "../workbench/navigationLabels"
 import { WorkbenchRefreshButton } from "../workbench/WorkbenchToolbar"
 
 type ActionState = { id: string; action: "starting" | "stopping" } | null
@@ -139,7 +141,12 @@ export default function ComputeView() {
           }]
           : []),
         {
-          label: selectedInstance.vcnId ? "Open VCN" : "Open VCNs",
+          label: showInListLabel("Instance"),
+          run: revealSelectedInstance,
+          variant: "ghost",
+        },
+        {
+          label: selectedInstance.vcnId ? openViewLabel("VCN") : openViewLabel("VCNs"),
           run: () => {
             if (selectedInstance.vcnId) {
               setPendingSelection({
@@ -150,11 +157,6 @@ export default function ComputeView() {
             navigateToView("vcn")
           },
           variant: "secondary",
-        },
-        {
-          label: "Show in List",
-          run: revealSelectedInstance,
-          variant: "ghost",
         },
       ],
     })
@@ -461,7 +463,7 @@ export default function ComputeView() {
             className="mb-2"
             actions={(
               <>
-                <WorkbenchRevealButton onClick={() => revealInstance(recentAction.resourceId)} title="Show this instance in the list" label="Show Instance" />
+                <WorkbenchRevealButton onClick={() => revealInstance(recentAction.resourceId)} title={showInListLabel("Instance")} label={showInListLabel("Instance")} />
                 <WorkbenchDismissButton onClick={() => setRecentAction(null)} title="Dismiss" />
               </>
             )}
@@ -490,7 +492,7 @@ export default function ComputeView() {
                   count={filtered.length === instances.length
                     ? `${instances.length} instance${instances.length !== 1 ? "s" : ""}`
                     : `${filtered.length} of ${instances.length} instances`}
-                  description="Manage SSH settings and lifecycle actions directly inside each compute instance card."
+                  description="Select a compute instance, then run lifecycle or SSH actions explicitly from its action row."
                 />
 
                 {filtered.length === 0 ? (
@@ -722,14 +724,15 @@ function InstanceCard({
             />
           )}
           {_showConnection && (
-            <WorkbenchActionButton
+            <WorkbenchSubmitButton
               disabled={!canConnect}
+              variant="secondary"
               onClick={() => onConnect(instance)}
               title={connectReason}
             >
               {isConnecting ? <Loader2 size={12} className="animate-spin" /> : <SquareTerminal size={12} />}
-              SSH Connect
-            </WorkbenchActionButton>
+              Connect SSH
+            </WorkbenchSubmitButton>
           )}
         </WorkbenchCompactActionCluster>
       )}

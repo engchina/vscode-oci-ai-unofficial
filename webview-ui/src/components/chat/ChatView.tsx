@@ -69,12 +69,12 @@ export default function ChatView({ isHidden = false, onNewChat, onHistory }: Cha
           <WorkbenchCompactActionCluster>
             <WorkbenchActionButton variant="secondary" onClick={onNewChat}>
               <Plus size={12} className="mr-1" />
-              New
+              New Chat
             </WorkbenchActionButton>
             {onHistory && (
               <WorkbenchActionButton variant="secondary" onClick={onHistory}>
                 <History size={12} className="mr-1" />
-                History
+                Open History
               </WorkbenchActionButton>
             )}
           </WorkbenchCompactActionCluster>

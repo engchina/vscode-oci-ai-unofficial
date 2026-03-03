@@ -261,7 +261,7 @@ export default function SettingsView({ activeTab: controlledActiveTab, onDone, s
             )}
             {showDone && onDone && (
               <WorkbenchActionButton variant="secondary" onClick={onDone}>
-                Done
+                Close Settings
               </WorkbenchActionButton>
             )}
           </WorkbenchInlineActionCluster>
@@ -490,7 +490,7 @@ function ApiConfigTab({
           Runtime auth profile: <span className="font-medium text-[var(--vscode-foreground)]">{runtimeProfile}</span>
         </p>
         <p className="mt-1 text-[11px] text-description">
-          Editing profile on this page: <span className="font-medium text-[var(--vscode-foreground)]">{effectiveSelectedProfile}</span>
+          Profile editing scope on this page: <span className="font-medium text-[var(--vscode-foreground)]">{effectiveSelectedProfile}</span>
         </p>
         {runtimeProfile !== effectiveSelectedProfile && (
           <p className="mt-1 text-[11px] text-warning">
@@ -500,11 +500,11 @@ function ApiConfigTab({
       </div>
 
       {/* Profile Management */}
-      <Card title="Profile">
+      <Card title="Profile Editing Scope">
         <div className="flex flex-col gap-1">
           <label htmlFor="profile" className="inline-flex items-center gap-1 text-xs text-description font-medium">
             <ChevronDown size={12} className="shrink-0" />
-            Select Profile
+            Select Profile to Edit
           </label>
           <div className="flex flex-col gap-2">
             {profiles.length > 0 ? (
@@ -521,7 +521,7 @@ function ApiConfigTab({
                   >
                     {p.name}
                     {effectiveSelectedProfile === p.name && (
-                      <span className="ml-2 text-[10px] text-description">(Selected)</span>
+                      <span className="ml-2 text-[10px] text-description">(Editing)</span>
                     )}
                   </button>
                   <WorkbenchIconDestructiveButton
@@ -538,7 +538,7 @@ function ApiConfigTab({
               <div className="text-xs text-description px-2 py-1.5">No profiles configured. Add one below.</div>
             )}
           </div>
-          <p className="text-[10px] text-description mt-1">Select a profile for editing on this page. This does not change the global active profile.</p>
+          <p className="text-[10px] text-description mt-1">Choose which profile to edit on this page. This does not change the global active profile.</p>
         </div>
 
         {/* Add Profile */}

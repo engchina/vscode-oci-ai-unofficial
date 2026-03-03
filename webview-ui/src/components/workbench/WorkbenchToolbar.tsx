@@ -1,7 +1,7 @@
 import { clsx } from "clsx"
 import { RefreshCw } from "lucide-react"
 import type { ReactNode } from "react"
-import Button from "../ui/Button"
+import { WorkbenchActionButton } from "./WorkbenchActionButtons"
 
 export function WorkbenchToolbarGroup({
   children,
@@ -35,14 +35,16 @@ export function WorkbenchRefreshButton({
   title?: string
 }) {
   return (
-    <Button
-      variant="icon"
-      size="icon"
+    <WorkbenchActionButton
+      type="button"
+      tone="secondaryAction"
+      variant="secondary"
+      className="h-6 min-w-6 px-1.5"
       onClick={onClick}
       disabled={disabled}
       title={title}
     >
       <RefreshCw size={14} className={clsx(spinning && "animate-spin")} />
-    </Button>
+    </WorkbenchActionButton>
   )
 }

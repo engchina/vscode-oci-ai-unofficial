@@ -18,6 +18,7 @@ import {
     WorkbenchInventoryRegionHeading,
     WorkbenchInventorySummary,
 } from "../workbench/WorkbenchInventoryScaffold"
+import { openViewLabel, showInListLabel } from "../workbench/navigationLabels"
 import { WorkbenchRefreshButton } from "../workbench/WorkbenchToolbar"
 import SecurityListView from "./SecurityListView"
 
@@ -210,17 +211,17 @@ export default function VcnView() {
                     }]
                     : []),
                 {
-                    label: "Open Compute",
+                    label: openViewLabel("Compute"),
                     run: () => navigateToView("compute"),
                     variant: "secondary",
                 },
                 {
-                    label: "Open Security Lists",
+                    label: openViewLabel("Security Lists"),
                     run: () => setShowSecurityListWorkspace(true),
                     variant: "secondary",
                 },
                 {
-                    label: "Show in List",
+                    label: showInListLabel("VCN"),
                     run: revealSelectedVcn,
                     variant: "ghost",
                 },
@@ -426,6 +427,7 @@ function VcnListItem({
                     <WorkbenchSelectButton selected={selected} onClick={onSelect} />
                     <WorkbenchActionButton
                         type="button"
+                        tone="navigation"
                         onClick={onOpenSecurityLists}
                     >
                         Open Security Lists

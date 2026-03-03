@@ -119,7 +119,7 @@ export default function WorkbenchShell({
                       <div
                         role="tablist"
                         aria-label={`${group.title} navigation`}
-                        className="flex items-center gap-1 rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,white_8%)] p-1"
+                        className="flex items-center gap-1 rounded-full border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_90%,white_10%)] p-1"
                       >
                         {group.items.map((item) => {
                           const isActive = item.id === activeViewId
@@ -132,9 +132,9 @@ export default function WorkbenchShell({
                               onClick={() => onSelectView(item.id)}
                               title={item.description}
                               className={clsx(
-                                "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[12px] font-medium whitespace-nowrap transition-colors",
+                                "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[12px] font-medium whitespace-nowrap transition-colors",
                                 isActive
-                                  ? "border-[var(--vscode-list-activeSelectionBackground)] bg-[var(--vscode-list-activeSelectionBackground)] text-[var(--vscode-list-activeSelectionForeground)]"
+                                  ? "border-[var(--vscode-focusBorder)] bg-[var(--vscode-list-activeSelectionBackground)] text-[var(--vscode-list-activeSelectionForeground)]"
                                   : "border-transparent text-[var(--vscode-descriptionForeground)] hover:bg-[var(--vscode-list-hoverBackground)] hover:text-[var(--vscode-foreground)]",
                               )}
                             >

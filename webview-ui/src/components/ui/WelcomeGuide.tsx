@@ -1,5 +1,6 @@
 import { KeyRound, Layers, Settings2, UserPlus } from "lucide-react"
 import Button from "./Button"
+import { openViewLabel } from "../workbench/navigationLabels"
 
 interface WelcomeGuideProps {
   onOpenSettings: () => void
@@ -9,7 +10,7 @@ const STEPS = [
   {
     icon: <Settings2 size={14} />,
     title: "Open Settings",
-    description: "Open Administration and go to Settings.",
+    description: "Open Settings, then choose the setup tab you need.",
   },
   {
     icon: <UserPlus size={14} />,
@@ -64,7 +65,7 @@ export default function WelcomeGuide({ onOpenSettings }: WelcomeGuideProps) {
 
       <Button variant="primary" size="md" onClick={onOpenSettings} className="mt-1">
         <Settings2 size={12} className="mr-1.5" />
-        Open Settings
+        {openViewLabel("Settings")}
       </Button>
     </div>
   )

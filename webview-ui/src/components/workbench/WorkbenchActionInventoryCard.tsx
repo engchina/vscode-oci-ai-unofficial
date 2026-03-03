@@ -16,6 +16,10 @@ interface WorkbenchActionInventoryCardProps {
 
 const INTERACTIVE_SELECTOR = "button, input, select, textarea, a, label, summary, [role='button'], [role='link'], [role='radio'], [data-card-interactive='true']"
 
+function isNestedInteractiveTarget(target: EventTarget | null, currentTarget: HTMLDivElement): boolean {
+  return target instanceof Element && target !== currentTarget && Boolean(target.closest(INTERACTIVE_SELECTOR))
+}
+
 export default function WorkbenchActionInventoryCard({
   title,
   subtitle,
@@ -32,8 +36,9 @@ export default function WorkbenchActionInventoryCard({
     <div
       ref={cardRef}
       className={clsx(
-        "flex flex-col gap-1 rounded-[2px] border p-1.5 transition-colors",
+        "flex flex-col gap-1 rounded-[2px] border p-1.5 outline-none transition-colors",
         onSelect && "cursor-pointer",
+        onSelect && "focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)] focus-visible:-outline-offset-1",
         selected && highlighted
           ? "border-[var(--vscode-focusBorder)] bg-[color-mix(in_srgb,var(--vscode-list-hoverBackground)_82%,var(--vscode-button-background)_18%)]"
           : selected
@@ -42,14 +47,23 @@ export default function WorkbenchActionInventoryCard({
               ? "border-[color-mix(in_srgb,var(--vscode-button-background)_45%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_82%,var(--vscode-button-background)_18%)]"
               : "border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)] hover:bg-[var(--vscode-list-hoverBackground)]",
       )}
+      role={onSelect ? "button" : undefined}
+      tabIndex={onSelect ? 0 : undefined}
+      aria-pressed={onSelect ? selected : undefined}
       onClick={(event) => {
-        if (!onSelect) {
+        if (!onSelect || isNestedInteractiveTarget(event.target, event.currentTarget)) {
           return
         }
-        const target = event.target
-        if (target instanceof Element && target.closest(INTERACTIVE_SELECTOR)) {
+        onSelect()
+      }}
+      onKeyDown={(event) => {
+        if (!onSelect || isNestedInteractiveTarget(event.target, event.currentTarget)) {
           return
         }
+        if (event.key !== "Enter" && event.key !== " ") {
+          return
+        }
+        event.preventDefault()
         onSelect()
       }}
     >

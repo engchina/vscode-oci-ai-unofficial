@@ -262,11 +262,11 @@ function ProfileConfigEditor({
     return (
         <div className="flex flex-col gap-4">
             {/* Profile Selector (for compartment maintenance, NOT global active profile) */}
-            <Card title="Profile">
+            <Card title="Compartment Editing Scope">
                 <div className="flex flex-col gap-1.5">
                     <label className="inline-flex items-center gap-1 text-xs text-description font-medium">
                         <ChevronDown size={12} className="shrink-0" />
-                        Select Profile to Manage Compartments
+                        Select Profile to Edit Compartments
                     </label>
                     <select
                         value={effectiveSelectedProfile || ""}
@@ -281,7 +281,7 @@ function ProfileConfigEditor({
                             <option value="" disabled>No profiles available</option>
                         )}
                     </select>
-                    <p className="text-[10px] text-description">Choose which profile's compartments to manage below. This does not affect the global active profile.</p>
+                    <p className="text-[10px] text-description">Choose which profile's compartments to edit below. This does not affect the global active profile.</p>
                 </div>
             </Card>
 
@@ -292,9 +292,9 @@ function ProfileConfigEditor({
                 return (
                     <div className="flex flex-col gap-2 rounded-md border border-border-panel p-2 bg-[color-mix(in_srgb,var(--vscode-editor-background)_96%,black_4%)]">
                         <div className="flex items-center justify-between">
-                            <span className="text-xs font-semibold">{p.name}</span>
+                            <span className="text-xs font-semibold">{p.name} (Editing Scope)</span>
                         </div>
-                        <p className="text-[10px] text-description">Profile deletion is available in Profiles.</p>
+                        <p className="text-[10px] text-description">Delete profiles from Settings {" > "} Profiles.</p>
 
                         {/* Compartments inside Profile */}
                         <div className="flex flex-col pl-2 gap-1 border-l-2 border-border-panel">
@@ -343,7 +343,7 @@ function ProfileConfigEditor({
                                     />
                                     <WorkbenchCompactActionCluster className="justify-end">
                                         <WorkbenchActionButton variant="secondary" onClick={() => setEditingProfile(null)}>Cancel</WorkbenchActionButton>
-                                        <WorkbenchActionButton disabled={!newCompId.trim() || !newCompName.trim()} onClick={() => { addCompartment(p.name); setEditingProfile(null); }}>Add</WorkbenchActionButton>
+                                        <WorkbenchActionButton disabled={!newCompId.trim() || !newCompName.trim()} onClick={() => { addCompartment(p.name); setEditingProfile(null); }}>Add Compartment</WorkbenchActionButton>
                                     </WorkbenchCompactActionCluster>
                                 </div>
                             ) : (

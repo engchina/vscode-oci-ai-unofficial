@@ -231,7 +231,24 @@ Behavior:
 Use:
 
 - segmented control or explicit target picker for `ADB` vs `DB System`
+- top-level workspace tabs in this order: `Connection`, `Query`, `AI Assistant`, `Library`
+- `Connection` for session state and saved connection inputs
+- `Query` for SQL editor plus result sub-tabs
+- `AI Assistant` for generation and optimization workflows
+- `Library` for favorites and history
 - `Back` only when returning from a scoped sub-workspace, not for normal feature switching
+
+Query tab structure:
+
+- keep `SQL Editor` above results
+- split results into `Result Grid` and `Explain Plan` sub-tabs
+- use `Run SQL` to reveal `Result Grid`
+- use `Explain Plan` to reveal `Explain Plan`
+
+Connection panel structure:
+
+- `Session Status`
+- `Connection Form`
 
 ### Security Lists
 
@@ -273,6 +290,86 @@ Use this order when multiple button types appear together:
 
 If navigation is important but rare, prefer moving it to the selected-resource action bar instead of the card.
 
+## Button Tone Hierarchy
+
+Use one visual tone per button intent. Do not reuse the same tone for navigation, submit, and destructive actions.
+
+### `navigation`
+
+Use for:
+
+- `Open ...`
+- `Back to ...`
+- `Show ... in List`
+
+Behavior:
+
+- looks lighter and more directional than task actions
+- indicates movement to another surface or reveal inside the current surface
+- stays visually distinct from submit and destructive controls
+
+### `submit`
+
+Use for:
+
+- `Create`
+- `Upload`
+- `Run`
+- `Connect`
+- `Save`
+- `PAR`
+
+Behavior:
+
+- indicates the primary affirmative task on the current surface
+- reads stronger than `secondaryAction`
+- is never used for destructive work
+
+### `secondaryAction`
+
+Use for:
+
+- `Refresh`
+- `Test Connection`
+- `Connection Diagnostic`
+- `Disconnect`
+- `Copy`
+- `Clear Filter`
+
+Behavior:
+
+- supports or inspects the current task without becoming the main submit action
+- reads lighter than `submit`
+- stays more visible than passive text links
+
+### `danger`
+
+Use for:
+
+- `Delete`
+- irreversible clearing actions
+
+Behavior:
+
+- stays visually separated from submit and navigation actions
+- uses the strongest warning styling available in the shared workbench button set
+
+## Workspace Sectioning
+
+When a resource opens an embedded workspace, prefer this internal structure:
+
+1. `Status`
+2. `Actions`
+3. `Content`
+
+Apply this especially to tool or workspace surfaces that combine connection state, mutations, and browsing.
+
+Examples:
+
+- SQL Workbench: `Connection`, `Query`, `AI Assistant`, `Library`
+- database connection panels: split `Session Status` and `Connection Form`
+- Bucket Workspace: split `Status`, `Actions`, and `Content`
+
 ## Copy Rules
 
 Follow `ui-copy-guidelines.md` and apply these additional constraints:
@@ -281,6 +378,8 @@ Follow `ui-copy-guidelines.md` and apply these additional constraints:
 - `Open` always means navigation only.
 - `Show` means reveal or scroll within the current surface only.
 - `Back to ...` means return to the parent inventory or parent workspace only.
+- `Connection` names a configuration or session tab, not a submit action.
+- `Query`, `AI Assistant`, and `Library` name content tabs, not buttons.
 
 Never use these pairs interchangeably:
 
@@ -325,5 +424,6 @@ A feature page meets this guideline only if all of the following are true:
 - users can tell which item is selected
 - users can tell which controls navigate
 - users can tell which controls execute work
+- users can tell which actions are submit, secondary, or destructive at a glance
 - the same click pattern means the same thing on sibling pages
 - keyboard users can reach the primary card interaction and the explicit navigation actions
