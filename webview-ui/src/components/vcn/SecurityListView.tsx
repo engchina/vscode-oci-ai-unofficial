@@ -510,7 +510,24 @@ function SecurityListForm({
 
     const updateRule = (type: "ingress" | "egress", index: number, field: keyof SecurityRule, value: any) => {
         const rules = type === "ingress" ? [...ingressRules] : [...egressRules]
-        rules[index] = { ...rules[index], [field]: value }
+        const currentRule = rules[index]
+        if (!currentRule) return
+
+        const nextRule: SecurityRule = { ...currentRule, [field]: value }
+
+        if (field === "protocol") {
+            delete nextRule.tcpOptions
+            delete nextRule.udpOptions
+            delete nextRule.icmpOptions
+
+            if (value === "6" && !nextRule.tcpOptions) {
+                nextRule.tcpOptions = {}
+            } else if (value === "17" && !nextRule.udpOptions) {
+                nextRule.udpOptions = {}
+            }
+        }
+
+        rules[index] = nextRule
         if (type === "ingress") setIngressRules(rules)
         else setEgressRules(rules)
     }
@@ -605,6 +622,10 @@ function parsePortRange(val: string): { min: number, max: number } | undefined {
     return undefined;
 }
 
+function getEditablePortRangeValue(range?: { min: number, max: number }) {
+    return range ? formatPortRange(range) : "";
+}
+
 function handlePortChange(rule: SecurityRule, idx: number, type: "source" | "destination", val: string, onUpdate: (idx: number, field: string, value: any) => void) {
     const range = parsePortRange(val);
     if (rule.protocol === "6") {
@@ -629,6 +650,10 @@ function formatIcmp(options?: { type: number, code?: number }) {
     if (!options) return "All";
     if (options.code === undefined || options.code === null) return `${options.type}`;
     return `${options.type}, ${options.code}`;
+}
+
+function getEditableIcmpValue(options?: { type: number, code?: number }) {
+    return options ? formatIcmp(options) : "";
 }
 
 function handleIcmpChange(idx: number, val: string, onUpdate: (idx: number, field: string, value: any) => void) {
@@ -692,6 +717,50 @@ function buildSecurityRuleSearchText(rule: SecurityRule): string {
         .join(" ")
 }
 
+function EditableRuleTextInput({
+    value,
+    disabled,
+    placeholder,
+    className,
+    onChangeValue,
+}: {
+    value: string
+    disabled: boolean
+    placeholder: string
+    className: string
+    onChangeValue: (value: string) => void
+}) {
+    const [draft, setDraft] = useState(value)
+    const focusedRef = useRef(false)
+
+    useEffect(() => {
+        if (!focusedRef.current) {
+            setDraft(value)
+        }
+    }, [value])
+
+    return (
+        <input
+            className={className}
+            disabled={disabled}
+            value={draft}
+            onFocus={() => {
+                focusedRef.current = true
+            }}
+            onBlur={() => {
+                focusedRef.current = false
+                setDraft(value)
+            }}
+            onChange={(event) => {
+                const nextValue = event.target.value
+                setDraft(nextValue)
+                onChangeValue(nextValue)
+            }}
+            placeholder={placeholder}
+        />
+    )
+}
+
 function SecurityRuleTable({
     type,
     rules,
@@ -742,7 +811,7 @@ function SecurityRuleTable({
                                     <input
                                         className="bg-transparent border border-input-border rounded px-2 py-1 w-28 focus:border-button-primary-background outline-none"
                                         value={type === "ingress" ? (rule.source || "") : (rule.destination || "")}
-                                        onChange={e => onUpdateRule(idx, type, e.target.value)}
+                                        onChange={e => onUpdateRule(idx, type === "ingress" ? "source" : "destination", e.target.value)}
                                         placeholder="0.0.0.0/0"
                                     />
                                 </td>
@@ -759,35 +828,35 @@ function SecurityRuleTable({
                                     </select>
                                 </td>
                                 <td className="px-3 py-2">
-                                    <input
+                                    <EditableRuleTextInput
                                         className="bg-transparent border border-input-border rounded px-2 py-1 w-20 focus:border-button-primary-background outline-none disabled:opacity-50"
                                         disabled={rule.protocol !== "6" && rule.protocol !== "17"}
                                         value={
-                                            rule.protocol === "6" ? formatPortRange(rule.tcpOptions?.sourcePortRange) :
-                                                rule.protocol === "17" ? formatPortRange(rule.udpOptions?.sourcePortRange) : ""
+                                            rule.protocol === "6" ? getEditablePortRangeValue(rule.tcpOptions?.sourcePortRange) :
+                                                rule.protocol === "17" ? getEditablePortRangeValue(rule.udpOptions?.sourcePortRange) : ""
                                         }
-                                        onChange={e => handlePortChange(rule, idx, "source", e.target.value, onUpdateRule)}
+                                        onChangeValue={(value) => handlePortChange(rule, idx, "source", value, onUpdateRule)}
                                         placeholder="All"
                                     />
                                 </td>
                                 <td className="px-3 py-2">
-                                    <input
+                                    <EditableRuleTextInput
                                         className="bg-transparent border border-input-border rounded px-2 py-1 w-20 focus:border-button-primary-background outline-none disabled:opacity-50"
                                         disabled={rule.protocol !== "6" && rule.protocol !== "17"}
                                         value={
-                                            rule.protocol === "6" ? formatPortRange(rule.tcpOptions?.destinationPortRange) :
-                                                rule.protocol === "17" ? formatPortRange(rule.udpOptions?.destinationPortRange) : ""
+                                            rule.protocol === "6" ? getEditablePortRangeValue(rule.tcpOptions?.destinationPortRange) :
+                                                rule.protocol === "17" ? getEditablePortRangeValue(rule.udpOptions?.destinationPortRange) : ""
                                         }
-                                        onChange={e => handlePortChange(rule, idx, "destination", e.target.value, onUpdateRule)}
+                                        onChangeValue={(value) => handlePortChange(rule, idx, "destination", value, onUpdateRule)}
                                         placeholder="All"
                                     />
                                 </td>
                                 <td className="px-3 py-2">
-                                    <input
+                                    <EditableRuleTextInput
                                         className="bg-transparent border border-input-border rounded px-2 py-1 w-20 focus:border-button-primary-background outline-none disabled:opacity-50"
                                         disabled={rule.protocol !== "1"}
-                                        value={rule.protocol === "1" ? formatIcmp(rule.icmpOptions) : ""}
-                                        onChange={e => handleIcmpChange(idx, e.target.value, onUpdateRule)}
+                                        value={rule.protocol === "1" ? getEditableIcmpValue(rule.icmpOptions) : ""}
+                                        onChangeValue={(value) => handleIcmpChange(idx, value, onUpdateRule)}
                                         placeholder="Type, Code"
                                     />
                                 </td>
