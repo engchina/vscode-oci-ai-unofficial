@@ -60,6 +60,7 @@ export interface AppState {
   dbSystemCompartmentIds: string[];
   vcnCompartmentIds: string[];
   objectStorageCompartmentIds: string[];
+  bastionCompartmentIds: string[];
   profilesConfig: ProfileConfig[];
   tenancyOcid: string;
   genAiRegion: string;
@@ -85,6 +86,7 @@ export interface SaveSettingsRequest {
   dbSystemCompartmentIds: string[];
   vcnCompartmentIds: string[];
   objectStorageCompartmentIds: string[];
+  bastionCompartmentIds: string[];
   genAiRegion: string;
   genAiLlmModelId: string;
   genAiEmbeddingModelId: string;
@@ -464,6 +466,48 @@ export interface SaveAdbConnectionRequest extends AdbConnectionProfile {
 export interface LoadAdbConnectionResponse extends AdbConnectionProfile {
   walletPassword: string;
   password: string;
+}
+
+export type BastionResource = import("../types").BastionResource;
+export type BastionSessionResource = import("../types").BastionSessionResource;
+
+export interface ListBastionsResponse {
+  bastions: BastionResource[];
+}
+
+export interface ListBastionSessionsRequest {
+  bastionId: string;
+  region?: string;
+}
+
+export interface ListBastionSessionsResponse {
+  sessions: BastionSessionResource[];
+}
+
+export interface CreateBastionSessionRequest {
+  bastionId: string;
+  targetResourceDetails: any;
+  keyDetails: any;
+  sessionTtlInSeconds?: number;
+  displayName?: string;
+  region?: string;
+}
+
+export interface DeleteBastionSessionRequest {
+  sessionId: string;
+  region?: string;
+}
+
+export interface RunBastionSshCommandRequest {
+  sessionId: string;
+  sessionName?: string;
+  bastionName?: string;
+  executable: string;
+  args: string[];
+}
+
+export interface RunBastionSshCommandResponse {
+  launched: boolean;
 }
 
 /**

@@ -62,6 +62,7 @@ export interface AppState {
   dbSystemCompartmentIds: string[]
   vcnCompartmentIds: string[]
   objectStorageCompartmentIds: string[]
+  bastionCompartmentIds: string[]
   profilesConfig: ProfileConfig[]
   tenancyOcid: string
   genAiRegion: string
@@ -84,6 +85,7 @@ export interface SaveSettingsRequest {
   dbSystemCompartmentIds: string[]
   vcnCompartmentIds: string[]
   objectStorageCompartmentIds: string[]
+  bastionCompartmentIds: string[]
   genAiRegion: string
   genAiLlmModelId: string
   genAiEmbeddingModelId: string
@@ -577,4 +579,66 @@ export interface CodeContextPayload {
   language: string
   /** When set, the webview auto-sends this prompt along with the code block */
   prompt?: string
+}
+
+export interface BastionResource {
+  id: string
+  name: string
+  lifecycleState: string
+  compartmentId: string
+  region: string
+  targetVcnId?: string
+  targetSubnetId?: string
+  clientCidrBlockAllowList?: string[]
+  dnsProxyStatus?: string
+}
+
+export interface BastionSessionResource {
+  id: string
+  name: string
+  lifecycleState: string
+  bastionId: string
+  targetResourceDetails?: any
+  keyDetails?: any
+  sessionTtlInSeconds?: number
+  sshMetadata?: Record<string, string>
+}
+
+export interface ListBastionsResponse {
+  bastions: BastionResource[]
+}
+
+export interface ListBastionSessionsRequest {
+  bastionId: string
+  region?: string
+}
+
+export interface ListBastionSessionsResponse {
+  sessions: BastionSessionResource[]
+}
+
+export interface CreateBastionSessionRequest {
+  bastionId: string
+  targetResourceDetails: any
+  keyDetails: any
+  sessionTtlInSeconds?: number
+  displayName?: string
+  region?: string
+}
+
+export interface DeleteBastionSessionRequest {
+  sessionId: string
+  region?: string
+}
+
+export interface RunBastionSshCommandRequest {
+  sessionId: string
+  sessionName?: string
+  bastionName?: string
+  executable: string
+  args: string[]
+}
+
+export interface RunBastionSshCommandResponse {
+  launched: boolean
 }

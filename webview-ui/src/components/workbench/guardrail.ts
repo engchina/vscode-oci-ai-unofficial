@@ -56,6 +56,7 @@ type WorkbenchGuardrailResourceKind =
   | "compute-instance"
   | "autonomous-database"
   | "db-system"
+  | "bastion-session"
   | "security-list"
   | "pre-authenticated-link"
   | "oci-profile"
@@ -131,6 +132,16 @@ function resolveWorkbenchGuardrailResourceTemplate(resourceKind?: WorkbenchGuard
           delete: "can remove database node availability.",
           create: "creates a new DB System-level action.",
           save: "stores the current DB System-level configuration for reuse.",
+        },
+      }
+    case "bastion-session":
+      return {
+        resourceTitle: "Bastion Session",
+        confirmTarget: "Session",
+        subject: "Bastion session",
+        effects: {
+          delete: "removes the temporary access path provided by this session.",
+          create: "creates a new Bastion-backed access path into the selected target.",
         },
       }
     case "security-list":

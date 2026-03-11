@@ -27,6 +27,7 @@ const EMPTY_SETTINGS: SettingsState = {
     adbCompartmentIds: [],
     dbSystemCompartmentIds: [],
     objectStorageCompartmentIds: [],
+    bastionCompartmentIds: [],
     genAiRegion: "",
     genAiLlmModelId: "",
     genAiEmbeddingModelId: "",

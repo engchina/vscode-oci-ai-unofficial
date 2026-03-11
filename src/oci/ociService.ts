@@ -10,7 +10,9 @@ import {
   SecurityRule,
   DbSystemResource,
   ObjectStorageBucketResource,
-  ObjectStorageObjectResource
+  ObjectStorageObjectResource,
+  BastionResource,
+  BastionSessionResource
 } from "../types";
 
 export class OciService {
@@ -834,6 +836,109 @@ export class OciService {
     return String(client.regionId || regionOverride || "").trim();
   }
 
+  public async listBastions(): Promise<BastionResource[]> {
+    const cfg = vscode.workspace.getConfiguration("ociAi");
+    const compartmentIds = [...new Set(normalizeCompartmentIds(cfg.get<string[]>("bastionCompartmentIds") || []))];
+    if (compartmentIds.length === 0) {
+      return [];
+    }
+    const regions = [...new Set(this.getActiveProfileRegions())];
+
+    const bastions: BastionResource[] = [];
+
+    for (const region of regions) {
+      const client = await this.factory.createBastionClientAsync(region);
+      for (const compartmentId of compartmentIds) {
+        let page: string | undefined;
+        do {
+          const result = await client.listBastions({ compartmentId, page });
+          bastions.push(
+            ...(result.items || [])
+              .filter((bastionItem) => {
+                const lifecycleState = ((bastionItem as any)?.lifecycleState as string | undefined) || "";
+                return lifecycleState.toUpperCase() !== "DELETED";
+              })
+              .map((bastionItem) => {
+                const bastion = bastionItem as any;
+                return {
+                  id: bastion.id || "",
+                  name: bastion.name || bastion.id || "Unnamed Bastion",
+                  lifecycleState: (bastion.lifecycleState as string) || "UNKNOWN",
+                  compartmentId: bastion.compartmentId || compartmentId,
+                  region,
+                  targetVcnId: bastion.targetVcnId,
+                  targetSubnetId: bastion.targetSubnetId,
+                  clientCidrBlockAllowList: bastion.clientCidrBlockAllowList,
+                  dnsProxyStatus: bastion.dnsProxyStatus
+                };
+              })
+          );
+          page = result.opcNextPage;
+        } while (page);
+      }
+    }
+
+    return bastions.sort(compareNamedOciResources);
+  }
+
+  public async listBastionSessions(bastionId: string, region?: string): Promise<BastionSessionResource[]> {
+    const client = await this.factory.createBastionClientAsync(region);
+    const sessionSummaries: any[] = [];
+    let page: string | undefined;
+    do {
+      const result = await client.listSessions({ bastionId, page });
+      sessionSummaries.push(
+        ...(result.items || []).filter((sessionItem) => {
+          const lifecycleState = ((sessionItem as any)?.lifecycleState as string | undefined) || "";
+          return lifecycleState.toUpperCase() !== "DELETED";
+        })
+      );
+      page = result.opcNextPage;
+    } while (page);
+    const sessions = await Promise.allSettled(
+      sessionSummaries.map(async (sessionSummary) => {
+        const sessionId = String((sessionSummary as any)?.id || "").trim();
+        if (!sessionId) {
+          return mapBastionSessionResource(sessionSummary, bastionId);
+        }
+        const response = await client.getSession({ sessionId });
+        return mapBastionSessionResource(response.session || sessionSummary, bastionId);
+      })
+    );
+    return sessions
+      .map((result, index) =>
+        result.status === "fulfilled"
+          ? result.value
+          : mapBastionSessionResource(sessionSummaries[index], bastionId)
+      )
+      .sort(compareNamedOciResources);
+  }
+
+  public async createBastionSession(
+    bastionId: string,
+    targetResourceDetails: any,
+    keyDetails: any,
+    sessionTtlInSeconds?: number,
+    displayName?: string,
+    region?: string
+  ): Promise<void> {
+    const client = await this.factory.createBastionClientAsync(region);
+    await client.createSession({
+      createSessionDetails: {
+        bastionId,
+        targetResourceDetails,
+        keyDetails,
+        sessionTtlInSeconds,
+        displayName
+      }
+    });
+  }
+
+  public async deleteBastionSession(sessionId: string, region?: string): Promise<void> {
+    const client = await this.factory.createBastionClientAsync(region);
+    await client.deleteSession({ sessionId });
+  }
+
   private getActiveProfileRegions(): string[] {
     return splitRegions(this.factory.getRegion() ?? "");
   }
@@ -859,6 +964,33 @@ function deriveNodeLifecycleState(nodes: { lifecycleState?: string }[]): string 
   }
   if (hasStopped) return "STOPPED";
   return undefined;
+}
+
+function compareNamedOciResources<T extends { name?: string; id?: string }>(left: T, right: T): number {
+  const nameCompare = (left.name || "").localeCompare(right.name || "", undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+  if (nameCompare !== 0) {
+    return nameCompare;
+  }
+  return (left.id || "").localeCompare(right.id || "", undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+function mapBastionSessionResource(sessionLike: any, bastionId: string): BastionSessionResource {
+  return {
+    id: sessionLike?.id || "",
+    name: sessionLike?.displayName || sessionLike?.name || sessionLike?.id || "Unnamed Session",
+    lifecycleState: (sessionLike?.lifecycleState as string) || "UNKNOWN",
+    bastionId: sessionLike?.bastionId || bastionId,
+    targetResourceDetails: sessionLike?.targetResourceDetails,
+    keyDetails: sessionLike?.keyDetails,
+    sessionTtlInSeconds: sessionLike?.sessionTtlInSeconds,
+    sshMetadata: sessionLike?.sshMetadata,
+  };
 }
 
 function splitRegions(raw: string): string[] {

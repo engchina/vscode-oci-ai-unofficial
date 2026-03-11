@@ -91,8 +91,29 @@ export interface ObjectStorageObjectResource {
   size?: number;
   etag?: string;
   md5?: string;
-  storageTier?: string;
-  archivalState?: string;
   timeCreated?: string;
   timeModified?: string;
+}
+
+export interface BastionResource {
+  id: string;
+  name: string;
+  lifecycleState: string;
+  compartmentId: string;
+  region: string;
+  targetVcnId?: string;
+  targetSubnetId?: string;
+  clientCidrBlockAllowList?: string[];
+  dnsProxyStatus?: string;
+}
+
+export interface BastionSessionResource {
+  id: string;
+  name: string;
+  lifecycleState: string;
+  bastionId: string;
+  targetResourceDetails?: any;
+  keyDetails?: any;
+  sessionTtlInSeconds?: number;
+  sshMetadata?: Record<string, string>;
 }

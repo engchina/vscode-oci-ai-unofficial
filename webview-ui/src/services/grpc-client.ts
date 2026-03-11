@@ -53,6 +53,13 @@ import type {
   CreateObjectStorageParRequest,
   CreateObjectStorageParResponse,
   DeleteSqlFavoriteRequest,
+  ListBastionsResponse,
+  ListBastionSessionsRequest,
+  ListBastionSessionsResponse,
+  CreateBastionSessionRequest,
+  DeleteBastionSessionRequest,
+  RunBastionSshCommandRequest,
+  RunBastionSshCommandResponse,
 } from "./types"
 import { type Callbacks, ProtoBusClient } from "./grpc-client-base"
 
@@ -77,7 +84,7 @@ export class StateServiceClient extends ProtoBusClient {
   }
 
   static updateFeatureCompartmentSelection(
-    featureKey: "compute" | "adb" | "dbSystem" | "vcn" | "chat" | "objectStorage",
+    featureKey: "compute" | "adb" | "dbSystem" | "vcn" | "chat" | "objectStorage" | "bastion",
     compartmentIds: string[],
   ): Promise<void> {
     return this.makeUnaryRequest<void>("updateFeatureCompartmentSelection", { featureKey, compartmentIds })
@@ -321,5 +328,25 @@ export class ResourceServiceClient extends ProtoBusClient {
 
   static createObjectStoragePar(request: CreateObjectStorageParRequest): Promise<CreateObjectStorageParResponse> {
     return this.makeUnaryRequest<CreateObjectStorageParResponse>("createObjectStoragePar", request)
+  }
+
+  static listBastions(): Promise<ListBastionsResponse> {
+    return this.makeUnaryRequest<ListBastionsResponse>("listBastions", {})
+  }
+
+  static listBastionSessions(request: ListBastionSessionsRequest): Promise<ListBastionSessionsResponse> {
+    return this.makeUnaryRequest<ListBastionSessionsResponse>("listBastionSessions", request)
+  }
+
+  static createBastionSession(request: CreateBastionSessionRequest): Promise<void> {
+    return this.makeUnaryRequest<void>("createBastionSession", request)
+  }
+
+  static deleteBastionSession(request: DeleteBastionSessionRequest): Promise<void> {
+    return this.makeUnaryRequest<void>("deleteBastionSession", request)
+  }
+
+  static runBastionSshCommand(request: RunBastionSshCommandRequest): Promise<RunBastionSshCommandResponse> {
+    return this.makeUnaryRequest<RunBastionSshCommandResponse>("runBastionSshCommand", request)
   }
 }

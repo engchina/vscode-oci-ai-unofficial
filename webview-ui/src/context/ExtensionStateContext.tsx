@@ -21,6 +21,7 @@ export type ViewType =
   | "adb"
   | "dbSystems"
   | "sqlWorkbench"
+  | "bastion"
 
 export interface ExtensionStateContextType {
   // Hydration
@@ -35,6 +36,7 @@ export interface ExtensionStateContextType {
   dbSystemCompartmentIds: string[]
   vcnCompartmentIds: string[]
   objectStorageCompartmentIds: string[]
+  bastionCompartmentIds: string[]
   profilesConfig: { name: string; compartments: { id: string; name: string }[] }[]
   tenancyOcid: string
   genAiRegion: string
@@ -90,6 +92,7 @@ export function ExtensionStateContextProvider({ children }: { children: ReactNod
     dbSystemCompartmentIds: [],
     vcnCompartmentIds: [],
     objectStorageCompartmentIds: [],
+    bastionCompartmentIds: [],
     profilesConfig: [],
     tenancyOcid: "",
     genAiRegion: "",

@@ -337,6 +337,19 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
       showStatusMessage("Pre-authenticated request created.");
       return result;
     },
+    listBastions: async (c) => c.listBastions(),
+    listBastionSessions: async (c, msg) => c.listBastionSessions(msg),
+    createBastionSession: async (c, msg) => {
+      await c.createBastionSession(msg);
+      showStatusMessage("Bastion session creation requested.");
+      return {};
+    },
+    deleteBastionSession: async (c, msg) => {
+      await c.deleteBastionSession(msg);
+      showStatusMessage("Bastion session deleted.");
+      return {};
+    },
+    runBastionSshCommand: async (c, msg) => c.runBastionSshCommand(msg),
   },
 };
 

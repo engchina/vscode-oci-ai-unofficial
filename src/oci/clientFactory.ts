@@ -1,6 +1,7 @@
 import * as common from "oci-common";
 import * as compute from "oci-core";
 import * as database from "oci-database";
+import * as bastion from "oci-bastion";
 import { AuthManager } from "../auth/authManager";
 
 export class OciClientFactory {
@@ -79,6 +80,16 @@ export class OciClientFactory {
   public async createDatabaseClientAsync(regionOverride?: string): Promise<database.DatabaseClient> {
     const authenticationDetailsProvider = await this.createAuthenticationProviderAsync();
     const client = new database.DatabaseClient({ authenticationDetailsProvider });
+    const region = (regionOverride ?? this.authManager.getRegion() ?? "").trim();
+    if (region) {
+      client.regionId = region;
+    }
+    return client;
+  }
+
+  public async createBastionClientAsync(regionOverride?: string): Promise<bastion.BastionClient> {
+    const authenticationDetailsProvider = await this.createAuthenticationProviderAsync();
+    const client = new bastion.BastionClient({ authenticationDetailsProvider });
     const region = (regionOverride ?? this.authManager.getRegion() ?? "").trim();
     if (region) {
       client.regionId = region;

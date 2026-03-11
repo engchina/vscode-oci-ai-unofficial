@@ -42,7 +42,7 @@ const FEATURE_HIGHLIGHTS = [
     id: "vcn",
     icon: <Network size={16} />,
     title: "Resources",
-    description: "Browse VCNs, compute instances, and object storage with task-focused filters.",
+    description: "Browse VCNs, compute, bastion, and object storage with task-focused filters.",
   },
   {
     id: "sqlWorkbench",

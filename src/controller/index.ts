@@ -33,6 +33,8 @@ import type {
   SettingsState,
   SqlAssistantRequest,
   SqlAssistantResponse,
+  RunBastionSshCommandRequest,
+  RunBastionSshCommandResponse,
   SqlFavoriteEntry,
   SqlHistoryEntry,
   SqlWorkbenchConnectionType,
@@ -141,6 +143,7 @@ export class Controller {
       dbSystemCompartmentIds: Array.isArray(cfg.get("dbSystemCompartmentIds")) ? cfg.get<string[]>("dbSystemCompartmentIds") as string[] : [],
       vcnCompartmentIds: Array.isArray(cfg.get("vcnCompartmentIds")) ? cfg.get<string[]>("vcnCompartmentIds") as string[] : [],
       objectStorageCompartmentIds: Array.isArray(cfg.get("objectStorageCompartmentIds")) ? cfg.get<string[]>("objectStorageCompartmentIds") as string[] : [],
+      bastionCompartmentIds: Array.isArray(cfg.get("bastionCompartmentIds")) ? cfg.get<string[]>("bastionCompartmentIds") as string[] : [],
       profilesConfig: Array.isArray(cfg.get("profilesConfig")) ? cfg.get<any[]>("profilesConfig") as any[] : [],
       tenancyOcid: secrets.tenancyOcid || "",
       genAiRegion: cfg.get<string>("genAiRegion", ""),
@@ -173,6 +176,7 @@ export class Controller {
       dbSystemCompartmentIds: Array.isArray(cfg.get("dbSystemCompartmentIds")) ? cfg.get<string[]>("dbSystemCompartmentIds") as string[] : [],
       vcnCompartmentIds: Array.isArray(cfg.get("vcnCompartmentIds")) ? cfg.get<string[]>("vcnCompartmentIds") as string[] : [],
       objectStorageCompartmentIds: Array.isArray(cfg.get("objectStorageCompartmentIds")) ? cfg.get<string[]>("objectStorageCompartmentIds") as string[] : [],
+      bastionCompartmentIds: Array.isArray(cfg.get("bastionCompartmentIds")) ? cfg.get<string[]>("bastionCompartmentIds") as string[] : [],
       genAiRegion: cfg.get<string>("genAiRegion", ""),
       genAiLlmModelId: cfg.get<string>("genAiLlmModelId", "") || cfg.get<string>("genAiModelId", ""),
       genAiEmbeddingModelId: cfg.get<string>("genAiEmbeddingModelId", ""),
@@ -212,6 +216,7 @@ export class Controller {
     await cfg.update("dbSystemCompartmentIds", Array.isArray(payload.dbSystemCompartmentIds) ? payload.dbSystemCompartmentIds : [], vscode.ConfigurationTarget.Global);
     await cfg.update("vcnCompartmentIds", Array.isArray(payload.vcnCompartmentIds) ? payload.vcnCompartmentIds : [], vscode.ConfigurationTarget.Global);
     await cfg.update("objectStorageCompartmentIds", Array.isArray(payload.objectStorageCompartmentIds) ? payload.objectStorageCompartmentIds : [], vscode.ConfigurationTarget.Global);
+    await cfg.update("bastionCompartmentIds", Array.isArray(payload.bastionCompartmentIds) ? payload.bastionCompartmentIds : [], vscode.ConfigurationTarget.Global);
 
     if (payload.profilesConfig) {
       await cfg.update("profilesConfig", payload.profilesConfig, vscode.ConfigurationTarget.Global);
@@ -291,7 +296,7 @@ export class Controller {
 
   /** Update only one feature's compartment selection without overwriting unrelated settings */
   public async updateFeatureCompartmentSelection(
-    featureKey: "compute" | "adb" | "dbSystem" | "vcn" | "chat" | "objectStorage",
+    featureKey: "compute" | "adb" | "dbSystem" | "vcn" | "chat" | "objectStorage" | "bastion",
     compartmentIds: string[]
   ): Promise<void> {
     const cfg = vscode.workspace.getConfiguration("ociAi");
@@ -309,6 +314,8 @@ export class Controller {
       await cfg.update("vcnCompartmentIds", normalized, vscode.ConfigurationTarget.Global);
     } else if (featureKey === "objectStorage") {
       await cfg.update("objectStorageCompartmentIds", normalized, vscode.ConfigurationTarget.Global);
+    } else if (featureKey === "bastion") {
+      await cfg.update("bastionCompartmentIds", normalized, vscode.ConfigurationTarget.Global);
     } else if (featureKey === "chat") {
       await cfg.update("chatCompartmentId", normalized[0] ?? "", vscode.ConfigurationTarget.Global);
     } else {
@@ -1161,6 +1168,174 @@ export class Controller {
       typeof request.region === "string" ? request.region : undefined
     );
   }
+
+  public async listBastions(): Promise<import("../shared/services").ListBastionsResponse> {
+    const bastions = await this.ociService.listBastions();
+    return { bastions };
+  }
+
+  public async listBastionSessions(
+    request: import("../shared/services").ListBastionSessionsRequest
+  ): Promise<import("../shared/services").ListBastionSessionsResponse> {
+    const bastionId = String(request.bastionId ?? "").trim();
+    if (!bastionId) {
+      throw new Error("bastionId is required.");
+    }
+    const sessions = await this.ociService.listBastionSessions(bastionId, normalizeOptionalRegion(request.region));
+    return { sessions };
+  }
+
+  public async createBastionSession(
+    request: import("../shared/services").CreateBastionSessionRequest
+  ): Promise<void> {
+    const bastionId = String(request.bastionId ?? "").trim();
+    if (!bastionId) {
+      throw new Error("bastionId is required.");
+    }
+    const rawTargetResourceDetails = ensureObjectPayload(request.targetResourceDetails, "targetResourceDetails");
+    const keyDetails = ensureObjectPayload(request.keyDetails, "keyDetails");
+    const sessionType = typeof rawTargetResourceDetails.sessionType === "string" ? rawTargetResourceDetails.sessionType.trim() : "";
+    if (!sessionType) {
+      throw new Error("targetResourceDetails.sessionType is required.");
+    }
+    if (sessionType !== "MANAGED_SSH" && sessionType !== "PORT_FORWARDING") {
+      throw new Error(`Unsupported Bastion sessionType: ${sessionType}`);
+    }
+    const targetResourceDetails: Record<string, unknown> = {
+      ...rawTargetResourceDetails,
+      sessionType,
+    };
+    if (sessionType === "MANAGED_SSH") {
+      const targetResourceId = typeof rawTargetResourceDetails.targetResourceId === "string"
+        ? rawTargetResourceDetails.targetResourceId.trim()
+        : "";
+      const osUserName = typeof rawTargetResourceDetails.targetResourceOperatingSystemUserName === "string"
+        ? rawTargetResourceDetails.targetResourceOperatingSystemUserName.trim()
+        : "";
+      if (!targetResourceId) {
+        throw new Error("targetResourceDetails.targetResourceId is required for managed SSH.");
+      }
+      if (!osUserName) {
+        throw new Error("targetResourceDetails.targetResourceOperatingSystemUserName is required for managed SSH.");
+      }
+      targetResourceDetails.targetResourceId = targetResourceId;
+      targetResourceDetails.targetResourceOperatingSystemUserName = osUserName;
+      delete targetResourceDetails.targetResourcePrivateIpAddress;
+      delete targetResourceDetails.targetResourcePort;
+    }
+    if (sessionType === "PORT_FORWARDING") {
+      const targetResourceId = typeof rawTargetResourceDetails.targetResourceId === "string"
+        ? rawTargetResourceDetails.targetResourceId.trim()
+        : "";
+      const targetPrivateIp = typeof rawTargetResourceDetails.targetResourcePrivateIpAddress === "string"
+        ? rawTargetResourceDetails.targetResourcePrivateIpAddress.trim()
+        : "";
+      if (!targetResourceId && !targetPrivateIp) {
+        throw new Error("Port forwarding requires targetResourceId or targetResourcePrivateIpAddress.");
+      }
+      const targetResourcePort = normalizePositiveNumber(
+        rawTargetResourceDetails.targetResourcePort,
+        "targetResourceDetails.targetResourcePort",
+      );
+      if (typeof targetResourcePort === "undefined") {
+        throw new Error("targetResourceDetails.targetResourcePort is required for port forwarding.");
+      }
+      targetResourceDetails.targetResourcePort = targetResourcePort;
+      if (targetResourceId) {
+        targetResourceDetails.targetResourceId = targetResourceId;
+      } else {
+        delete targetResourceDetails.targetResourceId;
+      }
+      if (targetPrivateIp) {
+        targetResourceDetails.targetResourcePrivateIpAddress = targetPrivateIp;
+      } else {
+        delete targetResourceDetails.targetResourcePrivateIpAddress;
+      }
+      delete targetResourceDetails.targetResourceOperatingSystemUserName;
+    }
+    const publicKeyContent = typeof keyDetails.publicKeyContent === "string" ? keyDetails.publicKeyContent.trim() : "";
+    if (!publicKeyContent) {
+      throw new Error("keyDetails.publicKeyContent is required.");
+    }
+    const sessionTtlInSeconds = normalizePositiveNumber(request.sessionTtlInSeconds, "sessionTtlInSeconds");
+    const displayName = typeof request.displayName === "string" ? request.displayName.trim() || undefined : undefined;
+    await this.ociService.createBastionSession(
+      bastionId,
+      targetResourceDetails,
+      { ...keyDetails, publicKeyContent },
+      sessionTtlInSeconds,
+      displayName,
+      normalizeOptionalRegion(request.region)
+    );
+  }
+
+  public async deleteBastionSession(
+    request: import("../shared/services").DeleteBastionSessionRequest
+  ): Promise<void> {
+    const sessionId = String(request.sessionId ?? "").trim();
+    if (!sessionId) {
+      throw new Error("sessionId is required.");
+    }
+    await this.ociService.deleteBastionSession(sessionId, normalizeOptionalRegion(request.region));
+  }
+
+  public async runBastionSshCommand(request: RunBastionSshCommandRequest): Promise<RunBastionSshCommandResponse> {
+    const executable = String(request.executable ?? "").trim();
+    const args = Array.isArray(request.args) ? request.args.map((value) => String(value ?? "")) : [];
+    if (!executable) {
+      throw new Error("SSH executable is required.");
+    }
+    if (args.length === 0) {
+      throw new Error("SSH arguments are required.");
+    }
+
+    const taskScope =
+      vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0
+        ? vscode.TaskScope.Workspace
+        : vscode.TaskScope.Global;
+
+    const task = new vscode.Task(
+      { type: "ociAiBastionSsh", sessionId: request.sessionId || executable, _ts: Date.now() },
+      taskScope,
+      `Bastion SSH: ${String(request.sessionName ?? "").trim() || String(request.bastionName ?? "").trim() || request.sessionId || "Session"}`,
+      "OCI AI",
+      new vscode.ShellExecution(executable, args)
+    );
+    task.presentationOptions = {
+      reveal: vscode.TaskRevealKind.Always,
+      focus: true,
+      panel: vscode.TaskPanelKind.New,
+      clear: false,
+    };
+    await vscode.tasks.executeTask(task);
+    return { launched: true };
+  }
+}
+
+function normalizeOptionalRegion(region: unknown): string | undefined {
+  if (typeof region !== "string") {
+    return undefined;
+  }
+  const trimmed = region.trim();
+  return trimmed || undefined;
+}
+
+function normalizePositiveNumber(value: unknown, fieldName: string): number | undefined {
+  if (typeof value === "undefined" || value === null) {
+    return undefined;
+  }
+  const normalized = Number(value);
+  if (!Number.isFinite(normalized) || normalized <= 0) {
+    throw new Error(`${fieldName} must be a positive number.`);
+  }
+  return normalized;
+}
+
+function ensureObjectPayload(value: unknown, fieldName: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${fieldName} must be an object.`);
+  }
+  return value as Record<string, unknown>;
 }
 
 function normalizeImages(images: ChatImageData[] | undefined): ChatImageData[] {

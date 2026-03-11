@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
-import { Bot, Database, History, Layers, MessageSquareText, Network, Server, Settings2, SquareTerminal } from "lucide-react"
+import { Bot, Database, History, Layers, MessageSquareText, Network, Server, Settings2, Shield, SquareTerminal } from "lucide-react"
 import AdbView from "./components/adb/AdbView"
 import ChatView from "./components/chat/ChatView"
 import ComputeView from "./components/compute/ComputeView"
 import DbSystemsView from "./components/dbsystems/DbSystemsView"
 import HistoryView from "./components/history/HistoryView"
 import ObjectStorageView from "./components/objectstorage/ObjectStorageView"
+import BastionView from "./components/bastion/BastionView"
 import SettingsView, { SETTINGS_TABS, type SettingsTab } from "./components/settings/SettingsView"
 import SqlWorkbenchView from "./components/sql/SqlWorkbenchView"
 import Card from "./components/ui/Card"
@@ -78,6 +79,13 @@ const VIEW_DEFINITIONS: Record<WorkbenchView, ViewDefinition> = {
     primary: "resources",
     icon: <Server size={15} />,
   },
+  bastion: {
+    id: "bastion",
+    label: "Bastion",
+    description: "Manage Bastions, secure sessions, and SSH command handoff.",
+    primary: "resources",
+    icon: <Shield size={15} />,
+  },
   objectStorage: {
     id: "objectStorage",
     label: "Object Storage",
@@ -141,7 +149,7 @@ const PRIMARY_GROUPS: Record<Exclude<PrimarySection, "home">, WorkbenchSecondary
   resources: [
     {
       title: "Resources",
-      items: [toSecondaryItem("vcn"), toSecondaryItem("compute"), toSecondaryItem("objectStorage")],
+      items: [toSecondaryItem("vcn"), toSecondaryItem("compute"), toSecondaryItem("bastion"), toSecondaryItem("objectStorage")],
     },
   ],
   databases: [
@@ -173,6 +181,7 @@ const HOME_ACTIONS = [
   "chat",
   "vcn",
   "compute",
+  "bastion",
   "objectStorage",
   "adb",
   "settings",
@@ -200,6 +209,7 @@ function AppContent() {
     dbSystemCompartmentIds,
     vcnCompartmentIds,
     objectStorageCompartmentIds,
+    bastionCompartmentIds,
     genAiRegion,
     genAiLlmModelId,
     isStreaming,
@@ -410,6 +420,8 @@ function renderActiveView({
       return <ComputeView />
     case "objectStorage":
       return <ObjectStorageView />
+    case "bastion":
+      return <BastionView />
     case "adb":
       return <AdbView />
     case "dbSystems":

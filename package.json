@@ -2,7 +2,7 @@
   "name": "oci-ai-unofficial",
   "displayName": "oci-ai-unofficial",
   "description": "A comprehensive extension for Oracle Cloud Infrastructure (OCI) in VS Code, supporting AI services and diversified cloud management workflows.",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "local",
   "icon": "icon.png",
   "engines": {
@@ -356,6 +356,14 @@
             "type": "string"
           }
         },
+        "ociAi.bastionCompartmentIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Selected compartment IDs for OCI Bastion Service"
+        },
         "ociAi.adbConnectionProfiles": {
           "type": "array",
           "default": [],
@@ -423,6 +431,7 @@
   },
   "dependencies": {
     "adm-zip": "^0.5.16",
+    "oci-bastion": "^2.125.2",
     "oci-common": "^2.125.2",
     "oci-core": "^2.125.2",
     "oci-database": "^2.125.2",
