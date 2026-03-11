@@ -117,3 +117,55 @@ export interface BastionSessionResource {
   sessionTtlInSeconds?: number;
   sshMetadata?: Record<string, string>;
 }
+
+export type SpeechTranscriptionModelType = "WHISPER_MEDIUM" | "WHISPER_LARGE_V3_TURBO";
+
+export type SpeechTranscriptionLanguageCode = "ja" | "en" | "zh";
+
+export type SpeechProfanityFilterMode = "MASK";
+
+export interface SpeechTranscriptionJobResource {
+  id: string;
+  name: string;
+  compartmentId: string;
+  region: string;
+  lifecycleState: string;
+  lifecycleDetails?: string;
+  description?: string;
+  percentComplete?: number;
+  totalTasks?: number;
+  outstandingTasks?: number;
+  successfulTasks?: number;
+  timeAccepted?: string;
+  timeStarted?: string;
+  timeFinished?: string;
+  inputNamespaceName?: string;
+  inputBucketName?: string;
+  inputObjectNames?: string[];
+  outputNamespaceName?: string;
+  outputBucketName?: string;
+  outputPrefix?: string;
+  modelType?: SpeechTranscriptionModelType | string;
+  languageCode?: SpeechTranscriptionLanguageCode | string;
+  domain?: string;
+  additionalTranscriptionFormats?: string[];
+  isPunctuationEnabled?: boolean;
+  isDiarizationEnabled?: boolean;
+  numberOfSpeakers?: number;
+  profanityFilterMode?: SpeechProfanityFilterMode | string;
+  whisperPrompt?: string;
+}
+
+export interface SpeechTranscriptionTaskResource {
+  id: string;
+  name: string;
+  jobId: string;
+  lifecycleState: string;
+  lifecycleDetails?: string;
+  percentComplete?: number;
+  fileSizeInBytes?: number;
+  fileDurationInSeconds?: number;
+  processingDurationInSeconds?: number;
+  timeStarted?: string;
+  timeFinished?: string;
+}

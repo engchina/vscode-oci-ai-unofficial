@@ -89,10 +89,10 @@ export function useWorkbenchInsight() {
 
 export function toneFromLifecycleState(state: string | undefined): WorkbenchInsightTone {
   const normalized = (state || "").toUpperCase()
-  if (["AVAILABLE", "RUNNING", "ACTIVE"].includes(normalized)) {
+  if (["AVAILABLE", "RUNNING", "ACTIVE", "SUCCEEDED"].includes(normalized)) {
     return "success"
   }
-  if (["STOPPED", "STOPPING", "STARTING", "UPDATING", "PROVISIONING", "MAINTENANCE_IN_PROGRESS"].includes(normalized)) {
+  if (["STOPPED", "STOPPING", "STARTING", "UPDATING", "PROVISIONING", "MAINTENANCE_IN_PROGRESS", "ACCEPTED", "IN_PROGRESS", "CANCELING"].includes(normalized)) {
     return "warning"
   }
   if (["TERMINATED", "TERMINATING", "FAILED"].includes(normalized)) {

@@ -18,6 +18,7 @@ export type ViewType =
   | "vcn"
   | "compute"
   | "objectStorage"
+  | "speech"
   | "adb"
   | "dbSystems"
   | "sqlWorkbench"
@@ -37,6 +38,7 @@ export interface ExtensionStateContextType {
   vcnCompartmentIds: string[]
   objectStorageCompartmentIds: string[]
   bastionCompartmentIds: string[]
+  speechCompartmentIds: string[]
   profilesConfig: { name: string; compartments: { id: string; name: string }[] }[]
   tenancyOcid: string
   genAiRegion: string
@@ -93,6 +95,7 @@ export function ExtensionStateContextProvider({ children }: { children: ReactNod
     vcnCompartmentIds: [],
     objectStorageCompartmentIds: [],
     bastionCompartmentIds: [],
+    speechCompartmentIds: [],
     profilesConfig: [],
     tenancyOcid: "",
     genAiRegion: "",

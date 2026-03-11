@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
-import { Bot, Database, History, Layers, MessageSquareText, Network, Server, Settings2, Shield, SquareTerminal } from "lucide-react"
+import { AudioLines, Bot, Database, History, Layers, MessageSquareText, Network, Server, Settings2, Shield, SquareTerminal } from "lucide-react"
 import AdbView from "./components/adb/AdbView"
 import ChatView from "./components/chat/ChatView"
 import ComputeView from "./components/compute/ComputeView"
 import DbSystemsView from "./components/dbsystems/DbSystemsView"
 import HistoryView from "./components/history/HistoryView"
 import ObjectStorageView from "./components/objectstorage/ObjectStorageView"
+import SpeechView from "./components/speech/SpeechView"
 import BastionView from "./components/bastion/BastionView"
 import SettingsView, { SETTINGS_TABS, type SettingsTab } from "./components/settings/SettingsView"
 import SqlWorkbenchView from "./components/sql/SqlWorkbenchView"
@@ -93,6 +94,13 @@ const VIEW_DEFINITIONS: Record<WorkbenchView, ViewDefinition> = {
     primary: "resources",
     icon: <Layers size={15} />,
   },
+  speech: {
+    id: "speech",
+    label: "Speech",
+    description: "Create and track OCI Speech transcription jobs with Object Storage inputs.",
+    primary: "resources",
+    icon: <AudioLines size={15} />,
+  },
   adb: {
     id: "adb",
     label: "Autonomous Database",
@@ -149,7 +157,7 @@ const PRIMARY_GROUPS: Record<Exclude<PrimarySection, "home">, WorkbenchSecondary
   resources: [
     {
       title: "Resources",
-      items: [toSecondaryItem("vcn"), toSecondaryItem("compute"), toSecondaryItem("bastion"), toSecondaryItem("objectStorage")],
+      items: [toSecondaryItem("vcn"), toSecondaryItem("compute"), toSecondaryItem("bastion"), toSecondaryItem("objectStorage"), toSecondaryItem("speech")],
     },
   ],
   databases: [
@@ -173,7 +181,7 @@ const HOME_GROUPS: WorkbenchSecondaryGroup[] = [
   },
   {
     title: "Explore",
-    items: [toSecondaryItem("vcn"), toSecondaryItem("compute"), toSecondaryItem("adb")],
+    items: [toSecondaryItem("vcn"), toSecondaryItem("compute"), toSecondaryItem("speech"), toSecondaryItem("adb")],
   },
 ]
 
@@ -183,6 +191,7 @@ const HOME_ACTIONS = [
   "compute",
   "bastion",
   "objectStorage",
+  "speech",
   "adb",
   "settings",
 ] as const satisfies readonly WorkbenchView[]
@@ -420,6 +429,8 @@ function renderActiveView({
       return <ComputeView />
     case "objectStorage":
       return <ObjectStorageView />
+    case "speech":
+      return <SpeechView />
     case "bastion":
       return <BastionView />
     case "adb":

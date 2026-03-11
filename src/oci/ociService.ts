@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as common from "oci-common";
+import * as aispeech from "oci-aispeech";
 import { Readable } from "stream";
 import { OciClientFactory } from "./clientFactory";
 import {
@@ -12,8 +13,14 @@ import {
   ObjectStorageBucketResource,
   ObjectStorageObjectResource,
   BastionResource,
-  BastionSessionResource
+  BastionSessionResource,
+  SpeechTranscriptionJobResource,
+  SpeechTranscriptionTaskResource,
 } from "../types";
+
+export const OCI_SPEECH_REGION = "us-chicago-1";
+const OCI_SPEECH_MAX_INPUT_OBJECTS = 100;
+const OCI_SPEECH_MAX_WHISPER_PROMPT_LENGTH = 4000;
 
 export class OciService {
   constructor(private readonly factory: OciClientFactory) { }
@@ -402,58 +409,21 @@ export class OciService {
     if (compartmentIds.length === 0) {
       return [];
     }
+    return this.listObjectStorageBucketsForCompartments(compartmentIds, this.getActiveProfileRegions(), {
+      exactStats: true,
+    });
+  }
 
-    const buckets: ObjectStorageBucketResource[] = [];
-    for (const region of this.getActiveProfileRegions()) {
-      const resolvedRegion = await this.resolveRegionId(region);
-      const namespaceName = await this.getObjectStorageNamespace(resolvedRegion);
-      for (const compartmentId of compartmentIds) {
-        let page: string | undefined;
-        do {
-          const response = await this.sendObjectStorageRequest({
-            method: "GET",
-            region: resolvedRegion,
-            path: "/n/{namespaceName}/b/",
-            pathParams: { "{namespaceName}": namespaceName },
-            queryParams: {
-              compartmentId,
-              limit: 1000,
-              page,
-            },
-          });
-          const items = await response.json() as Array<Record<string, unknown>>;
-          const detailedBuckets = await Promise.all(
-            items.map(async (bucket): Promise<ObjectStorageBucketResource | null> => {
-              const name = String(bucket.name ?? "").trim();
-              if (!name) {
-                return null;
-              }
-              const details = await this.getObjectStorageBucketDetails(namespaceName, name, resolvedRegion);
-              const exactStats = await this.getObjectStorageBucketExactStats(namespaceName, name, resolvedRegion);
-              return {
-                name,
-                compartmentId,
-                namespaceName,
-                region: resolvedRegion,
-                storageTier: readOptionalString(details.storageTier ?? bucket.storageTier),
-                publicAccessType: readOptionalString(details.publicAccessType ?? bucket.publicAccessType),
-                approximateCount: exactStats.approximateCount,
-                approximateSize: exactStats.approximateSize,
-                createdAt: readOptionalString(details.timeCreated ?? bucket.timeCreated),
-              } satisfies ObjectStorageBucketResource;
-            })
-          );
-          buckets.push(...detailedBuckets.filter((bucket): bucket is ObjectStorageBucketResource => bucket !== null));
-          page = response.headers.get("opc-next-page") || undefined;
-        } while (page);
-      }
+  public async listSpeechBuckets(): Promise<ObjectStorageBucketResource[]> {
+    const cfg = vscode.workspace.getConfiguration("ociAi");
+    const compartmentIds = normalizeCompartmentIds(cfg.get<string[]>("speechCompartmentIds") || []);
+    if (compartmentIds.length === 0) {
+      return [];
     }
-
-    return buckets.sort((a, b) =>
-      a.compartmentId.localeCompare(b.compartmentId) ||
-      a.region.localeCompare(b.region) ||
-      a.name.localeCompare(b.name)
-    );
+    return this.listObjectStorageBucketsForCompartments(compartmentIds, [OCI_SPEECH_REGION], {
+      exactStats: false,
+      includeBucketDetails: false,
+    });
   }
 
   public async listObjectStorageObjects(
@@ -604,6 +574,243 @@ export class OciService {
       objectName,
       timeExpires: readOptionalString(payload.timeExpires) || timeExpires,
     };
+  }
+
+  public async listSpeechTranscriptionJobs(): Promise<SpeechTranscriptionJobResource[]> {
+    const cfg = vscode.workspace.getConfiguration("ociAi");
+    const compartmentIds = normalizeCompartmentIds(cfg.get<string[]>("speechCompartmentIds") || []);
+    if (compartmentIds.length === 0) {
+      return [];
+    }
+
+    const client = await this.factory.createSpeechClientAsync(OCI_SPEECH_REGION);
+    const jobs: SpeechTranscriptionJobResource[] = [];
+
+    for (const compartmentId of compartmentIds) {
+      let page: string | undefined;
+      do {
+        const response = await client.listTranscriptionJobs({
+          compartmentId,
+          limit: 1000,
+          page,
+          sortOrder: aispeech.models.SortOrder.Desc,
+          sortBy: aispeech.requests.ListTranscriptionJobsRequest.SortBy.TimeCreated,
+        });
+        jobs.push(
+          ...((response.transcriptionJobCollection?.items || []).map((job) =>
+            mapSpeechTranscriptionJobSummary(job, OCI_SPEECH_REGION),
+          )),
+        );
+        page = response.opcNextPage || undefined;
+      } while (page);
+    }
+
+    return jobs.sort((left, right) =>
+      compareOptionalDate(right.timeAccepted, left.timeAccepted)
+      || left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: "base" }),
+    );
+  }
+
+  public async getSpeechTranscriptionJob(transcriptionJobId: string): Promise<SpeechTranscriptionJobResource> {
+    const client = await this.factory.createSpeechClientAsync(OCI_SPEECH_REGION);
+    const response = await client.getTranscriptionJob({ transcriptionJobId });
+    return mapSpeechTranscriptionJob(response.transcriptionJob, OCI_SPEECH_REGION);
+  }
+
+  public async createSpeechTranscriptionJob(params: {
+    compartmentId: string;
+    displayName?: string;
+    description?: string;
+    inputNamespaceName: string;
+    inputBucketName: string;
+    inputObjectNames: string[];
+    outputNamespaceName: string;
+    outputBucketName: string;
+    outputPrefix?: string;
+    modelType: string;
+    languageCode: "ja" | "en" | "zh";
+    includeSrt?: boolean;
+    enablePunctuation?: boolean;
+    enableDiarization?: boolean;
+    profanityFilterMode?: "MASK";
+    whisperPrompt?: string;
+  }): Promise<SpeechTranscriptionJobResource> {
+    const client = await this.factory.createSpeechClientAsync(OCI_SPEECH_REGION);
+    const inputObjectNames = [...new Set(params.inputObjectNames.map((value) => value.trim()).filter((value) => value.length > 0))];
+    if (inputObjectNames.length === 0) {
+      throw new Error("Select at least one input object from Object Storage.");
+    }
+    if (inputObjectNames.length > OCI_SPEECH_MAX_INPUT_OBJECTS) {
+      throw new Error(`OCI Speech accepts up to ${OCI_SPEECH_MAX_INPUT_OBJECTS} input files per job.`);
+    }
+    const filters: aispeech.models.TranscriptionFilter[] = [];
+    if (params.profanityFilterMode === "MASK") {
+      const profanityFilter: aispeech.models.ProfanityTranscriptionFilter = {
+        type: aispeech.models.ProfanityTranscriptionFilter.type,
+        mode: aispeech.models.ProfanityTranscriptionFilter.Mode.Mask,
+      };
+      filters.push(profanityFilter);
+    }
+
+    const additionalSettings: Record<string, string> = {};
+    const whisperPrompt = String(params.whisperPrompt ?? "").trim();
+    if (whisperPrompt) {
+      if (whisperPrompt.length > OCI_SPEECH_MAX_WHISPER_PROMPT_LENGTH) {
+        throw new Error(`Whisper prompt must be ${OCI_SPEECH_MAX_WHISPER_PROMPT_LENGTH} characters or fewer.`);
+      }
+      additionalSettings.whisperPrompt = whisperPrompt;
+    }
+
+    const response = await client.createTranscriptionJob({
+      createTranscriptionJobDetails: {
+        compartmentId: params.compartmentId,
+        displayName: readOptionalString(params.displayName),
+        description: readOptionalString(params.description),
+        inputLocation: {
+          locationType: aispeech.models.ObjectListFileInputLocation.locationType,
+          objectLocation: {
+            namespaceName: params.inputNamespaceName,
+            bucketName: params.inputBucketName,
+            objectNames: inputObjectNames,
+          },
+        },
+        outputLocation: {
+          namespaceName: params.outputNamespaceName,
+          bucketName: params.outputBucketName,
+          prefix: String(params.outputPrefix ?? "").trim(),
+        },
+        additionalTranscriptionFormats: params.includeSrt
+          ? [aispeech.models.CreateTranscriptionJobDetails.AdditionalTranscriptionFormats.Srt]
+          : undefined,
+        normalization: {
+          isPunctuationEnabled: true,
+          filters,
+        },
+        modelDetails: {
+          domain: aispeech.models.TranscriptionModelDetails.Domain.Generic,
+          languageCode: params.languageCode as aispeech.models.TranscriptionModelDetails.LanguageCode,
+          modelType: params.modelType,
+          transcriptionSettings: {
+            diarization: params.enableDiarization
+              ? {
+                isDiarizationEnabled: true,
+              }
+              : undefined,
+            additionalSettings: Object.keys(additionalSettings).length > 0 ? additionalSettings : undefined,
+          },
+        },
+      },
+    });
+
+    return mapSpeechTranscriptionJob(response.transcriptionJob, OCI_SPEECH_REGION);
+  }
+
+  public async cancelSpeechTranscriptionJob(transcriptionJobId: string): Promise<void> {
+    const client = await this.factory.createSpeechClientAsync(OCI_SPEECH_REGION);
+    await client.cancelTranscriptionJob({ transcriptionJobId });
+  }
+
+  public async listSpeechTranscriptionTasks(transcriptionJobId: string): Promise<SpeechTranscriptionTaskResource[]> {
+    const client = await this.factory.createSpeechClientAsync(OCI_SPEECH_REGION);
+    const tasks: SpeechTranscriptionTaskResource[] = [];
+    let page: string | undefined;
+
+    do {
+      const response = await client.listTranscriptionTasks({
+        transcriptionJobId,
+        limit: 1000,
+        page,
+        sortOrder: aispeech.models.SortOrder.Desc,
+        sortBy: aispeech.requests.ListTranscriptionTasksRequest.SortBy.TimeCreated,
+      });
+      tasks.push(
+        ...((response.transcriptionTaskCollection?.items || []).map((task) =>
+          mapSpeechTranscriptionTask(task, transcriptionJobId),
+        )),
+      );
+      page = response.opcNextPage || undefined;
+    } while (page);
+
+    return tasks.sort((left, right) =>
+      compareOptionalDate(right.timeStarted, left.timeStarted)
+      || left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: "base" }),
+    );
+  }
+
+  private async listObjectStorageBucketsForCompartments(
+    compartmentIds: string[],
+    regions: string[],
+    options?: {
+      exactStats?: boolean;
+      includeBucketDetails?: boolean;
+    },
+  ): Promise<ObjectStorageBucketResource[]> {
+    const exactStats = options?.exactStats !== false;
+    const includeBucketDetails = options?.includeBucketDetails !== false;
+    const buckets: ObjectStorageBucketResource[] = [];
+    for (const region of regions) {
+      const resolvedRegion = await this.resolveRegionId(region);
+      const namespaceName = await this.getObjectStorageNamespace(resolvedRegion);
+      for (const compartmentId of compartmentIds) {
+        let page: string | undefined;
+        do {
+          const response = await this.sendObjectStorageRequest({
+            method: "GET",
+            region: resolvedRegion,
+            path: "/n/{namespaceName}/b/",
+            pathParams: { "{namespaceName}": namespaceName },
+            queryParams: {
+              compartmentId,
+              limit: 1000,
+              page,
+            },
+          });
+          const items = await response.json() as Array<Record<string, unknown>>;
+          const detailedBuckets = await Promise.all(
+            items.map(async (bucket): Promise<ObjectStorageBucketResource | null> => {
+              const name = String(bucket.name ?? "").trim();
+              if (!name) {
+                return null;
+              }
+              const approximateCountFromList = readOptionalNumber(bucket.approximateCount);
+              const approximateSizeFromList = readOptionalNumber(bucket.approximateSize);
+              const needsApproximateFields = !exactStats && (
+                approximateCountFromList === undefined
+                || approximateSizeFromList === undefined
+              );
+              const details = includeBucketDetails || needsApproximateFields
+                ? await this.getObjectStorageBucketDetails(namespaceName, name, resolvedRegion)
+                : undefined;
+              const stats = exactStats
+                ? await this.getObjectStorageBucketExactStats(namespaceName, name, resolvedRegion)
+                : {
+                  approximateCount: approximateCountFromList ?? readOptionalNumber(details?.approximateCount) ?? 0,
+                  approximateSize: approximateSizeFromList ?? readOptionalNumber(details?.approximateSize) ?? 0,
+                };
+              return {
+                name,
+                compartmentId,
+                namespaceName,
+                region: resolvedRegion,
+                storageTier: readOptionalString(details?.storageTier ?? bucket.storageTier),
+                publicAccessType: readOptionalString(details?.publicAccessType ?? bucket.publicAccessType),
+                approximateCount: stats.approximateCount,
+                approximateSize: stats.approximateSize,
+                createdAt: readOptionalString(details?.timeCreated ?? bucket.timeCreated),
+              } satisfies ObjectStorageBucketResource;
+            }),
+          );
+          buckets.push(...detailedBuckets.filter((bucket): bucket is ObjectStorageBucketResource => bucket !== null));
+          page = response.headers.get("opc-next-page") || undefined;
+        } while (page);
+      }
+    }
+
+    return buckets.sort((a, b) =>
+      a.compartmentId.localeCompare(b.compartmentId)
+      || a.region.localeCompare(b.region)
+      || a.name.localeCompare(b.name),
+    );
   }
 
   private async populateInstanceNetworkAddresses(
@@ -980,6 +1187,83 @@ function compareNamedOciResources<T extends { name?: string; id?: string }>(left
   });
 }
 
+function mapSpeechTranscriptionJobSummary(
+  job: aispeech.models.TranscriptionJobSummary,
+  region: string,
+): SpeechTranscriptionJobResource {
+  return {
+    id: job.id || "",
+    name: readOptionalString(job.displayName) || job.id || "Untitled Job",
+    compartmentId: job.compartmentId || "",
+    region,
+    lifecycleState: (job.lifecycleState as string) || "UNKNOWN",
+    lifecycleDetails: readOptionalString(job.lifecycleDetails),
+    percentComplete: readOptionalNumber(job.percentComplete),
+    totalTasks: readOptionalNumber(job.totalTasks),
+    outstandingTasks: readOptionalNumber(job.outstandingTasks),
+    successfulTasks: readOptionalNumber(job.successfulTasks),
+    timeAccepted: toIsoString(job.timeAccepted),
+    timeStarted: toIsoString(job.timeStarted),
+    timeFinished: toIsoString(job.timeFinished),
+  };
+}
+
+function mapSpeechTranscriptionJob(
+  job: aispeech.models.TranscriptionJob,
+  region: string,
+): SpeechTranscriptionJobResource {
+  const summary = mapSpeechTranscriptionJobSummary(job, region);
+  const inputLocation = job.inputLocation as aispeech.models.ObjectListFileInputLocation | undefined;
+  const objectLocation = inputLocation?.objectLocation;
+  const additionalSettings = job.modelDetails?.transcriptionSettings?.additionalSettings || {};
+  const profanityFilter = Array.isArray(job.normalization?.filters)
+    ? job.normalization?.filters.find((filter) => String((filter as { type?: string })?.type || "").toUpperCase() === "PROFANITY")
+    : undefined;
+
+  return {
+    ...summary,
+    description: readOptionalString(job.description),
+    inputNamespaceName: readOptionalString(objectLocation?.namespaceName),
+    inputBucketName: readOptionalString(objectLocation?.bucketName),
+    inputObjectNames: Array.isArray(objectLocation?.objectNames)
+      ? objectLocation.objectNames.map((value) => String(value ?? "").trim()).filter((value) => value.length > 0)
+      : [],
+    outputNamespaceName: readOptionalString(job.outputLocation?.namespaceName),
+    outputBucketName: readOptionalString(job.outputLocation?.bucketName),
+    outputPrefix: readOptionalString(job.outputLocation?.prefix),
+    modelType: readOptionalString(job.modelDetails?.modelType),
+    languageCode: readOptionalString(job.modelDetails?.languageCode),
+    domain: readOptionalString(job.modelDetails?.domain),
+    additionalTranscriptionFormats: Array.isArray(job.additionalTranscriptionFormats)
+      ? job.additionalTranscriptionFormats.map((format) => String(format ?? "").trim()).filter((format) => format.length > 0)
+      : [],
+    isPunctuationEnabled: job.normalization?.isPunctuationEnabled !== false,
+    isDiarizationEnabled: Boolean(job.modelDetails?.transcriptionSettings?.diarization?.isDiarizationEnabled),
+    numberOfSpeakers: readOptionalNumber(job.modelDetails?.transcriptionSettings?.diarization?.numberOfSpeakers),
+    profanityFilterMode: readOptionalString((profanityFilter as { mode?: unknown } | undefined)?.mode),
+    whisperPrompt: readOptionalString(additionalSettings.whisperPrompt),
+  };
+}
+
+function mapSpeechTranscriptionTask(
+  task: aispeech.models.TranscriptionTaskSummary,
+  jobId: string,
+): SpeechTranscriptionTaskResource {
+  return {
+    id: task.id || "",
+    name: readOptionalString(task.displayName) || task.id || "Task",
+    jobId,
+    lifecycleState: (task.lifecycleState as string) || "UNKNOWN",
+    lifecycleDetails: readOptionalString(task.lifecycleDetails),
+    percentComplete: readOptionalNumber(task.percentComplete),
+    fileSizeInBytes: readOptionalNumber(task.fileSizeInBytes),
+    fileDurationInSeconds: readOptionalNumber(task.fileDurationInSeconds),
+    processingDurationInSeconds: readOptionalNumber(task.processingDurationInSeconds),
+    timeStarted: toIsoString(task.timeStarted),
+    timeFinished: toIsoString(task.timeFinished),
+  };
+}
+
 function mapBastionSessionResource(sessionLike: any, bastionId: string): BastionSessionResource {
   return {
     id: sessionLike?.id || "",
@@ -1070,6 +1354,25 @@ function readOptionalString(value: unknown): string | undefined {
 function readOptionalNumber(value: unknown): number | undefined {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function toIsoString(value: Date | string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  const normalized = String(value).trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function compareOptionalDate(left: string | undefined, right: string | undefined): number {
+  const leftTime = left ? Date.parse(left) : Number.NaN;
+  const rightTime = right ? Date.parse(right) : Number.NaN;
+  const leftSafe = Number.isFinite(leftTime) ? leftTime : 0;
+  const rightSafe = Number.isFinite(rightTime) ? rightTime : 0;
+  return leftSafe - rightSafe;
 }
 
 function encodeObjectStorageQueryParams(params?: common.Params): common.Params | undefined {

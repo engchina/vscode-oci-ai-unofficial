@@ -61,6 +61,7 @@ export interface AppState {
   vcnCompartmentIds: string[];
   objectStorageCompartmentIds: string[];
   bastionCompartmentIds: string[];
+  speechCompartmentIds: string[];
   profilesConfig: ProfileConfig[];
   tenancyOcid: string;
   genAiRegion: string;
@@ -87,6 +88,7 @@ export interface SaveSettingsRequest {
   vcnCompartmentIds: string[];
   objectStorageCompartmentIds: string[];
   bastionCompartmentIds: string[];
+  speechCompartmentIds?: string[];
   genAiRegion: string;
   genAiLlmModelId: string;
   genAiEmbeddingModelId: string;
@@ -508,6 +510,59 @@ export interface RunBastionSshCommandRequest {
 
 export interface RunBastionSshCommandResponse {
   launched: boolean;
+}
+
+export type SpeechTranscriptionModelType = import("../types").SpeechTranscriptionModelType;
+export type SpeechTranscriptionLanguageCode = import("../types").SpeechTranscriptionLanguageCode;
+export type SpeechProfanityFilterMode = import("../types").SpeechProfanityFilterMode;
+export type SpeechTranscriptionJobResource = import("../types").SpeechTranscriptionJobResource;
+export type SpeechTranscriptionTaskResource = import("../types").SpeechTranscriptionTaskResource;
+
+export interface ListSpeechTranscriptionJobsResponse {
+  jobs: SpeechTranscriptionJobResource[];
+}
+
+export interface GetSpeechTranscriptionJobRequest {
+  transcriptionJobId: string;
+}
+
+export interface GetSpeechTranscriptionJobResponse {
+  job: SpeechTranscriptionJobResource;
+}
+
+export interface CreateSpeechTranscriptionJobRequest {
+  compartmentId: string;
+  displayName?: string;
+  description?: string;
+  inputNamespaceName: string;
+  inputBucketName: string;
+  inputObjectNames: string[];
+  outputNamespaceName: string;
+  outputBucketName: string;
+  outputPrefix?: string;
+  modelType: SpeechTranscriptionModelType;
+  languageCode: SpeechTranscriptionLanguageCode;
+  includeSrt?: boolean;
+  enablePunctuation?: boolean;
+  enableDiarization?: boolean;
+  profanityFilterMode?: SpeechProfanityFilterMode;
+  whisperPrompt?: string;
+}
+
+export interface CreateSpeechTranscriptionJobResponse {
+  job: SpeechTranscriptionJobResource;
+}
+
+export interface CancelSpeechTranscriptionJobRequest {
+  transcriptionJobId: string;
+}
+
+export interface ListSpeechTranscriptionTasksRequest {
+  transcriptionJobId: string;
+}
+
+export interface ListSpeechTranscriptionTasksResponse {
+  tasks: SpeechTranscriptionTaskResource[];
 }
 
 /**

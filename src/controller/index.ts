@@ -42,7 +42,12 @@ import type {
   StreamTokenResponse,
   TestSqlConnectionResponse,
   SaveSqlFavoriteRequest,
-  UploadObjectStorageObjectResponse
+  UploadObjectStorageObjectResponse,
+  CreateSpeechTranscriptionJobRequest,
+  CreateSpeechTranscriptionJobResponse,
+  GetSpeechTranscriptionJobResponse,
+  ListSpeechTranscriptionJobsResponse,
+  ListSpeechTranscriptionTasksResponse,
 } from "../shared/services";
 import type { ExtensionMessage } from "../shared/messages";
 
@@ -68,6 +73,8 @@ const MAX_CHAT_MAX_TOKENS = 128000;
 const DEFAULT_CHAT_TEMPERATURE = 0;
 const DEFAULT_CHAT_TOP_P = 1;
 const MAX_IMAGES_PER_MESSAGE = 10;
+const MAX_SPEECH_OBJECTS_PER_JOB = 100;
+const MAX_WHISPER_PROMPT_LENGTH = 4000;
 
 function getMissingApiKeyFields(secrets: ApiKeySecrets): string[] {
   const missing: string[] = [];
@@ -144,6 +151,7 @@ export class Controller {
       vcnCompartmentIds: Array.isArray(cfg.get("vcnCompartmentIds")) ? cfg.get<string[]>("vcnCompartmentIds") as string[] : [],
       objectStorageCompartmentIds: Array.isArray(cfg.get("objectStorageCompartmentIds")) ? cfg.get<string[]>("objectStorageCompartmentIds") as string[] : [],
       bastionCompartmentIds: Array.isArray(cfg.get("bastionCompartmentIds")) ? cfg.get<string[]>("bastionCompartmentIds") as string[] : [],
+      speechCompartmentIds: Array.isArray(cfg.get("speechCompartmentIds")) ? cfg.get<string[]>("speechCompartmentIds") as string[] : [],
       profilesConfig: Array.isArray(cfg.get("profilesConfig")) ? cfg.get<any[]>("profilesConfig") as any[] : [],
       tenancyOcid: secrets.tenancyOcid || "",
       genAiRegion: cfg.get<string>("genAiRegion", ""),
@@ -177,6 +185,7 @@ export class Controller {
       vcnCompartmentIds: Array.isArray(cfg.get("vcnCompartmentIds")) ? cfg.get<string[]>("vcnCompartmentIds") as string[] : [],
       objectStorageCompartmentIds: Array.isArray(cfg.get("objectStorageCompartmentIds")) ? cfg.get<string[]>("objectStorageCompartmentIds") as string[] : [],
       bastionCompartmentIds: Array.isArray(cfg.get("bastionCompartmentIds")) ? cfg.get<string[]>("bastionCompartmentIds") as string[] : [],
+      speechCompartmentIds: Array.isArray(cfg.get("speechCompartmentIds")) ? cfg.get<string[]>("speechCompartmentIds") as string[] : [],
       genAiRegion: cfg.get<string>("genAiRegion", ""),
       genAiLlmModelId: cfg.get<string>("genAiLlmModelId", "") || cfg.get<string>("genAiModelId", ""),
       genAiEmbeddingModelId: cfg.get<string>("genAiEmbeddingModelId", ""),
@@ -217,6 +226,9 @@ export class Controller {
     await cfg.update("vcnCompartmentIds", Array.isArray(payload.vcnCompartmentIds) ? payload.vcnCompartmentIds : [], vscode.ConfigurationTarget.Global);
     await cfg.update("objectStorageCompartmentIds", Array.isArray(payload.objectStorageCompartmentIds) ? payload.objectStorageCompartmentIds : [], vscode.ConfigurationTarget.Global);
     await cfg.update("bastionCompartmentIds", Array.isArray(payload.bastionCompartmentIds) ? payload.bastionCompartmentIds : [], vscode.ConfigurationTarget.Global);
+    if (Array.isArray(payload.speechCompartmentIds)) {
+      await cfg.update("speechCompartmentIds", payload.speechCompartmentIds, vscode.ConfigurationTarget.Global);
+    }
 
     if (payload.profilesConfig) {
       await cfg.update("profilesConfig", payload.profilesConfig, vscode.ConfigurationTarget.Global);
@@ -296,7 +308,7 @@ export class Controller {
 
   /** Update only one feature's compartment selection without overwriting unrelated settings */
   public async updateFeatureCompartmentSelection(
-    featureKey: "compute" | "adb" | "dbSystem" | "vcn" | "chat" | "objectStorage" | "bastion",
+    featureKey: "compute" | "adb" | "dbSystem" | "vcn" | "chat" | "objectStorage" | "bastion" | "speech",
     compartmentIds: string[]
   ): Promise<void> {
     const cfg = vscode.workspace.getConfiguration("ociAi");
@@ -316,6 +328,8 @@ export class Controller {
       await cfg.update("objectStorageCompartmentIds", normalized, vscode.ConfigurationTarget.Global);
     } else if (featureKey === "bastion") {
       await cfg.update("bastionCompartmentIds", normalized, vscode.ConfigurationTarget.Global);
+    } else if (featureKey === "speech") {
+      await cfg.update("speechCompartmentIds", normalized, vscode.ConfigurationTarget.Global);
     } else if (featureKey === "chat") {
       await cfg.update("chatCompartmentId", normalized[0] ?? "", vscode.ConfigurationTarget.Global);
     } else {
@@ -1056,6 +1070,10 @@ export class Controller {
     return this.ociService.listObjectStorageBuckets();
   }
 
+  public async listSpeechBuckets(): Promise<import("../types").ObjectStorageBucketResource[]> {
+    return this.ociService.listSpeechBuckets();
+  }
+
   public async listObjectStorageObjects(request: import("../shared/services").ListObjectStorageObjectsRequest): Promise<ListObjectStorageObjectsResponse> {
     const namespaceName = String(request.namespaceName ?? "").trim();
     const bucketName = String(request.bucketName ?? "").trim();
@@ -1067,6 +1085,20 @@ export class Controller {
       bucketName,
       normalizeObjectStoragePrefix(request.prefix),
       typeof request.region === "string" ? request.region : undefined
+    );
+  }
+
+  public async listSpeechObjects(request: import("../shared/services").ListObjectStorageObjectsRequest): Promise<ListObjectStorageObjectsResponse> {
+    const namespaceName = String(request.namespaceName ?? "").trim();
+    const bucketName = String(request.bucketName ?? "").trim();
+    if (!namespaceName || !bucketName) {
+      throw new Error("namespaceName and bucketName are required.");
+    }
+    return this.ociService.listObjectStorageObjects(
+      namespaceName,
+      bucketName,
+      normalizeObjectStoragePrefix(request.prefix),
+      "us-chicago-1"
     );
   }
 
@@ -1167,6 +1199,95 @@ export class Controller {
       typeof request.expiresInHours === "number" ? request.expiresInHours : undefined,
       typeof request.region === "string" ? request.region : undefined
     );
+  }
+
+  public async listSpeechTranscriptionJobs(): Promise<ListSpeechTranscriptionJobsResponse> {
+    const jobs = await this.ociService.listSpeechTranscriptionJobs();
+    return { jobs };
+  }
+
+  public async getSpeechTranscriptionJob(transcriptionJobId: string): Promise<GetSpeechTranscriptionJobResponse> {
+    const trimmedJobId = String(transcriptionJobId ?? "").trim();
+    if (!trimmedJobId) {
+      throw new Error("transcriptionJobId is required.");
+    }
+    const job = await this.ociService.getSpeechTranscriptionJob(trimmedJobId);
+    return { job };
+  }
+
+  public async createSpeechTranscriptionJob(
+    request: CreateSpeechTranscriptionJobRequest
+  ): Promise<CreateSpeechTranscriptionJobResponse> {
+    const compartmentId = String(request.compartmentId ?? "").trim();
+    const inputNamespaceName = String(request.inputNamespaceName ?? "").trim();
+    const inputBucketName = String(request.inputBucketName ?? "").trim();
+    const outputNamespaceName = String(request.outputNamespaceName ?? "").trim();
+    const outputBucketName = String(request.outputBucketName ?? "").trim();
+    const inputObjectNames = Array.isArray(request.inputObjectNames)
+      ? request.inputObjectNames.map((value) => String(value ?? "").trim()).filter((value) => value.length > 0)
+      : [];
+    const modelType = String(request.modelType ?? "").trim().toUpperCase();
+    const languageCode = String(request.languageCode ?? "").trim().toLowerCase();
+
+    if (!compartmentId) {
+      throw new Error("compartmentId is required.");
+    }
+    if (!inputNamespaceName || !inputBucketName || inputObjectNames.length === 0) {
+      throw new Error("Select at least one input object from Object Storage.");
+    }
+    if (inputObjectNames.length > MAX_SPEECH_OBJECTS_PER_JOB) {
+      throw new Error(`OCI Speech accepts up to ${MAX_SPEECH_OBJECTS_PER_JOB} input files per job.`);
+    }
+    if (!outputNamespaceName || !outputBucketName) {
+      throw new Error("Output bucket is required.");
+    }
+    if (modelType !== "WHISPER_MEDIUM" && modelType !== "WHISPER_LARGE_V3_TURBO") {
+      throw new Error(`Unsupported Speech model: ${modelType || "unknown"}.`);
+    }
+    if (languageCode !== "ja" && languageCode !== "en" && languageCode !== "zh") {
+      throw new Error(`Unsupported Speech language: ${languageCode || "unknown"}.`);
+    }
+    if (String(request.whisperPrompt ?? "").trim().length > MAX_WHISPER_PROMPT_LENGTH) {
+      throw new Error(`Whisper prompt must be ${MAX_WHISPER_PROMPT_LENGTH} characters or fewer.`);
+    }
+
+    const profanityFilterMode = request.profanityFilterMode === "MASK" ? "MASK" : undefined;
+    const job = await this.ociService.createSpeechTranscriptionJob({
+      compartmentId,
+      displayName: String(request.displayName ?? "").trim(),
+      description: String(request.description ?? "").trim(),
+      inputNamespaceName,
+      inputBucketName,
+      inputObjectNames,
+      outputNamespaceName,
+      outputBucketName,
+      outputPrefix: String(request.outputPrefix ?? "").trim(),
+      modelType,
+      languageCode,
+      includeSrt: Boolean(request.includeSrt),
+      enablePunctuation: true,
+      enableDiarization: Boolean(request.enableDiarization),
+      profanityFilterMode,
+      whisperPrompt: String(request.whisperPrompt ?? ""),
+    });
+    return { job };
+  }
+
+  public async cancelSpeechTranscriptionJob(transcriptionJobId: string): Promise<void> {
+    const trimmedJobId = String(transcriptionJobId ?? "").trim();
+    if (!trimmedJobId) {
+      throw new Error("transcriptionJobId is required.");
+    }
+    await this.ociService.cancelSpeechTranscriptionJob(trimmedJobId);
+  }
+
+  public async listSpeechTranscriptionTasks(transcriptionJobId: string): Promise<ListSpeechTranscriptionTasksResponse> {
+    const trimmedJobId = String(transcriptionJobId ?? "").trim();
+    if (!trimmedJobId) {
+      throw new Error("transcriptionJobId is required.");
+    }
+    const tasks = await this.ociService.listSpeechTranscriptionTasks(trimmedJobId);
+    return { tasks };
   }
 
   public async listBastions(): Promise<import("../shared/services").ListBastionsResponse> {

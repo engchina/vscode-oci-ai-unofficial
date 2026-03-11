@@ -60,6 +60,14 @@ import type {
   DeleteBastionSessionRequest,
   RunBastionSshCommandRequest,
   RunBastionSshCommandResponse,
+  ListSpeechTranscriptionJobsResponse,
+  GetSpeechTranscriptionJobRequest,
+  GetSpeechTranscriptionJobResponse,
+  CreateSpeechTranscriptionJobRequest,
+  CreateSpeechTranscriptionJobResponse,
+  CancelSpeechTranscriptionJobRequest,
+  ListSpeechTranscriptionTasksRequest,
+  ListSpeechTranscriptionTasksResponse,
 } from "./types"
 import { type Callbacks, ProtoBusClient } from "./grpc-client-base"
 
@@ -84,7 +92,7 @@ export class StateServiceClient extends ProtoBusClient {
   }
 
   static updateFeatureCompartmentSelection(
-    featureKey: "compute" | "adb" | "dbSystem" | "vcn" | "chat" | "objectStorage" | "bastion",
+    featureKey: "compute" | "adb" | "dbSystem" | "vcn" | "chat" | "objectStorage" | "bastion" | "speech",
     compartmentIds: string[],
   ): Promise<void> {
     return this.makeUnaryRequest<void>("updateFeatureCompartmentSelection", { featureKey, compartmentIds })
@@ -328,6 +336,34 @@ export class ResourceServiceClient extends ProtoBusClient {
 
   static createObjectStoragePar(request: CreateObjectStorageParRequest): Promise<CreateObjectStorageParResponse> {
     return this.makeUnaryRequest<CreateObjectStorageParResponse>("createObjectStoragePar", request)
+  }
+
+  static listSpeechBuckets(): Promise<ListObjectStorageBucketsResponse> {
+    return this.makeUnaryRequest<ListObjectStorageBucketsResponse>("listSpeechBuckets", {})
+  }
+
+  static listSpeechObjects(request: ListObjectStorageObjectsRequest): Promise<ListObjectStorageObjectsResponse> {
+    return this.makeUnaryRequest<ListObjectStorageObjectsResponse>("listSpeechObjects", request)
+  }
+
+  static listSpeechTranscriptionJobs(): Promise<ListSpeechTranscriptionJobsResponse> {
+    return this.makeUnaryRequest<ListSpeechTranscriptionJobsResponse>("listSpeechTranscriptionJobs", {})
+  }
+
+  static getSpeechTranscriptionJob(request: GetSpeechTranscriptionJobRequest): Promise<GetSpeechTranscriptionJobResponse> {
+    return this.makeUnaryRequest<GetSpeechTranscriptionJobResponse>("getSpeechTranscriptionJob", request)
+  }
+
+  static createSpeechTranscriptionJob(request: CreateSpeechTranscriptionJobRequest): Promise<CreateSpeechTranscriptionJobResponse> {
+    return this.makeUnaryRequest<CreateSpeechTranscriptionJobResponse>("createSpeechTranscriptionJob", request, 120000)
+  }
+
+  static cancelSpeechTranscriptionJob(request: CancelSpeechTranscriptionJobRequest): Promise<void> {
+    return this.makeUnaryRequest<void>("cancelSpeechTranscriptionJob", request)
+  }
+
+  static listSpeechTranscriptionTasks(request: ListSpeechTranscriptionTasksRequest): Promise<ListSpeechTranscriptionTasksResponse> {
+    return this.makeUnaryRequest<ListSpeechTranscriptionTasksResponse>("listSpeechTranscriptionTasks", request)
   }
 
   static listBastions(): Promise<ListBastionsResponse> {

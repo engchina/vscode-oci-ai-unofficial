@@ -138,7 +138,7 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
     },
     updateFeatureCompartmentSelection: async (c, msg) => {
       await c.updateFeatureCompartmentSelection(
-        String(msg.featureKey ?? "") as "compute" | "adb" | "dbSystem" | "vcn" | "chat" | "objectStorage",
+        String(msg.featureKey ?? "") as "compute" | "adb" | "dbSystem" | "vcn" | "chat" | "objectStorage" | "bastion" | "speech",
         Array.isArray(msg.compartmentIds) ? msg.compartmentIds.map((id: unknown) => String(id ?? "")) : []
       );
       return {};
@@ -313,6 +313,8 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
     },
     listObjectStorageBuckets: async (c) => ({ buckets: await c.listObjectStorageBuckets() }),
     listObjectStorageObjects: async (c, msg) => c.listObjectStorageObjects(msg),
+    listSpeechBuckets: async (c) => ({ buckets: await c.listSpeechBuckets() }),
+    listSpeechObjects: async (c, msg) => c.listSpeechObjects(msg),
     uploadObjectStorageObject: async (c, msg) => {
       const result = await c.uploadObjectStorageObject(msg);
       if (!result.cancelled) {
@@ -337,6 +339,19 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
       showStatusMessage("Pre-authenticated request created.");
       return result;
     },
+    listSpeechTranscriptionJobs: async (c) => c.listSpeechTranscriptionJobs(),
+    getSpeechTranscriptionJob: async (c, msg) => c.getSpeechTranscriptionJob(String(msg.transcriptionJobId ?? "")),
+    createSpeechTranscriptionJob: async (c, msg) => {
+      const result = await c.createSpeechTranscriptionJob(msg);
+      showStatusMessage("Speech transcription job created.");
+      return result;
+    },
+    cancelSpeechTranscriptionJob: async (c, msg) => {
+      await c.cancelSpeechTranscriptionJob(String(msg.transcriptionJobId ?? ""));
+      showStatusMessage("Speech transcription job cancellation requested.");
+      return {};
+    },
+    listSpeechTranscriptionTasks: async (c, msg) => c.listSpeechTranscriptionTasks(String(msg.transcriptionJobId ?? "")),
     listBastions: async (c) => c.listBastions(),
     listBastionSessions: async (c, msg) => c.listBastionSessions(msg),
     createBastionSession: async (c, msg) => {

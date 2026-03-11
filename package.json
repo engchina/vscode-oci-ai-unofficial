@@ -364,6 +364,14 @@
           "default": [],
           "description": "Selected compartment IDs for OCI Bastion Service"
         },
+        "ociAi.speechCompartmentIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Selected compartment IDs for OCI Speech transcription jobs in us-chicago-1"
+        },
         "ociAi.adbConnectionProfiles": {
           "type": "array",
           "default": [],
@@ -431,6 +439,7 @@
   },
   "dependencies": {
     "adm-zip": "^0.5.16",
+    "oci-aispeech": "^2.126.1",
     "oci-bastion": "^2.125.2",
     "oci-common": "^2.125.2",
     "oci-core": "^2.125.2",
