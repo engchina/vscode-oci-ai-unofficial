@@ -25,6 +25,14 @@ export type PendingWorkbenchSelection =
     targetId: string
   }
   | {
+    view: "bastion"
+    targetId: string
+  }
+  | {
+    view: "bastionSession"
+    targetId: string
+  }
+  | {
     view: "adb"
     targetId: string
   }

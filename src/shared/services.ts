@@ -374,6 +374,7 @@ export interface ListObjectStorageObjectsRequest {
   bucketName: string;
   region?: string;
   prefix?: string;
+  recursive?: boolean;
 }
 
 export interface ListObjectStorageObjectsResponse {
@@ -404,6 +405,19 @@ export interface DownloadObjectStorageObjectRequest {
 
 export interface DownloadObjectStorageObjectResponse {
   cancelled?: boolean;
+}
+
+export interface ReadObjectStorageObjectTextRequest {
+  namespaceName: string;
+  bucketName: string;
+  objectName: string;
+  region?: string;
+  maxBytes?: number;
+}
+
+export interface ReadObjectStorageObjectTextResponse {
+  text: string;
+  truncated?: boolean;
 }
 
 export interface DeleteObjectStorageObjectRequest {
@@ -484,6 +498,17 @@ export interface ListBastionSessionsRequest {
 
 export interface ListBastionSessionsResponse {
   sessions: BastionSessionResource[];
+}
+
+export interface ListBastionTargetInstancesRequest {
+  compartmentIds: string[];
+  region?: string;
+  vcnId?: string;
+  lifecycleStates?: string[];
+}
+
+export interface ListBastionTargetInstancesResponse {
+  instances: import("../types").ComputeResource[];
 }
 
 export interface CreateBastionSessionRequest {

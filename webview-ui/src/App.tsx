@@ -8,6 +8,7 @@ import HistoryView from "./components/history/HistoryView"
 import ObjectStorageView from "./components/objectstorage/ObjectStorageView"
 import SpeechView from "./components/speech/SpeechView"
 import BastionView from "./components/bastion/BastionView"
+import CreateBastionSessionView from "./components/bastion/CreateBastionSessionView"
 import SettingsView, { SETTINGS_TABS, type SettingsTab } from "./components/settings/SettingsView"
 import SqlWorkbenchView from "./components/sql/SqlWorkbenchView"
 import Card from "./components/ui/Card"
@@ -87,6 +88,13 @@ const VIEW_DEFINITIONS: Record<WorkbenchView, ViewDefinition> = {
     primary: "resources",
     icon: <Shield size={15} />,
   },
+  bastionSession: {
+    id: "bastionSession",
+    label: "Create Bastion Session",
+    description: "Create a managed SSH or port-forwarding Bastion session on a dedicated page.",
+    primary: "resources",
+    icon: <Shield size={15} />,
+  },
   objectStorage: {
     id: "objectStorage",
     label: "Object Storage",
@@ -98,6 +106,20 @@ const VIEW_DEFINITIONS: Record<WorkbenchView, ViewDefinition> = {
     id: "speech",
     label: "Speech",
     description: "Create and track OCI Speech transcription jobs with Object Storage inputs.",
+    primary: "resources",
+    icon: <AudioLines size={15} />,
+  },
+  speechJob: {
+    id: "speechJob",
+    label: "Speech Job",
+    description: "Inspect a single Speech transcription job, its output files, and the dedicated result viewer workspace.",
+    primary: "resources",
+    icon: <AudioLines size={15} />,
+  },
+  speechWorkspace: {
+    id: "speechWorkspace",
+    label: "Speech Workspace",
+    description: "Compose Speech transcription jobs in a dedicated workspace with supported media inputs only.",
     primary: "resources",
     icon: <AudioLines size={15} />,
   },
@@ -200,6 +222,12 @@ const HOME_ACTIONS = [
 
 
 
+const NAVIGATION_VIEW_BY_CONTEXT: Partial<Record<WorkbenchView, WorkbenchView>> = {
+  bastionSession: "bastion",
+  speechJob: "speech",
+  speechWorkspace: "speech",
+}
+
 function AppContent() {
   const {
     didHydrateState,
@@ -232,21 +260,22 @@ function AppContent() {
 
   const hasProfiles = Array.isArray(profilesConfig) && profilesConfig.length > 0
   const activeView = currentView
-  const activePrimary = VIEW_DEFINITIONS[activeView].primary
+  const activeNavigationView = getNavigationView(activeView)
+  const activePrimary = VIEW_DEFINITIONS[activeNavigationView].primary
 
   useEffect(() => {
     setLastViewByPrimary((previous) => ({
       ...previous,
-      [activePrimary]: activeView,
+      [activePrimary]: activeNavigationView,
     }))
-  }, [activePrimary, activeView])
+  }, [activeNavigationView, activePrimary])
 
   useEffect(() => {
-    if (!didHydrateState || activeView === "home") {
+    if (!didHydrateState || activeNavigationView === "home") {
       return
     }
-    setRecentViews((previous) => [activeView, ...previous.filter((view) => view !== activeView)].slice(0, 6))
-  }, [activeView, didHydrateState])
+    setRecentViews((previous) => [activeNavigationView, ...previous.filter((view) => view !== activeNavigationView)].slice(0, 6))
+  }, [activeNavigationView, didHydrateState])
 
   const secondaryGroups = useMemo(
     () => getSecondaryGroups(activePrimary, navQuery),
@@ -308,7 +337,7 @@ function AppContent() {
       activePrimaryId={activePrimary}
       onSelectPrimary={handleSelectPrimary}
       secondaryGroups={secondaryGroups}
-      activeViewId={activeView === "settings" ? toSettingsNavId(activeSettingsTab) : activeView}
+      activeViewId={activeView === "settings" ? toSettingsNavId(activeSettingsTab) : activeNavigationView}
       onSelectView={handleSelectView}
       headerMeta={
         <>
@@ -430,9 +459,15 @@ function renderActiveView({
     case "objectStorage":
       return <ObjectStorageView />
     case "speech":
-      return <SpeechView />
+      return <SpeechView mode="inventory" />
+    case "speechJob":
+      return <SpeechView mode="job" />
+    case "speechWorkspace":
+      return <SpeechView mode="workspace" />
     case "bastion":
       return <BastionView />
+    case "bastionSession":
+      return <CreateBastionSessionView />
     case "adb":
       return <AdbView />
     case "dbSystems":
@@ -506,6 +541,10 @@ function toSettingsSecondaryItem(tab: (typeof SETTINGS_TABS)[number]): Workbench
 
 function toSettingsNavId(tab: SettingsTab): string {
   return `settings:${tab}`
+}
+
+function getNavigationView(view: WorkbenchView): WorkbenchView {
+  return NAVIGATION_VIEW_BY_CONTEXT[view] ?? view
 }
 
 export default function App() {

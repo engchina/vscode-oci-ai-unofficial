@@ -49,6 +49,8 @@ import type {
   UploadObjectStorageObjectResponse,
   DownloadObjectStorageObjectRequest,
   DownloadObjectStorageObjectResponse,
+  ReadObjectStorageObjectTextRequest,
+  ReadObjectStorageObjectTextResponse,
   DeleteObjectStorageObjectRequest,
   CreateObjectStorageParRequest,
   CreateObjectStorageParResponse,
@@ -56,6 +58,8 @@ import type {
   ListBastionsResponse,
   ListBastionSessionsRequest,
   ListBastionSessionsResponse,
+  ListBastionTargetInstancesRequest,
+  ListBastionTargetInstancesResponse,
   CreateBastionSessionRequest,
   DeleteBastionSessionRequest,
   RunBastionSshCommandRequest,
@@ -330,6 +334,10 @@ export class ResourceServiceClient extends ProtoBusClient {
     return this.makeUnaryRequest<DownloadObjectStorageObjectResponse>("downloadObjectStorageObject", request, 120000)
   }
 
+  static readObjectStorageObjectText(request: ReadObjectStorageObjectTextRequest): Promise<ReadObjectStorageObjectTextResponse> {
+    return this.makeUnaryRequest<ReadObjectStorageObjectTextResponse>("readObjectStorageObjectText", request, 120000)
+  }
+
   static deleteObjectStorageObject(request: DeleteObjectStorageObjectRequest): Promise<void> {
     return this.makeUnaryRequest<void>("deleteObjectStorageObject", request, 120000)
   }
@@ -372,6 +380,10 @@ export class ResourceServiceClient extends ProtoBusClient {
 
   static listBastionSessions(request: ListBastionSessionsRequest): Promise<ListBastionSessionsResponse> {
     return this.makeUnaryRequest<ListBastionSessionsResponse>("listBastionSessions", request)
+  }
+
+  static listBastionTargetInstances(request: ListBastionTargetInstancesRequest): Promise<ListBastionTargetInstancesResponse> {
+    return this.makeUnaryRequest<ListBastionTargetInstancesResponse>("listBastionTargetInstances", request)
   }
 
   static createBastionSession(request: CreateBastionSessionRequest): Promise<void> {

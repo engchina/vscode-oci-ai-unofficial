@@ -21,6 +21,23 @@ import {
 export const OCI_SPEECH_REGION = "us-chicago-1";
 const OCI_SPEECH_MAX_INPUT_OBJECTS = 100;
 const OCI_SPEECH_MAX_WHISPER_PROMPT_LENGTH = 4000;
+const OCI_SPEECH_AUTO_DISPLAY_NAME_SEED_LENGTH = 96;
+const OCI_SPEECH_SUPPORTED_OBJECT_EXTENSIONS = new Set([
+  "aac",
+  "ac3",
+  "amr",
+  "au",
+  "flac",
+  "m4a",
+  "mkv",
+  "mp3",
+  "mp4",
+  "oga",
+  "ogg",
+  "opus",
+  "wav",
+  "webm",
+]);
 
 export class OciService {
   constructor(private readonly factory: OciClientFactory) { }
@@ -31,36 +48,42 @@ export class OciService {
     if (compartmentIds.length === 0) {
       return [];
     }
-    const regions = this.getActiveProfileRegions();
+    return this.collectComputeInstances(compartmentIds, this.getActiveProfileRegions());
+  }
 
-    const instances: ComputeResource[] = [];
-
-    for (const region of regions) {
-      const computeClient = await this.factory.createComputeClientAsync(region);
-      const virtualNetworkClient = await this.factory.createVirtualNetworkClientAsync(region);
-      for (const compartmentId of compartmentIds) {
-        let page: string | undefined;
-        do {
-          const result = await computeClient.listInstances({ compartmentId, page });
-          const regionInstances = (result.items || []).map((instance) => ({
-            id: instance.id || "",
-            name: instance.displayName || instance.id || "Unnamed Instance",
-            lifecycleState: (instance.lifecycleState as string) || "UNKNOWN",
-            compartmentId,
-            region,
-          }));
-          instances.push(...regionInstances);
-          await Promise.all(
-            regionInstances.map((instance) =>
-              this.populateInstanceNetworkAddresses(instance, compartmentId, computeClient, virtualNetworkClient)
-            )
-          );
-          page = result.opcNextPage;
-        } while (page);
-      }
+  public async listComputeInstancesForBastionTargets(options: {
+    compartmentIds: string[];
+    region?: string;
+    vcnId?: string;
+    lifecycleStates?: string[];
+  }): Promise<ComputeResource[]> {
+    const compartmentIds = normalizeCompartmentIds(options.compartmentIds);
+    if (compartmentIds.length === 0) {
+      return [];
     }
-
-    return instances;
+    const requestedRegion = String(options.region ?? "").trim();
+    const regions = requestedRegion ? [requestedRegion] : this.getActiveProfileRegions();
+    const targetVcnId = String(options.vcnId ?? "").trim();
+    const allowedLifecycleStates = new Set(
+      (options.lifecycleStates || [])
+        .map((value) => String(value ?? "").trim().toUpperCase())
+        .filter((value) => value.length > 0)
+    );
+    const instances = await this.collectComputeInstances(compartmentIds, regions, { lifecycleStates: allowedLifecycleStates });
+    const filtered = instances.filter((instance) => {
+      if (targetVcnId && instance.vcnId !== targetVcnId) {
+        return false;
+      }
+      return true;
+    });
+    const deduped = new Map<string, ComputeResource>();
+    for (const instance of filtered) {
+      if (!instance.id) {
+        continue;
+      }
+      deduped.set(instance.id, instance);
+    }
+    return [...deduped.values()].sort(compareNamedOciResources);
   }
 
   public async startComputeInstance(instanceId: string, region?: string): Promise<void> {
@@ -430,7 +453,8 @@ export class OciService {
     namespaceName: string,
     bucketName: string,
     prefix = "",
-    region?: string
+    region?: string,
+    recursive = false,
   ): Promise<{ prefixes: string[]; objects: ObjectStorageObjectResource[] }> {
     const response = await this.sendObjectStorageRequest({
       method: "GET",
@@ -441,7 +465,7 @@ export class OciService {
         "{bucketName}": bucketName,
       },
       queryParams: {
-        delimiter: "/",
+        delimiter: recursive ? undefined : "/",
         fields: "name,size,etag,md5,timeCreated,timeModified,storageTier,archivalState",
         prefix: prefix || undefined,
         limit: 1000,
@@ -470,6 +494,18 @@ export class OciService {
           }))
           .filter((item) => item.name.length > 0)
         : [],
+    };
+  }
+
+  public async listSpeechObjects(
+    namespaceName: string,
+    bucketName: string,
+    prefix = "",
+  ): Promise<{ prefixes: string[]; objects: ObjectStorageObjectResource[] }> {
+    const response = await this.listObjectStorageObjects(namespaceName, bucketName, prefix, OCI_SPEECH_REGION);
+    return {
+      prefixes: response.prefixes,
+      objects: response.objects.filter((item) => isSpeechSupportedObjectName(item.name)),
     };
   }
 
@@ -517,6 +553,52 @@ export class OciService {
       },
     });
     return new Uint8Array(await response.arrayBuffer());
+  }
+
+  public async readObjectStorageObjectText(
+    namespaceName: string,
+    bucketName: string,
+    objectName: string,
+    region?: string,
+    maxBytes = 262144,
+  ): Promise<{ text: string; truncated: boolean }> {
+    const normalizedMaxBytes = Number.isFinite(maxBytes) && maxBytes > 0
+      ? Math.min(Math.floor(maxBytes), 1024 * 1024)
+      : 262144;
+    const objectSize = await this.getObjectStorageObjectContentLength(
+      namespaceName,
+      bucketName,
+      objectName,
+      region,
+    );
+    if (objectSize === 0) {
+      return { text: "", truncated: false };
+    }
+
+    const requestedRangeEnd = objectSize === null
+      ? normalizedMaxBytes - 1
+      : Math.min(objectSize, normalizedMaxBytes) - 1;
+    const response = await this.fetchObjectStorageTextPreview(
+      namespaceName,
+      bucketName,
+      objectName,
+      region,
+      requestedRangeEnd,
+    );
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const previewBytes = bytes.byteLength > normalizedMaxBytes
+      ? bytes.subarray(0, normalizedMaxBytes)
+      : bytes;
+    const text = new TextDecoder("utf-8", { fatal: false }).decode(previewBytes);
+    const contentRange = response.headers.get("content-range");
+    const contentLength = parseObjectStorageContentLength(response.headers.get("content-length"));
+    const totalBytes = objectSize
+      ?? parseObjectStorageContentRangeTotal(contentRange)
+      ?? (response.status === 206 ? null : contentLength);
+    const truncated = totalBytes !== null
+      ? totalBytes > previewBytes.byteLength
+      : Boolean(contentRange) || response.status === 206 || bytes.byteLength > previewBytes.byteLength;
+    return { text, truncated };
   }
 
   public async deleteObjectStorageObject(
@@ -637,8 +719,13 @@ export class OciService {
   }): Promise<SpeechTranscriptionJobResource> {
     const client = await this.factory.createSpeechClientAsync(OCI_SPEECH_REGION);
     const inputObjectNames = [...new Set(params.inputObjectNames.map((value) => value.trim()).filter((value) => value.length > 0))];
+    const displayName = normalizeSpeechDisplayName(params.displayName, inputObjectNames);
     if (inputObjectNames.length === 0) {
       throw new Error("Select at least one input object from Object Storage.");
+    }
+    const unsupportedObjectName = inputObjectNames.find((value) => !isSpeechSupportedObjectName(value));
+    if (unsupportedObjectName) {
+      throw new Error(`OCI Speech supports only the documented media formats. Unsupported input: ${unsupportedObjectName}`);
     }
     if (inputObjectNames.length > OCI_SPEECH_MAX_INPUT_OBJECTS) {
       throw new Error(`OCI Speech accepts up to ${OCI_SPEECH_MAX_INPUT_OBJECTS} input files per job.`);
@@ -664,15 +751,18 @@ export class OciService {
     const response = await client.createTranscriptionJob({
       createTranscriptionJobDetails: {
         compartmentId: params.compartmentId,
-        displayName: readOptionalString(params.displayName),
+        displayName,
         description: readOptionalString(params.description),
         inputLocation: {
-          locationType: aispeech.models.ObjectListFileInputLocation.locationType,
-          objectLocation: {
-            namespaceName: params.inputNamespaceName,
-            bucketName: params.inputBucketName,
-            objectNames: inputObjectNames,
-          },
+          // Send media objects inline. File input expects a batch-list object, not raw audio file names.
+          locationType: aispeech.models.ObjectListInlineInputLocation.locationType,
+          objectLocations: [
+            {
+              namespaceName: params.inputNamespaceName,
+              bucketName: params.inputBucketName,
+              objectNames: inputObjectNames,
+            },
+          ],
         },
         outputLocation: {
           namespaceName: params.outputNamespaceName,
@@ -723,11 +813,22 @@ export class OciService {
         sortOrder: aispeech.models.SortOrder.Desc,
         sortBy: aispeech.requests.ListTranscriptionTasksRequest.SortBy.TimeCreated,
       });
-      tasks.push(
-        ...((response.transcriptionTaskCollection?.items || []).map((task) =>
-          mapSpeechTranscriptionTask(task, transcriptionJobId),
-        )),
-      );
+      const taskSummaries = response.transcriptionTaskCollection?.items || [];
+      for (let index = 0; index < taskSummaries.length; index += 8) {
+        const batch = taskSummaries.slice(index, index + 8);
+        const detailedBatch = await Promise.all(batch.map(async (taskSummary) => {
+          const transcriptionTaskId = String(taskSummary?.id ?? "").trim();
+          if (!transcriptionTaskId) {
+            return mapSpeechTranscriptionTask(taskSummary, transcriptionJobId);
+          }
+          const taskResponse = await client.getTranscriptionTask({
+            transcriptionJobId,
+            transcriptionTaskId,
+          });
+          return mapSpeechTranscriptionTask(taskResponse.transcriptionTask ?? taskSummary, transcriptionJobId);
+        }));
+        tasks.push(...detailedBatch);
+      }
       page = response.opcNextPage || undefined;
     } while (page);
 
@@ -1038,6 +1139,71 @@ export class OciService {
     return response;
   }
 
+  private async getObjectStorageObjectContentLength(
+    namespaceName: string,
+    bucketName: string,
+    objectName: string,
+    region?: string,
+  ): Promise<number | null> {
+    const response = await this.sendObjectStorageRequest({
+      method: "HEAD",
+      region,
+      path: "/n/{namespaceName}/b/{bucketName}/o/{objectName}",
+      pathParams: {
+        "{namespaceName}": namespaceName,
+        "{bucketName}": bucketName,
+        "{objectName}": objectName,
+      },
+    });
+    return parseObjectStorageContentLength(response.headers.get("content-length"));
+  }
+
+  private async fetchObjectStorageTextPreview(
+    namespaceName: string,
+    bucketName: string,
+    objectName: string,
+    region: string | undefined,
+    requestedRangeEnd: number,
+  ): Promise<Response> {
+    try {
+      return await this.sendObjectStorageRequest({
+        method: "GET",
+        region,
+        path: "/n/{namespaceName}/b/{bucketName}/o/{objectName}",
+        pathParams: {
+          "{namespaceName}": namespaceName,
+          "{bucketName}": bucketName,
+          "{objectName}": objectName,
+        },
+        headerParams: requestedRangeEnd >= 0
+          ? {
+            accept: "application/octet-stream",
+            range: `bytes=0-${requestedRangeEnd}`,
+          }
+          : {
+            accept: "application/octet-stream",
+          },
+      });
+    } catch (error) {
+      if (!isInvalidObjectStorageRangeError(error)) {
+        throw error;
+      }
+      return this.sendObjectStorageRequest({
+        method: "GET",
+        region,
+        path: "/n/{namespaceName}/b/{bucketName}/o/{objectName}",
+        pathParams: {
+          "{namespaceName}": namespaceName,
+          "{bucketName}": bucketName,
+          "{objectName}": objectName,
+        },
+        headerParams: {
+          accept: "application/octet-stream",
+        },
+      });
+    }
+  }
+
   private async resolveRegionId(regionOverride?: string): Promise<string> {
     const client = await this.factory.createComputeClientAsync(regionOverride);
     return String(client.regionId || regionOverride || "").trim();
@@ -1146,6 +1312,50 @@ export class OciService {
     await client.deleteSession({ sessionId });
   }
 
+  private async collectComputeInstances(
+    compartmentIds: string[],
+    regions: string[],
+    options?: { lifecycleStates?: Set<string> }
+  ): Promise<ComputeResource[]> {
+    const instances: ComputeResource[] = [];
+    const lifecycleStates = options?.lifecycleStates ?? new Set<string>();
+    const requestedLifecycleState = lifecycleStates.size === 1 ? [...lifecycleStates][0] : undefined;
+
+    for (const region of regions) {
+      const computeClient = await this.factory.createComputeClientAsync(region);
+      const virtualNetworkClient = await this.factory.createVirtualNetworkClientAsync(region);
+      for (const compartmentId of compartmentIds) {
+        let page: string | undefined;
+        do {
+          const result = await computeClient.listInstances({ compartmentId, page, lifecycleState: requestedLifecycleState });
+          const regionInstances = (result.items || [])
+            .map((instance) => ({
+              id: instance.id || "",
+              name: instance.displayName || instance.id || "Unnamed Instance",
+              lifecycleState: (instance.lifecycleState as string) || "UNKNOWN",
+              compartmentId,
+              region,
+            }))
+            .filter((instance) => {
+              if (lifecycleStates.size === 0) {
+                return true;
+              }
+              return lifecycleStates.has(String(instance.lifecycleState ?? "").trim().toUpperCase());
+            });
+          instances.push(...regionInstances);
+          await Promise.all(
+            regionInstances.map((instance) =>
+              this.populateInstanceNetworkAddresses(instance, compartmentId, computeClient, virtualNetworkClient)
+            )
+          );
+          page = result.opcNextPage;
+        } while (page);
+      }
+    }
+
+    return instances;
+  }
+
   private getActiveProfileRegions(): string[] {
     return splitRegions(this.factory.getRegion() ?? "");
   }
@@ -1188,7 +1398,7 @@ function compareNamedOciResources<T extends { name?: string; id?: string }>(left
 }
 
 function mapSpeechTranscriptionJobSummary(
-  job: aispeech.models.TranscriptionJobSummary,
+  job: aispeech.models.TranscriptionJobSummary | aispeech.models.TranscriptionJob,
   region: string,
 ): SpeechTranscriptionJobResource {
   return {
@@ -1213,8 +1423,8 @@ function mapSpeechTranscriptionJob(
   region: string,
 ): SpeechTranscriptionJobResource {
   const summary = mapSpeechTranscriptionJobSummary(job, region);
-  const inputLocation = job.inputLocation as aispeech.models.ObjectListFileInputLocation | undefined;
-  const objectLocation = inputLocation?.objectLocation;
+  const inputLocations = getSpeechInputLocations(job.inputLocation);
+  const primaryInputLocation = inputLocations[0];
   const additionalSettings = job.modelDetails?.transcriptionSettings?.additionalSettings || {};
   const profanityFilter = Array.isArray(job.normalization?.filters)
     ? job.normalization?.filters.find((filter) => String((filter as { type?: string })?.type || "").toUpperCase() === "PROFANITY")
@@ -1223,11 +1433,9 @@ function mapSpeechTranscriptionJob(
   return {
     ...summary,
     description: readOptionalString(job.description),
-    inputNamespaceName: readOptionalString(objectLocation?.namespaceName),
-    inputBucketName: readOptionalString(objectLocation?.bucketName),
-    inputObjectNames: Array.isArray(objectLocation?.objectNames)
-      ? objectLocation.objectNames.map((value) => String(value ?? "").trim()).filter((value) => value.length > 0)
-      : [],
+    inputNamespaceName: readOptionalString(primaryInputLocation?.namespaceName),
+    inputBucketName: readOptionalString(primaryInputLocation?.bucketName),
+    inputObjectNames: flattenSpeechInputObjectNames(inputLocations),
     outputNamespaceName: readOptionalString(job.outputLocation?.namespaceName),
     outputBucketName: readOptionalString(job.outputLocation?.bucketName),
     outputPrefix: readOptionalString(job.outputLocation?.prefix),
@@ -1246,9 +1454,11 @@ function mapSpeechTranscriptionJob(
 }
 
 function mapSpeechTranscriptionTask(
-  task: aispeech.models.TranscriptionTaskSummary,
+  task: aispeech.models.TranscriptionTaskSummary | aispeech.models.TranscriptionTask,
   jobId: string,
 ): SpeechTranscriptionTaskResource {
+  const inputLocation = "inputLocation" in task ? task.inputLocation : undefined;
+  const outputLocation = "outputLocation" in task ? task.outputLocation : undefined;
   return {
     id: task.id || "",
     name: readOptionalString(task.displayName) || task.id || "Task",
@@ -1261,7 +1471,57 @@ function mapSpeechTranscriptionTask(
     processingDurationInSeconds: readOptionalNumber(task.processingDurationInSeconds),
     timeStarted: toIsoString(task.timeStarted),
     timeFinished: toIsoString(task.timeFinished),
+    inputNamespaceName: readOptionalString(inputLocation?.namespaceName),
+    inputBucketName: readOptionalString(inputLocation?.bucketName),
+    inputObjectNames: flattenSpeechObjectNames(inputLocation),
+    outputNamespaceName: readOptionalString(outputLocation?.namespaceName),
+    outputBucketName: readOptionalString(outputLocation?.bucketName),
+    outputObjectNames: flattenSpeechObjectNames(outputLocation),
   };
+}
+
+function getSpeechInputLocations(
+  inputLocation: aispeech.models.TranscriptionJob["inputLocation"] | undefined,
+): aispeech.models.ObjectLocation[] {
+  if (!inputLocation || typeof inputLocation !== "object") {
+    return [];
+  }
+
+  const inlineLocations = (inputLocation as aispeech.models.ObjectListInlineInputLocation).objectLocations;
+  if (Array.isArray(inlineLocations)) {
+    return inlineLocations.filter((location): location is aispeech.models.ObjectLocation => Boolean(location));
+  }
+
+  const fileLocation = (inputLocation as aispeech.models.ObjectListFileInputLocation).objectLocation;
+  return fileLocation ? [fileLocation] : [];
+}
+
+function flattenSpeechInputObjectNames(locations: aispeech.models.ObjectLocation[]): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+
+  for (const location of locations) {
+    if (!Array.isArray(location?.objectNames)) {
+      continue;
+    }
+    for (const value of location.objectNames) {
+      const name = String(value ?? "").trim();
+      if (!name || seen.has(name)) {
+        continue;
+      }
+      seen.add(name);
+      names.push(name);
+    }
+  }
+
+  return names;
+}
+
+function flattenSpeechObjectNames(location: aispeech.models.ObjectLocation | undefined): string[] {
+  if (!location) {
+    return [];
+  }
+  return flattenSpeechInputObjectNames([location]);
 }
 
 function mapBastionSessionResource(sessionLike: any, bastionId: string): BastionSessionResource {
@@ -1346,6 +1606,19 @@ function extractServiceName(connectString: string): string {
   return suffix.trim();
 }
 
+function isSpeechSupportedObjectName(objectName: string): boolean {
+  const normalized = String(objectName ?? "").trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  const leafName = normalized.split("/").filter(Boolean).pop() || normalized;
+  const lastDotIdx = leafName.lastIndexOf(".");
+  if (lastDotIdx <= 0 || lastDotIdx >= leafName.length - 1) {
+    return false;
+  }
+  return OCI_SPEECH_SUPPORTED_OBJECT_EXTENSIONS.has(leafName.slice(lastDotIdx + 1));
+}
+
 function readOptionalString(value: unknown): string | undefined {
   const normalized = String(value ?? "").trim();
   return normalized.length > 0 ? normalized : undefined;
@@ -1412,7 +1685,57 @@ async function formatObjectStorageError(response: Response): Promise<string> {
   }
 }
 
+function parseObjectStorageContentLength(value: string | null): number | null {
+  const parsed = Number(value ?? "");
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function parseObjectStorageContentRangeTotal(value: string | null): number | null {
+  const match = /^bytes\s+\d+-\d+\/(\d+|\*)$/i.exec(String(value ?? "").trim());
+  if (!match || match[1] === "*") {
+    return null;
+  }
+  return parseObjectStorageContentLength(match[1]);
+}
+
+function isInvalidObjectStorageRangeError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /invalid byte range|requested range not satisfiable/i.test(message);
+}
+
 function sanitizeParName(objectName: string): string {
   const base = String(objectName ?? "").trim().split("/").filter(Boolean).pop() || "object";
   return base.replace(/[^a-zA-Z0-9_.-]+/g, "-").slice(0, 40) || "object";
+}
+
+function normalizeSpeechDisplayName(value: unknown, inputObjectNames: string[]): string | undefined {
+  const explicit = readOptionalString(value);
+  if (explicit) {
+    const sanitized = sanitizeSpeechDisplayName(explicit);
+    if (sanitized) {
+      return sanitized;
+    }
+  }
+  return buildSuggestedSpeechDisplayName(inputObjectNames);
+}
+
+function buildSuggestedSpeechDisplayName(objectNames: string[]): string {
+  const baseName = String(objectNames[0] ?? "").trim().split("/").filter(Boolean).pop() || "";
+  const seed = sanitizeSpeechDisplayName(baseName.replace(/\.[^.]+$/, ""), OCI_SPEECH_AUTO_DISPLAY_NAME_SEED_LENGTH);
+  const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, "").replace(/[-:T]/g, "");
+  return `speech-${seed || "job"}-${timestamp}`;
+}
+
+function sanitizeSpeechDisplayName(value: string, maxLength?: number): string {
+  const normalized = value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9_-]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/_{2,}/g, "_")
+    .replace(/^[-_]+|[-_]+$/g, "");
+  if (typeof maxLength !== "number" || maxLength <= 0) {
+    return normalized;
+  }
+  return normalized.slice(0, maxLength).replace(/^[-_]+|[-_]+$/g, "");
 }

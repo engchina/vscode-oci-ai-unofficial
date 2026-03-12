@@ -71,19 +71,27 @@ export function WorkbenchInlineRadioOption({
   name,
   checked,
   onChange,
+  disabled = false,
   children,
 }: {
   name: string
   checked: boolean
   onChange: () => void
+  disabled?: boolean
   children: ReactNode
 }) {
   return (
-    <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-description hover:text-foreground">
+    <label
+      className={clsx(
+        "flex items-center gap-1.5 text-[11px]",
+        disabled ? "cursor-not-allowed text-[var(--vscode-disabledForeground)]" : "cursor-pointer text-description hover:text-foreground",
+      )}
+    >
       <input
         type="radio"
         name={name}
         checked={checked}
+        disabled={disabled}
         onChange={onChange}
         className="accent-button-background h-3 w-3"
       />

@@ -191,6 +191,7 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
   },
   ResourceService: {
     listCompute: async (c) => ({ instances: await c.listComputeInstances() }),
+    listBastionTargetInstances: async (c, msg) => c.listBastionTargetInstances(msg),
     startCompute: async (c, msg) => {
       await c.startComputeInstance(msg.instanceId, typeof msg.region === "string" ? msg.region : undefined);
       showStatusMessage("Compute instance start requested.");
@@ -329,6 +330,7 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
       }
       return result;
     },
+    readObjectStorageObjectText: async (c, msg) => c.readObjectStorageObjectText(msg),
     deleteObjectStorageObject: async (c, msg) => {
       await c.deleteObjectStorageObject(msg);
       showStatusMessage("Object deleted.");

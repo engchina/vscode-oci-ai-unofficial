@@ -118,7 +118,7 @@ export interface BastionSessionResource {
   sshMetadata?: Record<string, string>;
 }
 
-export type SpeechTranscriptionModelType = "WHISPER_MEDIUM" | "WHISPER_LARGE_V3_TURBO";
+export type SpeechTranscriptionModelType = "WHISPER_MEDIUM" | "WHISPER_LARGE_V3T";
 
 export type SpeechTranscriptionLanguageCode = "ja" | "en" | "zh";
 
@@ -168,4 +168,10 @@ export interface SpeechTranscriptionTaskResource {
   processingDurationInSeconds?: number;
   timeStarted?: string;
   timeFinished?: string;
+  inputNamespaceName?: string;
+  inputBucketName?: string;
+  inputObjectNames?: string[];
+  outputNamespaceName?: string;
+  outputBucketName?: string;
+  outputObjectNames?: string[];
 }

@@ -5,7 +5,6 @@ import { toneFromLifecycleState, useWorkbenchInsight } from "../../context/Workb
 import { ResourceServiceClient } from "../../services/grpc-client"
 import type { BastionResource, BastionSessionResource } from "../../services/types"
 import GuardrailDialog from "../common/GuardrailDialog"
-import CreateBastionSessionDialog from "./CreateBastionSessionDialog"
 import BastionSshCommandDialog from "./BastionSshCommandDialog"
 import CompartmentSelector from "../ui/CompartmentSelector"
 import InlineNotice from "../ui/InlineNotice"
@@ -64,8 +63,8 @@ const POST_ACTION_REFRESH_INTERVAL_MS = 1800
 const POST_ACTION_REFRESH_ATTEMPTS = 3
 
 export default function BastionView() {
-  const { activeProfile, profilesConfig, tenancyOcid, bastionCompartmentIds } = useExtensionState()
-  const { setResource } = useWorkbenchInsight()
+  const { activeProfile, profilesConfig, tenancyOcid, bastionCompartmentIds, navigateToView } = useExtensionState()
+  const { pendingSelection, setPendingSelection, setResource } = useWorkbenchInsight()
   const [bastions, setBastions] = useState<BastionResource[]>([])
   const [sessionsByBastion, setSessionsByBastion] = useState<Record<string, BastionSessionResource[]>>({})
   const [loading, setLoading] = useState(true)
@@ -75,7 +74,6 @@ export default function BastionView() {
   const [query, setQuery] = useState("")
   const [selectedBastionId, setSelectedBastionId] = useState("")
   const [highlightedBastionId, setHighlightedBastionId] = useState<string | null>(null)
-  const [createSessionBastion, setCreateSessionBastion] = useState<BastionResource | null>(null)
   const [guardrail, setGuardrail] = useState<WorkbenchGuardrailState>(null)
   const [recentAction, setRecentAction] = useState<RecentActionState>(null)
   const [sshCommandState, setSshCommandState] = useState<BastionSshCommandState>(null)
@@ -157,6 +155,17 @@ export default function BastionView() {
     revealBastion(selectedBastion.id)
   }, [revealBastion, selectedBastion])
 
+  const openCreateSessionPage = useCallback((bastion: BastionResource | null) => {
+    if (!bastion) {
+      return
+    }
+    setPendingSelection({
+      view: "bastionSession",
+      targetId: bastion.id,
+    })
+    navigateToView("bastionSession")
+  }, [navigateToView, setPendingSelection])
+
   const queueSessionRefreshBurst = useCallback((bastionId: string, region?: string) => {
     setSessionRefreshBurst({
       bastionId,
@@ -209,7 +218,7 @@ export default function BastionView() {
         },
         {
           label: "Create Session",
-          run: () => setCreateSessionBastion(selectedBastion),
+          run: () => openCreateSessionPage(selectedBastion),
           variant: "secondary",
         },
         {
@@ -223,7 +232,7 @@ export default function BastionView() {
     })
 
     return () => setResource(null)
-  }, [commandReadyCount, query, revealSelectedBastion, selectedBastion, selectedSessions.length, setResource])
+  }, [commandReadyCount, openCreateSessionPage, query, revealSelectedBastion, selectedBastion, selectedSessions.length, setResource])
 
   const loadBastions = useCallback(async () => {
     const requestId = bastionLoadRequestIdRef.current + 1
@@ -236,7 +245,6 @@ export default function BastionView() {
       setLoadingSessionCounts({})
       sessionLoadRequestIdRef.current = new Map()
       setSelectedBastionId("")
-      setCreateSessionBastion(null)
       setSshCommandState(null)
       setSessionRefreshBurst(null)
       bastionLoadRequestIdRef.current = requestId
@@ -327,18 +335,14 @@ export default function BastionView() {
   }, [loadSessions, selectedBastion])
 
   useEffect(() => {
-    if (!createSessionBastion) {
+    if (pendingSelection?.view !== "bastion") {
       return
     }
-    const nextBastion = bastions.find((bastion) => bastion.id === createSessionBastion.id)
-    if (!nextBastion) {
-      setCreateSessionBastion(null)
-      return
-    }
-    if (nextBastion !== createSessionBastion) {
-      setCreateSessionBastion(nextBastion)
-    }
-  }, [bastions, createSessionBastion])
+    setQuery("")
+    setSelectedBastionId(pendingSelection.targetId)
+    setHighlightedBastionId(pendingSelection.targetId)
+    setPendingSelection(null)
+  }, [pendingSelection, setPendingSelection])
 
   useEffect(() => {
     if (!sessionRefreshBurst) {
@@ -678,7 +682,7 @@ export default function BastionView() {
                                   onRequestDeleteSession={(session) => requestDeleteSession(session, bastion)}
                                   onOpenCreateSession={() => {
                                     setSelectedBastionId(bastion.id)
-                                    setCreateSessionBastion(bastion)
+                                    openCreateSessionPage(bastion)
                                   }}
                                   onRefreshSessions={() => {
                                     void loadSessions(bastion.id, bastion.region)
@@ -698,29 +702,6 @@ export default function BastionView() {
           </div>
         )}
       </div>
-
-      <CreateBastionSessionDialog
-        open={createSessionBastion !== null}
-        bastion={createSessionBastion}
-        onClose={() => setCreateSessionBastion(null)}
-        onSuccess={(summary) => {
-          const currentBastion = createSessionBastion
-          setSelectedBastionId(summary.bastionId)
-          setHighlightedBastionId(summary.bastionId)
-          setRecentAction({
-            bastionId: summary.bastionId,
-            bastionName: summary.bastionName,
-            message: "Requested session on",
-            detail: summary.sessionName,
-            timestamp: Date.now(),
-          })
-          if (currentBastion) {
-            void loadSessions(currentBastion.id, currentBastion.region)
-            queueSessionRefreshBurst(currentBastion.id, currentBastion.region)
-          }
-          setCreateSessionBastion(null)
-        }}
-      />
 
       <BastionSshCommandDialog
         open={sshCommandState !== null && activeSshCommand.length > 0}

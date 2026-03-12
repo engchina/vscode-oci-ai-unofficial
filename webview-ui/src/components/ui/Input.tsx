@@ -3,13 +3,14 @@ import type { InputHTMLAttributes } from "react"
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string
+  labelClassName?: string
 }
 
-export default function Input({ label, className, id, ...props }: InputProps) {
+export default function Input({ label, labelClassName, className, id, ...props }: InputProps) {
   return (
     <div className="flex w-full flex-col gap-1">
       {label && (
-        <label htmlFor={id} className="text-[13px] leading-none text-foreground">
+        <label htmlFor={id} className={clsx("text-[13px] leading-none text-foreground", labelClassName)}>
           {label}
         </label>
       )}

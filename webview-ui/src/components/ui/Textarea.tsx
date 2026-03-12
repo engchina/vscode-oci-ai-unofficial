@@ -3,13 +3,14 @@ import type { TextareaHTMLAttributes } from "react"
 
 interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string
+  labelClassName?: string
 }
 
-export default function Textarea({ label, className, id, ...props }: TextareaProps) {
+export default function Textarea({ label, labelClassName, className, id, ...props }: TextareaProps) {
   return (
     <div className="flex w-full flex-col gap-1">
       {label && (
-        <label htmlFor={id} className="text-[13px] leading-none text-foreground">
+        <label htmlFor={id} className={clsx("text-[13px] leading-none text-foreground", labelClassName)}>
           {label}
         </label>
       )}

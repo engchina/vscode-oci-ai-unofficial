@@ -479,6 +479,7 @@ export interface ListObjectStorageObjectsRequest {
   bucketName: string
   region?: string
   prefix?: string
+  recursive?: boolean
 }
 
 export interface ListObjectStorageObjectsResponse {
@@ -509,6 +510,19 @@ export interface DownloadObjectStorageObjectRequest {
 
 export interface DownloadObjectStorageObjectResponse {
   cancelled?: boolean
+}
+
+export interface ReadObjectStorageObjectTextRequest {
+  namespaceName: string
+  bucketName: string
+  objectName: string
+  region?: string
+  maxBytes?: number
+}
+
+export interface ReadObjectStorageObjectTextResponse {
+  text: string
+  truncated?: boolean
 }
 
 export interface DeleteObjectStorageObjectRequest {
@@ -619,6 +633,17 @@ export interface ListBastionSessionsResponse {
   sessions: BastionSessionResource[]
 }
 
+export interface ListBastionTargetInstancesRequest {
+  compartmentIds: string[]
+  region?: string
+  vcnId?: string
+  lifecycleStates?: string[]
+}
+
+export interface ListBastionTargetInstancesResponse {
+  instances: ComputeResource[]
+}
+
 export interface CreateBastionSessionRequest {
   bastionId: string
   targetResourceDetails: any
@@ -645,7 +670,7 @@ export interface RunBastionSshCommandResponse {
   launched: boolean
 }
 
-export type SpeechTranscriptionModelType = "WHISPER_MEDIUM" | "WHISPER_LARGE_V3_TURBO"
+export type SpeechTranscriptionModelType = "WHISPER_MEDIUM" | "WHISPER_LARGE_V3T"
 
 export type SpeechTranscriptionLanguageCode = "ja" | "en" | "zh"
 
@@ -695,6 +720,12 @@ export interface SpeechTranscriptionTaskResource {
   processingDurationInSeconds?: number
   timeStarted?: string
   timeFinished?: string
+  inputNamespaceName?: string
+  inputBucketName?: string
+  inputObjectNames?: string[]
+  outputNamespaceName?: string
+  outputBucketName?: string
+  outputObjectNames?: string[]
 }
 
 export interface ListSpeechTranscriptionJobsResponse {

@@ -14,6 +14,8 @@ import type {
   CreateObjectStorageParResponse,
   DownloadObjectStorageObjectRequest,
   DownloadObjectStorageObjectResponse,
+  ReadObjectStorageObjectTextRequest,
+  ReadObjectStorageObjectTextResponse,
   DownloadAdbWalletRequest,
   DownloadAdbWalletResponse,
   ExplainSqlPlanRequest,
@@ -538,6 +540,27 @@ export class Controller {
   /** List compute instances */
   public async listComputeInstances(): Promise<{ id: string; name: string; lifecycleState: string }[]> {
     return this.ociService.listComputeInstances();
+  }
+
+  public async listBastionTargetInstances(
+    request: import("../shared/services").ListBastionTargetInstancesRequest
+  ): Promise<import("../shared/services").ListBastionTargetInstancesResponse> {
+    const compartmentIds = Array.isArray(request.compartmentIds)
+      ? request.compartmentIds.map((value) => String(value ?? "").trim()).filter((value) => value.length > 0)
+      : [];
+    if (compartmentIds.length === 0) {
+      return { instances: [] };
+    }
+    const lifecycleStates = Array.isArray(request.lifecycleStates)
+      ? request.lifecycleStates.map((value) => String(value ?? "").trim()).filter((value) => value.length > 0)
+      : [];
+    const instances = await this.ociService.listComputeInstancesForBastionTargets({
+      compartmentIds,
+      region: normalizeOptionalRegion(request.region),
+      vcnId: typeof request.vcnId === "string" ? request.vcnId.trim() || undefined : undefined,
+      lifecycleStates,
+    });
+    return { instances };
   }
 
   /** Start a compute instance */
@@ -1084,7 +1107,8 @@ export class Controller {
       namespaceName,
       bucketName,
       normalizeObjectStoragePrefix(request.prefix),
-      typeof request.region === "string" ? request.region : undefined
+      typeof request.region === "string" ? request.region : undefined,
+      request.recursive === true
     );
   }
 
@@ -1094,12 +1118,7 @@ export class Controller {
     if (!namespaceName || !bucketName) {
       throw new Error("namespaceName and bucketName are required.");
     }
-    return this.ociService.listObjectStorageObjects(
-      namespaceName,
-      bucketName,
-      normalizeObjectStoragePrefix(request.prefix),
-      "us-chicago-1"
-    );
+    return this.ociService.listSpeechObjects(namespaceName, bucketName, normalizeObjectStoragePrefix(request.prefix));
   }
 
   public async uploadObjectStorageObject(
@@ -1165,6 +1184,25 @@ export class Controller {
     return { cancelled: false };
   }
 
+  public async readObjectStorageObjectText(
+    request: ReadObjectStorageObjectTextRequest
+  ): Promise<ReadObjectStorageObjectTextResponse> {
+    const namespaceName = String(request.namespaceName ?? "").trim();
+    const bucketName = String(request.bucketName ?? "").trim();
+    const objectName = String(request.objectName ?? "").trim();
+    if (!namespaceName || !bucketName || !objectName) {
+      throw new Error("namespaceName, bucketName, and objectName are required.");
+    }
+
+    return this.ociService.readObjectStorageObjectText(
+      namespaceName,
+      bucketName,
+      objectName,
+      typeof request.region === "string" ? request.region : undefined,
+      typeof request.maxBytes === "number" ? request.maxBytes : undefined
+    );
+  }
+
   public async deleteObjectStorageObject(
     request: import("../shared/services").DeleteObjectStorageObjectRequest
   ): Promise<void> {
@@ -1226,7 +1264,8 @@ export class Controller {
     const inputObjectNames = Array.isArray(request.inputObjectNames)
       ? request.inputObjectNames.map((value) => String(value ?? "").trim()).filter((value) => value.length > 0)
       : [];
-    const modelType = String(request.modelType ?? "").trim().toUpperCase();
+    const requestedModelType = String(request.modelType ?? "").trim().toUpperCase();
+    const modelType = requestedModelType === "WHISPER_LARGE_V3_TURBO" ? "WHISPER_LARGE_V3T" : requestedModelType;
     const languageCode = String(request.languageCode ?? "").trim().toLowerCase();
 
     if (!compartmentId) {
@@ -1241,7 +1280,7 @@ export class Controller {
     if (!outputNamespaceName || !outputBucketName) {
       throw new Error("Output bucket is required.");
     }
-    if (modelType !== "WHISPER_MEDIUM" && modelType !== "WHISPER_LARGE_V3_TURBO") {
+    if (modelType !== "WHISPER_MEDIUM" && modelType !== "WHISPER_LARGE_V3T") {
       throw new Error(`Unsupported Speech model: ${modelType || "unknown"}.`);
     }
     if (languageCode !== "ja" && languageCode !== "en" && languageCode !== "zh") {
