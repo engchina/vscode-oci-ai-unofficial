@@ -1687,7 +1687,7 @@ function renderSpeechInventoryPage({
                         trailing={<LifecycleBadge state={job.lifecycleState} size="compact" />}
                         meta={(
                           <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-description">
-                            <span>{formatPercent(job.percentComplete)}</span>
+                            <span>{formatPercent(job.percentComplete, job.lifecycleState)}</span>
                             <span>{formatTaskProgress(job.successfulTasks, job.totalTasks)}</span>
                             {job.timeAccepted && <span>{formatDateTime(job.timeAccepted)}</span>}
                           </div>
@@ -2290,7 +2290,7 @@ function renderJobDetailWorkspace({
               badge={<LifecycleBadge state={selectedJob.lifecycleState} />}
               metaItems={[
                 { label: "Region", value: SPEECH_REGION_LABEL },
-                { label: "Progress", value: formatPercent(selectedJob.percentComplete) },
+                { label: "Progress", value: formatPercent(selectedJob.percentComplete, selectedJob.lifecycleState) },
                 { label: "Files", value: formatCount(selectedFileCount) },
                 { label: "Tasks", value: formatTaskProgress(selectedJob.successfulTasks, selectedJob.totalTasks) },
               ]}
@@ -2477,7 +2477,7 @@ function renderJobDetailWorkspace({
                   ) : (
                     <>
                       <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-1">
-                        <SummaryMetaCard label="Progress" value={formatPercent(selectedTask.percentComplete)} />
+                        <SummaryMetaCard label="Progress" value={formatPercent(selectedTask.percentComplete, selectedTask.lifecycleState)} />
                         <SummaryMetaCard label="File Duration" value={formatDuration(selectedTask.fileDurationInSeconds)} />
                         <SummaryMetaCard label="File Size" value={formatBytes(selectedTask.fileSizeInBytes)} />
                         <SummaryMetaCard label="Processing Time" value={formatDuration(selectedTask.processingDurationInSeconds)} />
@@ -3055,8 +3055,19 @@ function formatCount(value: number | undefined) {
   return typeof value === "number" ? value.toLocaleString() : "-"
 }
 
-function formatPercent(value: number | undefined) {
-  return typeof value === "number" ? `${Math.max(0, Math.min(100, value))}%` : "Pending"
+function formatPercent(value: number | undefined, lifecycleState?: string) {
+  const normalizedState = String(lifecycleState ?? "").trim().toUpperCase()
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const bounded = Math.max(0, Math.min(100, value))
+    if (bounded === 0 && normalizedState === "SUCCEEDED") {
+      return "100%"
+    }
+    return `${bounded}%`
+  }
+  if (normalizedState === "SUCCEEDED") {
+    return "100%"
+  }
+  return "Pending"
 }
 
 function formatTaskProgress(successfulTasks: number | undefined, totalTasks: number | undefined) {
