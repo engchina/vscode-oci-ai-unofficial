@@ -33,6 +33,7 @@ import Input from "../ui/Input"
 import StatusBadge, { LifecycleBadge } from "../ui/StatusBadge"
 import Textarea from "../ui/Textarea"
 import Toggle from "../ui/Toggle"
+import Select from "../ui/Select"
 import {
   SummaryMetaCard,
   WorkbenchEmptyState,
@@ -1875,10 +1876,18 @@ function renderCreateWorkspace({
       >
         <div className="grid gap-2 lg:grid-cols-[minmax(0,0.48fr)_minmax(0,0.52fr)]">
           <WorkbenchSurface className="space-y-2">
-            <SpeechSelectField
+            <Select
               label="Input Bucket"
               value={draft.inputBucketKey}
-              onChange={onInputBucketChange}
+              onChange={(event) => {
+                const value = event.target.value
+                updateDraft({
+                  inputBucketKey: value,
+                  inputPrefix: "",
+                  selectedObjectNames: [],
+                  outputBucketKey: draft.outputMode === "same" ? value : draft.outputBucketKey,
+                })
+              }}
               disabled={loadingBuckets}
               options={speechBuckets.map((bucket) => ({
                 value: getBucketKey(bucket),
@@ -2032,10 +2041,10 @@ function renderCreateWorkspace({
         />
 
         <div className="grid gap-2 lg:grid-cols-2">
-          <SpeechSelectField
+          <Select
             label={draft.outputMode === "same" ? "Effective Output Bucket" : "Output Bucket"}
             value={draft.outputMode === "same" ? draft.inputBucketKey : draft.outputBucketKey}
-            onChange={onSelectOutputBucket}
+            onChange={(event) => onSelectOutputBucket(event.target.value)}
             disabled={draft.outputMode === "same" || loadingBuckets}
             options={speechBuckets.map((bucket) => ({
               value: getBucketKey(bucket),
@@ -2059,10 +2068,14 @@ function renderCreateWorkspace({
         subtitle="This version intentionally exposes only the requested language and model combinations."
       >
         <div className="grid gap-2 lg:grid-cols-2">
-          <SpeechSelectField
-            label="Model"
+          <Select
+            label="Transcription Model"
             value={draft.modelType}
-            onChange={(value) => updateDraft({ modelType: value as SpeechTranscriptionModelType })}
+            onChange={(event) =>
+              updateDraft({
+                modelType: event.target.value as SpeechTranscriptionModelType,
+              })
+            }
             options={MODEL_OPTIONS.map((option) => ({
               value: option.value,
               label: option.label,
@@ -2070,10 +2083,10 @@ function renderCreateWorkspace({
             }))}
           />
 
-          <SpeechSelectField
+          <Select
             label="Language"
             value={draft.languageCode}
-            onChange={(value) => updateDraft({ languageCode: value as SpeechTranscriptionLanguageCode })}
+            onChange={(event) => updateDraft({ languageCode: event.target.value as SpeechTranscriptionLanguageCode })}
             options={LANGUAGE_OPTIONS.map((option) => ({
               value: option.value,
               label: option.label,
@@ -2579,23 +2592,12 @@ function renderSpeechResultOverviewSection({
   onOpenResultViewer: (objectName?: string) => void
   onDownloadResult: (objectName: string) => void
 }) {
-  const canOpenSelectedResultViewer = selectedResultObject ? canPreviewSpeechResultObject(selectedResultObject.name) : false
-
   return (
     <WorkbenchSection
       title="Latest Results"
       subtitle={selectedTask
         ? "Result files matched to the selected task. Open the dedicated result viewer when you need an inline text preview."
         : "Review the newest output artifacts here, then open the dedicated result viewer for previewable files."}
-      actions={canOpenSelectedResultViewer
-        ? (
-          <WorkbenchRevealButton
-            type="button"
-            label={openViewLabel("Result Viewer")}
-            onClick={() => onOpenResultViewer(selectedResultObject?.name)}
-          />
-        )
-        : undefined}
     >
       {resultObjectsError && (
         <InlineNotice tone="danger" icon={<AlertCircle size={14} />} title="Speech Result Error">
@@ -2884,45 +2886,6 @@ function renderSpeechResultViewerWorkspace({
         </WorkbenchSection>
       </div>
     </section>
-  )
-}
-
-function SpeechSelectField({
-  label,
-  value,
-  onChange,
-  options,
-  placeholder = "Select an option",
-  disabled = false,
-}: {
-  label: string
-  value: string
-  onChange: (value: string) => void
-  options: Array<{ value: string; label: string; description?: string }>
-  placeholder?: string
-  disabled?: boolean
-}) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="text-[12px] text-foreground">{label}</span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        disabled={disabled}
-        className={clsx(
-          "h-[28px] rounded-[2px] border border-input-border bg-input-background px-2 text-[12px] text-input-foreground outline-none focus:border-[var(--vscode-focusBorder)]",
-          disabled && "cursor-not-allowed opacity-60",
-        )}
-      >
-        {!value && <option value="">{placeholder}</option>}
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-            {option.description ? ` - ${option.description}` : ""}
-          </option>
-        ))}
-      </select>
-    </label>
   )
 }
 

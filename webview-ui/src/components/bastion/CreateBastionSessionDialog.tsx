@@ -7,6 +7,11 @@ import { ResourceServiceClient } from "../../services/grpc-client"
 import type { BastionResource, ComputeResource } from "../../services/types"
 import Button from "../ui/Button"
 import InlineNotice from "../ui/InlineNotice"
+import Input from "../ui/Input"
+import Textarea from "../ui/Textarea"
+import Select from "../ui/Select"
+import ResourceDropdown from "../ui/ResourceDropdown"
+import Toggle from "../ui/Toggle"
 import { WorkbenchDismissButton } from "../workbench/WorkbenchActionButtons"
 import { WorkbenchRefreshButton } from "../workbench/WorkbenchToolbar"
 
@@ -348,6 +353,37 @@ export default function CreateBastionSessionDialog({
     input.click()
   }
 
+  const handleFileDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    if (submitting) {
+      return
+    }
+    const file = event.dataTransfer.files?.[0]
+    if (!file) {
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = (loadEvent) => {
+      const content = loadEvent.target?.result as string
+      if (content) {
+        clearSubmitError()
+        setSshKeyMode("UPLOAD")
+        setPublicKeyFileName(file.name)
+        setPublicKey(content)
+      }
+    }
+    reader.onerror = () => {
+      focusErrorNotice()
+      setSubmitError("Failed to read the dropped public key file.")
+    }
+    reader.onabort = reader.onerror
+    reader.readAsText(file)
+  }
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+  }
+
   const handleSubmit = async () => {
     if (submitting) {
       return
@@ -437,6 +473,12 @@ export default function CreateBastionSessionDialog({
         ? "No running compute instances were found in the selected compartment."
         : "Select an instance by name."
 
+  const portForwardCompartmentNote = targetsLoading
+    ? "Loading compartments from running instances..."
+    : targetCompartmentOptions.length === 0
+      ? "No compute compartments are available for this Bastion scope."
+      : ""
+
   const content = (
     <div
       className={clsx(
@@ -504,7 +546,7 @@ export default function CreateBastionSessionDialog({
               subtitle="Choose the access mode first, then confirm the session name."
             >
               <div className="grid gap-2 md:grid-cols-[minmax(0,220px)_minmax(0,1fr)]">
-                <DialogSelectField
+                <Select
                   id="sessionType"
                   label="Session type"
                   value={sessionType}
@@ -513,12 +555,13 @@ export default function CreateBastionSessionDialog({
                     clearSubmitError()
                     setSessionType(event.target.value as "MANAGED_SSH" | "PORT_FORWARDING")
                   }}
-                >
-                  <option value="MANAGED_SSH">Managed SSH session</option>
-                  <option value="PORT_FORWARDING">SSH port forwarding session</option>
-                </DialogSelectField>
+                  options={[
+                    { value: "MANAGED_SSH", label: "Managed SSH session" },
+                    { value: "PORT_FORWARDING", label: "SSH port forwarding session" },
+                  ]}
+                />
 
-                <DialogTextField
+                <Input
                   id="displayName"
                   label="Session name"
                   placeholder="Session-20260312-1814"
@@ -548,94 +591,97 @@ export default function CreateBastionSessionDialog({
 
                   {useManualManagedTarget ? (
                     <div className="grid gap-2 lg:grid-cols-[minmax(0,180px)_minmax(0,1fr)]">
-                      <DialogTextField
-                        id="osUserName"
-                        label="Username"
-                        placeholder="opc"
-                        value={osUserName}
-                        disabled={submitting}
-                        invalid={osUserNameInvalid}
-                        note={osUserNameInvalid ? "Enter the OS user that should be used for the Managed SSH session." : "Required"}
-                        noteTone={osUserNameInvalid ? "danger" : "muted"}
-                        noteAlign="end"
-                        onChange={(event) => {
-                          clearSubmitError()
-                          setOsUserName(event.target.value)
-                        }}
-                      />
+                      <div className="flex flex-col gap-1">
+                        <Input
+                          id="osUserName"
+                          label="Username"
+                          placeholder="opc"
+                          value={osUserName}
+                          disabled={submitting}
+                          onChange={(event) => {
+                            clearSubmitError()
+                            setOsUserName(event.target.value)
+                          }}
+                        />
+                        <div className={clsx("text-[10px]", osUserNameInvalid ? "text-[var(--vscode-errorForeground)]" : "text-[var(--vscode-descriptionForeground)]")}>
+                          {osUserNameInvalid ? "Enter the OS user that should be used for the Managed SSH session." : "Required"}
+                        </div>
+                      </div>
 
-                      <DialogTextField
-                        id="managedTargetResourceIdManual"
-                        label="Target compute instance OCID"
-                        placeholder="ocid1.instance.oc1..."
-                        value={managedManualTargetResourceId}
-                        disabled={submitting}
-                        invalid={managedTargetInvalid}
-                        note={managedTargetInvalid ? "Enter the target compute instance OCID to continue." : "Use this only when the instance is not available in the dropdown."}
-                        noteTone={managedTargetInvalid ? "danger" : "muted"}
-                        onChange={(event) => {
-                          clearSubmitError()
-                          setManagedManualTargetResourceId(event.target.value)
-                        }}
-                      />
+                      <div className="flex flex-col gap-1">
+                        <Input
+                          id="managedTargetResourceIdManual"
+                          label="Target compute instance OCID"
+                          placeholder="ocid1.instance.oc1..."
+                          value={managedManualTargetResourceId}
+                          disabled={submitting}
+                          onChange={(event) => {
+                            clearSubmitError()
+                            setManagedManualTargetResourceId(event.target.value)
+                          }}
+                        />
+                        <div className={clsx("text-[10px]", managedTargetInvalid ? "text-[var(--vscode-errorForeground)]" : "text-[var(--vscode-descriptionForeground)]")}>
+                          {managedTargetInvalid ? "Enter the target compute instance OCID to continue." : "Use this only when the instance is not available in the dropdown."}
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <div className="grid gap-2 lg:grid-cols-[minmax(0,180px)_minmax(0,1fr)_minmax(0,1fr)]">
-                      <DialogTextField
-                        id="osUserName"
-                        label="Username"
-                        placeholder="opc"
-                        value={osUserName}
-                        disabled={submitting}
-                        invalid={osUserNameInvalid}
-                        note={osUserNameInvalid ? "Enter the OS user that should be used for the Managed SSH session." : "Required"}
-                        noteTone={osUserNameInvalid ? "danger" : "muted"}
-                        noteAlign="end"
-                        onChange={(event) => {
-                          clearSubmitError()
-                          setOsUserName(event.target.value)
-                        }}
-                      />
+                      <div className="flex flex-col gap-1">
+                        <Input
+                          id="osUserName"
+                          label="Username"
+                          placeholder="opc"
+                          value={osUserName}
+                          disabled={submitting}
+                          onChange={(event) => {
+                            clearSubmitError()
+                            setOsUserName(event.target.value)
+                          }}
+                        />
+                        <div className={clsx("text-[10px]", osUserNameInvalid ? "text-[var(--vscode-errorForeground)]" : "text-[var(--vscode-descriptionForeground)]")}>
+                          {osUserNameInvalid ? "Enter the OS user that should be used for the Managed SSH session." : "Required"}
+                        </div>
+                      </div>
 
-                      <DialogSelectField
-                        id="managedTargetCompartmentId"
-                        label="Compute instance compartment"
-                        value={managedTargetCompartmentId}
-                        disabled={submitting || targetCompartmentOptions.length === 0}
-                        note={managedCompartmentNote}
-                        onChange={(event) => {
-                          clearSubmitError()
-                          setManagedTargetCompartmentId(event.target.value)
-                          setManagedTargetResourceId("")
-                        }}
-                      >
-                        {targetCompartmentOptions.length === 0 ? (
-                          <option value="">No compartment available</option>
-                        ) : (
-                          targetCompartmentOptions.map((option) => (
-                            <option key={option.value} value={option.value}>{option.label}</option>
-                          ))
+                      <div className="flex flex-col gap-1">
+                        <ResourceDropdown
+                          id="managedTargetCompartmentId"
+                          label="Compute instance compartment"
+                          value={managedTargetCompartmentId}
+                          disabled={submitting || targetCompartmentOptions.length === 0}
+                          placeholder="Select compartment"
+                          options={targetCompartmentOptions.map((opt) => ({ value: opt.value, label: opt.label }))}
+                          onChange={(value) => {
+                            clearSubmitError()
+                            setManagedTargetCompartmentId(value)
+                            setManagedTargetResourceId("")
+                          }}
+                        />
+                        {managedCompartmentNote && (
+                          <div className="text-[10px] text-[var(--vscode-descriptionForeground)]">{managedCompartmentNote}</div>
                         )}
-                      </DialogSelectField>
+                      </div>
 
-                      <DialogSelectField
-                        id="managedTargetResourceId"
-                        label="Compute instance"
-                        value={managedTargetResourceId}
-                        disabled={submitting || managedInstanceOptions.length === 0}
-                        invalid={managedTargetInvalid}
-                        note={managedInstanceNote}
-                        noteTone={managedTargetInvalid ? "danger" : "muted"}
-                        onChange={(event) => {
-                          clearSubmitError()
-                          setManagedTargetResourceId(event.target.value)
-                        }}
-                      >
-                        <option value="">{targetsLoading ? "Loading instances..." : "Select an instance"}</option>
-                        {managedInstanceOptions.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </DialogSelectField>
+                      <div className="flex flex-col gap-1">
+                        <ResourceDropdown
+                          id="managedTargetResourceId"
+                          label="Compute instance"
+                          value={managedTargetResourceId}
+                          disabled={submitting || managedInstanceOptions.length === 0}
+                          invalid={managedTargetInvalid}
+                          loading={targetsLoading}
+                          placeholder={targetsLoading ? "Loading instances..." : "Select an instance"}
+                          options={managedInstanceOptions.map((opt) => ({ value: opt.value, label: opt.label }))}
+                          onChange={(value) => {
+                            clearSubmitError()
+                            setManagedTargetResourceId(value)
+                          }}
+                        />
+                        <div className={clsx("text-[10px]", managedTargetInvalid ? "text-[var(--vscode-errorForeground)]" : "text-[var(--vscode-descriptionForeground)]")}>
+                          {managedInstanceNote}
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -675,63 +721,74 @@ export default function CreateBastionSessionDialog({
                       Connect to the target host by using:
                     </div>
                     <div className="grid gap-1.5 md:grid-cols-2">
-                      <DialogRadioOption
-                        name="portForwardTargetType"
-                        checked={portForwardTargetType === "PRIVATE_IP"}
-                        disabled={submitting}
-                        onChange={() => {
-                          clearSubmitError()
-                          setPortForwardTargetType("PRIVATE_IP")
-                        }}
-                      >
+                      <label className="flex items-center gap-2 text-[12px] text-foreground">
+                        <input
+                          type="radio"
+                          name="portForwardTargetType"
+                          checked={portForwardTargetType === "PRIVATE_IP"}
+                          disabled={submitting}
+                          className="accent-[var(--vscode-focusBorder)]"
+                          onChange={() => {
+                            clearSubmitError()
+                            setPortForwardTargetType("PRIVATE_IP")
+                          }}
+                        />
                         IP address
-                      </DialogRadioOption>
-                      <DialogRadioOption
-                        name="portForwardTargetType"
-                        checked={portForwardTargetType === "COMPUTE_INSTANCE"}
-                        disabled={submitting}
-                        onChange={() => {
-                          clearSubmitError()
-                          setPortForwardTargetType("COMPUTE_INSTANCE")
-                        }}
-                      >
+                      </label>
+                      <label className="flex items-center gap-2 text-[12px] text-foreground">
+                        <input
+                          type="radio"
+                          name="portForwardTargetType"
+                          checked={portForwardTargetType === "COMPUTE_INSTANCE"}
+                          disabled={submitting}
+                          className="accent-[var(--vscode-focusBorder)]"
+                          onChange={() => {
+                            clearSubmitError()
+                            setPortForwardTargetType("COMPUTE_INSTANCE")
+                          }}
+                        />
                         Instance name
-                      </DialogRadioOption>
+                      </label>
                     </div>
                   </div>
 
                   {portForwardTargetType === "PRIVATE_IP" ? (
                     <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_140px]">
-                      <DialogTextField
-                        id="targetIp"
-                        label="IP address"
-                        placeholder="10.0.0.25"
-                        value={targetIp}
-                        disabled={submitting}
-                        invalid={targetIpInvalid}
-                        note={targetIpInvalid ? "Enter a valid IPv4 address." : "Required"}
-                        noteTone={targetIpInvalid ? "danger" : "muted"}
-                        noteAlign="end"
-                        onChange={(event) => {
-                          clearSubmitError()
-                          setTargetIp(event.target.value)
-                        }}
-                      />
-                      <DialogTextField
-                        id="targetPort"
-                        label="Port"
-                        placeholder="22"
-                        type="number"
-                        value={targetPort}
-                        disabled={submitting}
-                        invalid={targetPortInvalid}
-                        note={targetPortInvalid ? `Enter a whole port number between 1 and ${MAX_PORT_NUMBER}.` : ""}
-                        noteTone="danger"
-                        onChange={(event) => {
-                          clearSubmitError()
-                          setTargetPort(event.target.value)
-                        }}
-                      />
+                      <div className="flex flex-col gap-1">
+                        <Input
+                          id="targetIp"
+                          label="IP address"
+                          placeholder="10.0.0.25"
+                          value={targetIp}
+                          disabled={submitting}
+                          onChange={(event) => {
+                            clearSubmitError()
+                            setTargetIp(event.target.value)
+                          }}
+                        />
+                        <div className={clsx("text-[10px]", targetIpInvalid ? "text-[var(--vscode-errorForeground)]" : "text-[var(--vscode-descriptionForeground)]")}>
+                          {targetIpInvalid ? "Enter a valid IPv4 address." : "Required"}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <Input
+                          id="targetPort"
+                          label="Port"
+                          placeholder="22"
+                          type="number"
+                          value={targetPort}
+                          disabled={submitting}
+                          onChange={(event) => {
+                            clearSubmitError()
+                            setTargetPort(event.target.value)
+                          }}
+                        />
+                        {targetPortInvalid && (
+                          <div className="text-[10px] text-[var(--vscode-errorForeground)]">
+                            Enter a whole port number between 1 and {MAX_PORT_NUMBER}.
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <>
@@ -743,94 +800,103 @@ export default function CreateBastionSessionDialog({
 
                       {useManualPortForwardTarget ? (
                         <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_140px]">
-                          <DialogTextField
-                            id="portForwardTargetResourceIdManual"
-                            label="Target compute instance OCID"
-                            placeholder="ocid1.instance.oc1..."
-                            value={portForwardManualTargetResourceId}
-                            disabled={submitting}
-                            invalid={portForwardTargetInvalid}
-                            note={portForwardTargetInvalid ? "Enter the target compute instance OCID to continue." : "Use this only when the instance is not available in the dropdown."}
-                            noteTone={portForwardTargetInvalid ? "danger" : "muted"}
-                            onChange={(event) => {
-                              clearSubmitError()
-                              setPortForwardManualTargetResourceId(event.target.value)
-                            }}
-                          />
+                          <div className="flex flex-col gap-1">
+                            <Input
+                              id="portForwardTargetResourceIdManual"
+                              label="Target compute instance OCID"
+                              placeholder="ocid1.instance.oc1..."
+                              value={portForwardManualTargetResourceId}
+                              disabled={submitting}
+                              onChange={(event) => {
+                                clearSubmitError()
+                                setPortForwardManualTargetResourceId(event.target.value)
+                              }}
+                            />
+                            <div className={clsx("text-[10px]", portForwardTargetInvalid ? "text-[var(--vscode-errorForeground)]" : "text-[var(--vscode-descriptionForeground)]")}>
+                              {portForwardTargetInvalid ? "Enter the target compute instance OCID to continue." : "Use this only when the instance is not available in the dropdown."}
+                            </div>
+                          </div>
 
-                          <DialogTextField
-                            id="targetPort"
-                            label="Port"
-                            placeholder="22"
-                            type="number"
-                            value={targetPort}
-                            disabled={submitting}
-                            invalid={targetPortInvalid}
-                            note={targetPortInvalid ? `Enter a whole port number between 1 and ${MAX_PORT_NUMBER}.` : ""}
-                            noteTone="danger"
-                            onChange={(event) => {
-                              clearSubmitError()
-                              setTargetPort(event.target.value)
-                            }}
-                          />
+                          <div className="flex flex-col gap-1">
+                            <Input
+                              id="targetPort"
+                              label="Port"
+                              placeholder="22"
+                              type="number"
+                              value={targetPort}
+                              disabled={submitting}
+                              onChange={(event) => {
+                                clearSubmitError()
+                                setTargetPort(event.target.value)
+                              }}
+                            />
+                            {targetPortInvalid && (
+                              <div className="text-[10px] text-[var(--vscode-errorForeground)]">
+                                Enter a whole port number between 1 and {MAX_PORT_NUMBER}.
+                              </div>
+                            )}
+                          </div>
                         </div>
                       ) : (
                         <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_140px]">
-                          <DialogSelectField
-                            id="portForwardTargetCompartmentId"
-                            label="Compute instance compartment"
-                            value={portForwardTargetCompartmentId}
-                            disabled={submitting || targetCompartmentOptions.length === 0}
-                            note={targetCompartmentOptions.length === 0 ? "No compute compartments are available for this Bastion scope." : ""}
-                            onChange={(event) => {
-                              clearSubmitError()
-                              setPortForwardTargetCompartmentId(event.target.value)
-                              setPortForwardTargetResourceId("")
-                            }}
-                          >
-                            {targetCompartmentOptions.length === 0 ? (
-                              <option value="">No compartment available</option>
-                            ) : (
-                              targetCompartmentOptions.map((option) => (
-                                <option key={option.value} value={option.value}>{option.label}</option>
-                              ))
+                          <div className="flex flex-col gap-1">
+                            <ResourceDropdown
+                              id="portForwardTargetCompartmentId"
+                              label="Compute instance compartment"
+                              value={portForwardTargetCompartmentId}
+                              disabled={submitting || targetCompartmentOptions.length === 0}
+                              placeholder="Select compartment"
+                              options={targetCompartmentOptions.map((opt) => ({ value: opt.value, label: opt.label }))}
+                              onChange={(value) => {
+                                clearSubmitError()
+                                setPortForwardTargetCompartmentId(value)
+                                setPortForwardTargetResourceId("")
+                              }}
+                            />
+                            {portForwardCompartmentNote && (
+                              <div className="text-[10px] text-[var(--vscode-descriptionForeground)]">{portForwardCompartmentNote}</div>
                             )}
-                          </DialogSelectField>
+                          </div>
 
-                          <DialogSelectField
-                            id="portForwardTargetResourceId"
-                            label="Compute instance"
-                            value={portForwardTargetResourceId}
-                            disabled={submitting || portForwardInstanceOptions.length === 0}
-                            invalid={portForwardTargetInvalid}
-                            note={portForwardInstanceNote}
-                            noteTone={portForwardTargetInvalid ? "danger" : "muted"}
-                            onChange={(event) => {
-                              clearSubmitError()
-                              setPortForwardTargetResourceId(event.target.value)
-                            }}
-                          >
-                            <option value="">{targetsLoading ? "Loading instances..." : "Select an instance"}</option>
-                            {portForwardInstanceOptions.map((option) => (
-                              <option key={option.value} value={option.value}>{option.label}</option>
-                            ))}
-                          </DialogSelectField>
+                          <div className="flex flex-col gap-1">
+                            <ResourceDropdown
+                              id="portForwardTargetResourceId"
+                              label="Compute instance"
+                              value={portForwardTargetResourceId}
+                              disabled={submitting || portForwardInstanceOptions.length === 0}
+                              invalid={portForwardTargetInvalid}
+                              loading={targetsLoading}
+                              placeholder={targetsLoading ? "Loading instances..." : "Select an instance"}
+                              options={portForwardInstanceOptions.map((opt) => ({ value: opt.value, label: opt.label }))}
+                              onChange={(value) => {
+                                clearSubmitError()
+                                setPortForwardTargetResourceId(value)
+                              }}
+                            />
+                            <div className={clsx("text-[10px]", portForwardTargetInvalid ? "text-[var(--vscode-errorForeground)]" : "text-[var(--vscode-descriptionForeground)]")}>
+                              {portForwardInstanceNote}
+                            </div>
+                          </div>
 
-                          <DialogTextField
-                            id="targetPort"
-                            label="Port"
-                            placeholder="22"
-                            type="number"
-                            value={targetPort}
-                            disabled={submitting}
-                            invalid={targetPortInvalid}
-                            note={targetPortInvalid ? `Enter a whole port number between 1 and ${MAX_PORT_NUMBER}.` : ""}
-                            noteTone="danger"
-                            onChange={(event) => {
-                              clearSubmitError()
-                              setTargetPort(event.target.value)
-                            }}
-                          />
+                          <div className="flex flex-col gap-1">
+                            <Input
+                              id="targetPort"
+                              label="Port"
+                              placeholder="22"
+                              type="number"
+                              value={targetPort}
+                              disabled={submitting}
+                              onChange={(event) => {
+                                clearSubmitError()
+                                setTargetPort(event.target.value)
+                              }}
+                            />
+                            {targetPortInvalid && (
+                              <div className="text-[10px] text-[var(--vscode-errorForeground)]">
+                                Enter a whole port number between 1 and {MAX_PORT_NUMBER}.
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
 
@@ -869,109 +935,115 @@ export default function CreateBastionSessionDialog({
             </DialogSection>
 
             <DialogSection
-              title="SSH key"
-              subtitle="Use an existing public key file or paste the public key directly."
+              title="SSH key setup"
+              subtitle="Provide the SSH public key that you will use to authenticate with the bastion. The matching private key will be required to connect."
             >
-              <div className="grid gap-1.5 md:grid-cols-2">
-                <DialogRadioOption
-                  name="sshKeyMode"
-                  checked={sshKeyMode === "UPLOAD"}
-                  disabled={submitting}
-                  onChange={() => setSshKeyMode("UPLOAD")}
-                >
-                  Choose SSH key file
-                </DialogRadioOption>
-                <DialogRadioOption
-                  name="sshKeyMode"
-                  checked={sshKeyMode === "PASTE"}
-                  disabled={submitting}
-                  onChange={() => setSshKeyMode("PASTE")}
-                >
-                  Paste SSH key
-                </DialogRadioOption>
+              <div className="flex flex-col gap-2">
+                <div className="text-[11px] font-medium text-[var(--vscode-descriptionForeground)]">
+                  Select SSH key options:
+                </div>
+                <div className="flex flex-col gap-1.5 pl-1">
+                  <label className="flex items-center gap-2 text-[12px] text-foreground">
+                    <input
+                      type="radio"
+                      name="sshKeyMode"
+                      checked={sshKeyMode === "UPLOAD"}
+                      disabled={submitting}
+                      className="accent-[var(--vscode-focusBorder)]"
+                      onChange={() => {
+                        clearSubmitError()
+                        setSshKeyMode("UPLOAD")
+                      }}
+                    />
+                    Choose SSH key file
+                  </label>
+                  <label className="flex items-center gap-2 text-[12px] text-foreground">
+                    <input
+                      type="radio"
+                      name="sshKeyMode"
+                      checked={sshKeyMode === "PASTE"}
+                      disabled={submitting}
+                      className="accent-[var(--vscode-focusBorder)]"
+                      onChange={() => {
+                        clearSubmitError()
+                        setSshKeyMode("PASTE")
+                      }}
+                    />
+                    Paste SSH key
+                  </label>
+                </div>
+
+                <div className="mt-2 flex flex-col gap-1">
+                  {sshKeyMode === "UPLOAD" ? (
+                    <div className="flex flex-col gap-1">
+                      <div className="text-[12px] font-medium text-[var(--vscode-foreground)]">SSH key</div>
+                      <div
+                        onDrop={handleFileDrop}
+                        onDragOver={handleDragOver}
+                        className={clsx(
+                          "relative flex min-h-[100px] cursor-pointer flex-col items-center justify-center gap-2 rounded-[4px] border border-dashed border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface-subtle)] p-4 text-center transition-colors hover:border-[var(--vscode-focusBorder)] hover:bg-[var(--vscode-list-hoverBackground)]",
+                          publicKeyInvalid && "border-[var(--vscode-errorForeground)] bg-[color-mix(in_srgb,var(--vscode-errorForeground)_10%,var(--workbench-panel-surface-subtle))]"
+                        )}
+                        onClick={handleFileUpload}
+                      >
+                        <Upload size={24} className="text-[var(--vscode-descriptionForeground)]" />
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="text-[13px] font-semibold text-[var(--vscode-foreground)]">
+                            {publicKeyFileName ? publicKeyFileName : "Drop a file or select one"}
+                          </span>
+                          <span className="text-[11px] text-[var(--vscode-descriptionForeground)]">
+                            SSH public key (.pub) files only.
+                          </span>
+                        </div>
+                      </div>
+                      <div className={clsx("text-[10px]", publicKeyInvalid ? "text-[var(--vscode-errorForeground)]" : "text-[var(--vscode-descriptionForeground)]")}>
+                        {publicKeyInvalid ? "Add an SSH public key before creating the session." : "Required"}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-1">
+                      <Textarea
+                        id="publicKey"
+                        label="SSH public key (Manual entry)"
+                        placeholder="ssh-rsa AAAAB3NzaC1yc2E..."
+                        value={publicKey}
+                        className="font-mono text-[11px]"
+                        disabled={submitting}
+                        onChange={(event) => {
+                          clearSubmitError()
+                          setPublicKey(event.target.value)
+                        }}
+                      />
+                      <div className={clsx("text-[10px]", publicKeyInvalid ? "text-[var(--vscode-errorForeground)]" : "text-[var(--vscode-descriptionForeground)]")}>
+                        {publicKeyInvalid ? "Add an SSH public key before creating the session." : "Required"}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-
-              {sshKeyMode === "UPLOAD" ? (
-                <DialogSurface
-                  className={clsx(
-                    "flex flex-col gap-2 border",
-                    publicKeyInvalid && "border-[color-mix(in_srgb,var(--vscode-errorForeground)_65%,var(--vscode-panel-border)_35%)]",
-                  )}
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="text-[12px] font-medium text-[var(--vscode-foreground)]">
-                        {publicKeyFileName || "Choose an existing public key file"}
-                      </div>
-                      <div className="mt-0.5 text-[10px] leading-4 text-[var(--vscode-descriptionForeground)]">
-                        Upload a `.pub` file from your workstation.
-                      </div>
-                    </div>
-                    <Button type="button" variant="secondary" size="sm" onClick={handleFileUpload} disabled={submitting}>
-                      <Upload size={12} className="mr-1.5" />
-                      Choose File
-                    </Button>
+              <div className="grid gap-2 lg:grid-cols-[minmax(0,250px)_minmax(0,1fr)]">
+                <div className="flex flex-col gap-1">
+                  <Input
+                    id="sessionTtlInSeconds"
+                    label="Session time-to-live"
+                    placeholder="10800"
+                    type="number"
+                    value={sessionTtlInSeconds}
+                    disabled={submitting}
+                    onChange={(event) => {
+                      clearSubmitError()
+                      setSessionTtlInSeconds(event.target.value)
+                    }}
+                  />
+                  <div className={clsx("text-[10px]", sessionTtlInvalid ? "text-[var(--vscode-errorForeground)]" : "text-[var(--vscode-descriptionForeground)]")}>
+                    {sessionTtlInvalid ? `Enter a duration between 1 and 10800 seconds.` : `Seconds. Must be between 1 and 10800.`}
                   </div>
-                  {publicKey.trim() && (
-                    <div className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-2.5 py-2 text-[10px] leading-5 text-[var(--vscode-descriptionForeground)]">
-                      <div className="font-medium text-[var(--vscode-foreground)]">Loaded public key</div>
-                      <div className="mt-1 break-all">{truncateMiddle(publicKey.trim(), 180)}</div>
-                    </div>
-                  )}
-                  {publicKeyInvalid && (
-                    <div className="text-[10px] text-[var(--vscode-errorForeground)]">
-                      Choose a public key file before creating the session.
-                    </div>
-                  )}
-                </DialogSurface>
-              ) : (
-                <DialogTextAreaField
-                  id="publicKey"
-                  label="SSH public key"
-                  placeholder="ssh-rsa AAAAB3NzaC1..."
-                  value={publicKey}
-                  disabled={submitting}
-                  invalid={publicKeyInvalid}
-                  note={publicKeyInvalid
-                    ? "Paste a public key before creating the session."
-                    : "Paste the public key directly from your workstation."}
-                  noteTone={publicKeyInvalid ? "danger" : "muted"}
-                  onChange={(event) => {
-                    clearSubmitError()
-                    setPublicKeyFileName("")
-                    setPublicKey(event.target.value)
-                  }}
-                />
-              )}
-            </DialogSection>
-
-            <details className="rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)]">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-[12px] font-semibold text-[var(--vscode-foreground)]">
-                <span>Advanced options</span>
-                <ChevronDown size={14} className="text-[var(--vscode-icon-foreground)]" />
-              </summary>
-              <div className="grid gap-2 border-t border-[var(--vscode-panel-border)] p-3 md:grid-cols-[minmax(0,220px)_minmax(0,1fr)]">
-                <DialogTextField
-                  id="sessionTtlInSeconds"
-                  label="Session TTL (seconds)"
-                  placeholder="10800"
-                  type="number"
-                  value={sessionTtlInSeconds}
-                  disabled={submitting}
-                  invalid={sessionTtlInvalid}
-                  note={sessionTtlInvalid ? "Enter a positive whole number of seconds." : "Default is 10800 seconds (3 hours)."}
-                  noteTone={sessionTtlInvalid ? "danger" : "muted"}
-                  onChange={(event) => {
-                    clearSubmitError()
-                    setSessionTtlInSeconds(event.target.value)
-                  }}
-                />
-
+                </div>
                 <DialogSurface className="text-[11px] leading-5 text-[var(--vscode-descriptionForeground)]">
                   Use shorter lifetimes for ephemeral debugging access. The current default is 10800 seconds, which equals 3 hours.
                 </DialogSurface>
               </div>
-            </details>
+            </DialogSection>
           </div>
         </div>
 
@@ -1063,192 +1135,7 @@ function SelectedTargetSummary({ target }: { target: ComputeResource }) {
   )
 }
 
-function DialogFieldFrame({
-  label,
-  invalid = false,
-  disabled = false,
-  children,
-}: {
-  label: string
-  invalid?: boolean
-  disabled?: boolean
-  children: ReactNode
-}) {
-  return (
-    <div
-      className={clsx(
-        "flex min-h-[56px] w-full flex-col rounded-[2px] border bg-[var(--vscode-input-background)] px-2.5 py-2 transition-colors",
-        invalid
-          ? "border-[color-mix(in_srgb,var(--vscode-errorForeground)_65%,var(--vscode-panel-border)_35%)] bg-[color-mix(in_srgb,var(--vscode-errorForeground)_6%,var(--vscode-input-background)_94%)]"
-          : "border-[var(--vscode-panel-border)] focus-within:border-[var(--vscode-focusBorder)]",
-        disabled && "opacity-60",
-      )}
-    >
-      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--vscode-descriptionForeground)]">{label}</div>
-      {children}
-    </div>
-  )
-}
 
-function DialogTextField({
-  label,
-  invalid = false,
-  note,
-  noteTone = "muted",
-  noteAlign = "start",
-  className,
-  ...props
-}: InputHTMLAttributes<HTMLInputElement> & {
-  label: string
-  invalid?: boolean
-  note?: string
-  noteTone?: "muted" | "danger"
-  noteAlign?: "start" | "end"
-}) {
-  return (
-    <div className={clsx("w-full", className)}>
-      <DialogFieldFrame label={label} invalid={invalid} disabled={Boolean(props.disabled)}>
-        <input
-          {...props}
-          className="mt-1 w-full border-0 bg-transparent p-0 text-[13px] leading-5 text-[var(--vscode-foreground)] outline-none placeholder:text-[var(--vscode-input-placeholderForeground)]"
-        />
-      </DialogFieldFrame>
-      {note ? (
-        <div
-          className={clsx(
-            "mt-1 px-0.5 text-[10px] leading-4",
-            noteTone === "danger" ? "text-[var(--vscode-errorForeground)]" : "text-[var(--vscode-descriptionForeground)]",
-            noteAlign === "end" ? "text-right" : "text-left",
-          )}
-        >
-          {note}
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-function DialogTextAreaField({
-  label,
-  invalid = false,
-  note,
-  noteTone = "muted",
-  className,
-  ...props
-}: TextareaHTMLAttributes<HTMLTextAreaElement> & {
-  label: string
-  invalid?: boolean
-  note?: string
-  noteTone?: "muted" | "danger"
-}) {
-  return (
-    <div className={clsx("w-full", className)}>
-      <DialogFieldFrame label={label} invalid={invalid} disabled={Boolean(props.disabled)}>
-        <textarea
-          {...props}
-          className="mt-1.5 min-h-[120px] w-full resize-y border-0 bg-transparent p-0 text-[12px] leading-5 text-[var(--vscode-foreground)] outline-none placeholder:text-[var(--vscode-input-placeholderForeground)]"
-        />
-      </DialogFieldFrame>
-      {note ? (
-        <div className={clsx("mt-1 px-0.5 text-[10px] leading-4", noteTone === "danger" ? "text-[var(--vscode-errorForeground)]" : "text-[var(--vscode-descriptionForeground)]")}>
-          {note}
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-function DialogSelectField({
-  label,
-  invalid = false,
-  note,
-  noteTone = "muted",
-  className,
-  children,
-  ...props
-}: SelectHTMLAttributes<HTMLSelectElement> & {
-  label: string
-  invalid?: boolean
-  note?: string
-  noteTone?: "muted" | "danger"
-  children: ReactNode
-}) {
-  return (
-    <div className={clsx("w-full", className)}>
-      <DialogFieldFrame label={label} invalid={invalid} disabled={Boolean(props.disabled)}>
-        <div className="relative mt-1">
-          <select
-            {...props}
-            className="w-full appearance-none border-0 bg-transparent p-0 pr-6 text-[13px] leading-5 text-[var(--vscode-foreground)] outline-none"
-          >
-            {children}
-          </select>
-          <ChevronDown size={14} className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-[var(--vscode-icon-foreground)]" />
-        </div>
-      </DialogFieldFrame>
-      {note ? (
-        <div className={clsx("mt-1 px-0.5 text-[10px] leading-4", noteTone === "danger" ? "text-[var(--vscode-errorForeground)]" : "text-[var(--vscode-descriptionForeground)]")}>
-          {note}
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-function DialogRadioOption({
-  name,
-  checked,
-  onChange,
-  disabled = false,
-  helperText,
-  children,
-}: {
-  name: string
-  checked: boolean
-  onChange: () => void
-  disabled?: boolean
-  helperText?: string
-  children: ReactNode
-}) {
-  return (
-    <label
-      className={clsx(
-        "flex min-w-0 items-start gap-2 rounded-[2px] border px-2.5 py-2 transition-colors",
-        checked
-          ? "border-[var(--vscode-focusBorder)] bg-[var(--vscode-list-activeSelectionBackground)] text-[var(--vscode-list-activeSelectionForeground)]"
-          : "border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] text-[var(--vscode-foreground)]",
-        disabled
-          ? checked
-            ? "cursor-not-allowed opacity-70"
-            : "cursor-not-allowed border-dashed text-[var(--vscode-disabledForeground)]"
-          : "cursor-pointer hover:bg-[var(--vscode-list-hoverBackground)]",
-      )}
-    >
-      <input
-        type="radio"
-        name={name}
-        checked={checked}
-        disabled={disabled}
-        onChange={onChange}
-        className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--vscode-focusBorder)]"
-      />
-      <span className="min-w-0">
-        <span className="block text-[12px] font-medium leading-5">{children}</span>
-        {helperText ? (
-          <span
-            className={clsx(
-              "mt-0.5 block text-[10px] leading-4 opacity-80",
-              checked && !disabled ? "text-[inherit]" : "text-[var(--vscode-descriptionForeground)]",
-              disabled && "text-[var(--vscode-disabledForeground)]",
-            )}
-          >
-            {helperText}
-          </span>
-        ) : null}
-      </span>
-    </label>
-  )
-}
 
 function parseWholeNumber(value: string) {
   return Number(value.trim())
