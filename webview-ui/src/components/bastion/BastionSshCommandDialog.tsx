@@ -61,7 +61,10 @@ export default function BastionSshCommandDialog({
   )
   const hasInputErrors = preparedCommand.errors.length > 0
   const defaultLocalPort = getDefaultBastionLocalPort(session, commandTemplate)
-  const privateKeyPlaceholder = loadSshConfig().privateKeyPath.trim() || DEFAULT_BASTION_PRIVATE_KEY_PATH
+  const privateKeyPlaceholder = useMemo(
+    () => loadSshConfig().privateKeyPath.trim() || DEFAULT_BASTION_PRIVATE_KEY_PATH,
+    [open],
+  )
 
   if (!open) {
     return null

@@ -268,11 +268,15 @@ export default function BastionView() {
       setLoadingSessionCounts((previous) =>
         Object.fromEntries(Object.entries(previous).filter(([bastionId]) => validBastionIds.has(bastionId))),
       )
-      if (!selectedBastionId && nextBastions.length > 0) {
-        setSelectedBastionId(nextBastions[0].id)
-      } else if (selectedBastionId && !nextBastions.some((bastion) => bastion.id === selectedBastionId)) {
-        setSelectedBastionId(nextBastions[0]?.id ?? "")
-      }
+      setSelectedBastionId((currentSelectedId) => {
+        if (!currentSelectedId && nextBastions.length > 0) {
+          return nextBastions[0].id
+        }
+        if (currentSelectedId && !nextBastions.some((bastion) => bastion.id === currentSelectedId)) {
+          return nextBastions[0]?.id ?? ""
+        }
+        return currentSelectedId
+      })
     } catch (err) {
       if (bastionLoadRequestIdRef.current !== requestId) {
         return
@@ -283,7 +287,7 @@ export default function BastionView() {
         setLoading(false)
       }
     }
-  }, [selectedBastionId, selectedCompartmentIds])
+  }, [selectedCompartmentIds])
 
   const loadSessions = useCallback(async (bastionId: string, region?: string, options?: { silent?: boolean }) => {
     const silent = options?.silent ?? false

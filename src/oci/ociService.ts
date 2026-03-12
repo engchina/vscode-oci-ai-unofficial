@@ -1217,15 +1217,14 @@ export class OciService {
     }
     const regions = [...new Set(this.getActiveProfileRegions())];
 
-    const bastions: BastionResource[] = [];
-
-    for (const region of regions) {
+    const regionTasks = regions.map(async (region) => {
       const client = await this.factory.createBastionClientAsync(region);
-      for (const compartmentId of compartmentIds) {
+      const compartmentTasks = compartmentIds.map(async (compartmentId) => {
+        const regionCompartmentBastions: BastionResource[] = [];
         let page: string | undefined;
         do {
           const result = await client.listBastions({ compartmentId, page });
-          bastions.push(
+          regionCompartmentBastions.push(
             ...(result.items || [])
               .filter((bastionItem) => {
                 const lifecycleState = ((bastionItem as any)?.lifecycleState as string | undefined) || "";
@@ -1248,9 +1247,12 @@ export class OciService {
           );
           page = result.opcNextPage;
         } while (page);
-      }
-    }
+        return regionCompartmentBastions;
+      });
+      return (await Promise.all(compartmentTasks)).flat();
+    });
 
+    const bastions = (await Promise.all(regionTasks)).flat();
     return bastions.sort(compareNamedOciResources);
   }
 

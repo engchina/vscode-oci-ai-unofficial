@@ -49,7 +49,6 @@ import {
   WorkbenchActionButton,
   WorkbenchBackButton,
   WorkbenchCompactActionCluster,
-  WorkbenchDismissButton,
   WorkbenchRevealButton,
   WorkbenchSecondaryActionButton,
   WorkbenchSelectButton,
@@ -66,6 +65,7 @@ import {
 } from "../workbench/WorkbenchInventoryScaffold"
 import { backToLabel, openViewLabel, openWorkspaceLabel, showInListLabel } from "../workbench/navigationLabels"
 import { WorkbenchRefreshButton } from "../workbench/WorkbenchToolbar"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/Tabs"
 
 const SPEECH_REGION = "us-chicago-1"
 const SPEECH_REGION_LABEL = "US Midwest (Chicago)"
@@ -131,6 +131,8 @@ type RecentActionState =
   | null
 
 type SpeechViewMode = "inventory" | "job" | "workspace"
+type SpeechWorkspaceTab = "source" | "profile"
+type SpeechJobTab = "tasks" | "results" | "configuration"
 type SpeechBucketLoadResult = {
   applied: boolean
   buckets: ObjectStorageBucketResource[]
@@ -142,6 +144,12 @@ type SpeechResultPreviewState = {
   text: string
   truncated: boolean
 } | null
+
+type SpeechTaskResultMatch = {
+  objects: ObjectStorageObjectResource[]
+  json: ObjectStorageObjectResource | null
+  srt: ObjectStorageObjectResource | null
+}
 
 function buildInitialDraft(): SpeechJobDraft {
   return {
@@ -204,6 +212,8 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
   const [recentAction, setRecentAction] = useState<RecentActionState>(null)
   const [highlightedJobId, setHighlightedJobId] = useState<string | null>(null)
   const [showResultViewerWorkspace, setShowResultViewerWorkspace] = useState(false)
+  const [workspaceTab, setWorkspaceTab] = useState<SpeechWorkspaceTab>("source")
+  const [jobTab, setJobTab] = useState<SpeechJobTab>("tasks")
 
   const recentActionTimerRef = useRef<number | null>(null)
   const highlightTimerRef = useRef<number | null>(null)
@@ -296,24 +306,34 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
     [resultObjects, selectedJob],
   )
 
+  const taskResultMatches = useMemo(
+    () => buildSpeechTaskResultMatches(visibleTasks, resultObjects),
+    [resultObjects, visibleTasks],
+  )
+
   const selectedTaskResultObjects = useMemo(
-    () => getSpeechResultObjectsForTask(resultObjects, selectedTask),
-    [resultObjects, selectedTask],
+    () => selectedTask ? taskResultMatches.get(selectedTask.id)?.objects ?? [] : [],
+    [selectedTask, taskResultMatches],
+  )
+
+  const displayedResultObjects = useMemo(
+    () => selectedTask ? selectedTaskResultObjects : visibleResultObjects,
+    [selectedTask, selectedTaskResultObjects, visibleResultObjects],
   )
 
   const selectedTaskJsonResult = useMemo(
-    () => getPreferredSpeechTaskResultObject(selectedTask, resultObjects, "json"),
-    [resultObjects, selectedTask],
+    () => selectedTask ? taskResultMatches.get(selectedTask.id)?.json ?? null : null,
+    [selectedTask, taskResultMatches],
   )
 
   const selectedTaskSrtResult = useMemo(
-    () => getPreferredSpeechTaskResultObject(selectedTask, resultObjects, "srt"),
-    [resultObjects, selectedTask],
+    () => selectedTask ? taskResultMatches.get(selectedTask.id)?.srt ?? null : null,
+    [selectedTask, taskResultMatches],
   )
 
   const selectedResultObject = useMemo(
-    () => visibleResultObjects.find((item) => item.name === selectedResultObjectName) ?? null,
-    [selectedResultObjectName, visibleResultObjects],
+    () => displayedResultObjects.find((item) => item.name === selectedResultObjectName) ?? null,
+    [displayedResultObjects, selectedResultObjectName],
   )
 
   const filteredJobs = useMemo(() => {
@@ -537,6 +557,7 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
       setInputObjects([])
       setSelectedInputObjectDetails({})
       setObjectQuery("")
+      setDebouncedInputPrefix("")
       const initialDraft = buildInitialDraft()
       setDraft(initialDraft)
       setLoadingBuckets(false)
@@ -559,6 +580,7 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
         setInputObjects([])
         setSelectedInputObjectDetails({})
         setObjectQuery("")
+        setDebouncedInputPrefix("")
       }
       setDraft(nextDraft)
       return { applied: true, buckets: nextBuckets, draft: nextDraft }
@@ -832,16 +854,18 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
 
   useEffect(() => {
     setSelectedResultObjectName((currentSelectedName) => {
-      const candidateObjects = selectedTask ? selectedTaskResultObjects : visibleResultObjects
-      if (currentSelectedName && candidateObjects.some((item) => item.name === currentSelectedName)) {
+      if (currentSelectedName && displayedResultObjects.some((item) => item.name === currentSelectedName)) {
         return currentSelectedName
       }
-      return selectedTaskJsonResult?.name
-        ?? selectedTaskSrtResult?.name
-        ?? candidateObjects[0]?.name
-        ?? ""
+      if (selectedTask) {
+        return selectedTaskJsonResult?.name
+          ?? selectedTaskSrtResult?.name
+          ?? displayedResultObjects[0]?.name
+          ?? ""
+      }
+      return getDefaultResultObjectName(resultObjects, selectedJob)
     })
-  }, [selectedTask, selectedTaskJsonResult, selectedTaskResultObjects, selectedTaskSrtResult, visibleResultObjects])
+  }, [displayedResultObjects, resultObjects, selectedJob, selectedTask, selectedTaskJsonResult, selectedTaskSrtResult])
 
   useEffect(() => {
     if (isWorkspaceView) {
@@ -1050,6 +1074,24 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
   }, [highlightedJobId])
 
   useEffect(() => {
+    if (selectedJobId) {
+      setJobTab("tasks")
+    }
+  }, [selectedJobId])
+
+  useEffect(() => {
+    if (isJobView) {
+      setJobTab("tasks")
+    }
+  }, [isJobView])
+
+  useEffect(() => {
+    if (isWorkspaceView) {
+      setWorkspaceTab("source")
+    }
+  }, [isWorkspaceView])
+
+  useEffect(() => {
     if (isWorkspaceView) {
       setResource({
         view: "speechWorkspace",
@@ -1074,10 +1116,8 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
             variant: "secondary",
           },
           {
-            label: "Refresh Workspace",
-            run: () => {
-              refreshCurrentView()
-            },
+            label: openViewLabel("Object Storage"),
+            run: () => navigateToView("objectStorage"),
             variant: "ghost",
           },
         ],
@@ -1170,7 +1210,6 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
     openResultViewerWorkspace,
     closeResultViewerWorkspace,
     query,
-    refreshCurrentView,
     refreshSelectedJob,
     revealJob,
     selectedResultObject,
@@ -1190,17 +1229,16 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
     setInputPrefixes([])
     setInputObjects([])
     setSelectedInputObjectDetails({})
+    setDebouncedInputPrefix("")
     setDraft((currentDraft) => ({
       ...currentDraft,
       inputBucketKey: bucketKey,
       inputPrefix: "",
       selectedObjectNames: [],
       outputBucketKey:
-        currentDraft.outputMode === "same"
+        !currentDraft.outputBucketKey || currentDraft.outputBucketKey === currentDraft.inputBucketKey
           ? bucketKey
-          : currentDraft.outputBucketKey === currentDraft.inputBucketKey
-            ? bucketKey
-            : currentDraft.outputBucketKey,
+          : currentDraft.outputBucketKey,
     }))
     setObjectQuery("")
   }, [cancelInputObjectRequests])
@@ -1211,7 +1249,7 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
       outputMode,
       outputBucketKey: outputMode === "different"
         ? currentDraft.outputBucketKey || currentDraft.inputBucketKey
-        : currentDraft.inputBucketKey,
+        : currentDraft.outputBucketKey,
     }))
   }, [])
 
@@ -1411,12 +1449,12 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
       <FeaturePageLayout
         title={isWorkspaceView ? "Speech Workspace" : isJobView ? "Speech Job" : "Speech"}
         description={isWorkspaceView
-          ? "Compose OCI Speech transcription jobs in a dedicated workspace using supported media inputs."
+          ? "Configure OCI Speech transcription jobs with focused source, output, and model controls."
           : isJobView
             ? showResultViewerWorkspace
-              ? "Inspect a single OCI Speech job and review output files in a dedicated result viewer workspace."
-              : "Inspect a single OCI Speech job, monitor task status, and open result files in a dedicated viewer workspace."
-            : "Create Whisper-based transcription jobs against OCI Speech in Chicago."}
+              ? "Review previewable output artifacts for the selected Speech job."
+              : "Inspect task progress, outputs, and the effective configuration for the selected Speech job."
+            : "Create and monitor OCI Speech transcription jobs in Chicago."}
         icon={<AudioLines size={14} />}
         leading={isWorkspaceView || isJobView
           ? <WorkbenchBackButton type="button" label={backToLabel("Speech")} onClick={() => navigateToView("speech")} />
@@ -1437,22 +1475,24 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
             )}
           </WorkbenchCompactActionCluster>
         )}
-        controls={(
-          <div className={isInventoryView ? "grid gap-2 xl:grid-cols-[minmax(240px,320px)_minmax(0,1fr)]" : "grid gap-2"}>
-            <CompartmentSelector featureKey="speech" multiple />
-            {isInventoryView && (
+        controls={isInventoryView
+          ? (
+            <div className="grid gap-2 xl:grid-cols-[minmax(240px,320px)_minmax(0,1fr)]">
+              <CompartmentSelector featureKey="speech" multiple />
               <FeatureSearchInput
                 value={query}
                 onChange={setQuery}
                 placeholder="Search Speech jobs by name, OCID, or state..."
               />
-            )}
-          </div>
-        )}
+            </div>
+          )
+          : isWorkspaceView
+            ? <CompartmentSelector featureKey="speech" multiple />
+            : undefined}
         contentClassName="p-2"
       >
         {isWorkspaceView ? (
-          <section className="h-full min-h-0 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)]">
+          <section className="h-full min-h-0 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-shell)]">
             <div className="h-full overflow-y-auto p-2">
               <div className="flex min-h-full flex-col gap-2">
                 {recentAction && (
@@ -1497,13 +1537,13 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
                     onSelectOutputBucket: (value) => updateDraft({ outputBucketKey: value }),
                     onSelectPrefix: (value) => updateDraft({ inputPrefix: value }),
                     onToggleInputObject: toggleInputObject,
-                    onBack: () => navigateToView("speech"),
-                    onRefreshBuckets: refreshCurrentView,
                     onRefreshObjects: () => void loadInputObjects(selectedInputBucket, draft.inputPrefix),
                     onCreateJob: handleCreateJob,
                     creating,
                     createDisabled: createActionDisabled,
                     oversizedSelectedObjectName: selectedOversizedInputObject ? getLeafName(selectedOversizedInputObject.name) : null,
+                    workspaceTab,
+                    onWorkspaceTabChange: setWorkspaceTab,
                     navigateToView,
                   })
                 )}
@@ -1511,7 +1551,7 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
             </div>
           </section>
         ) : isJobView ? (
-          <section className="h-full min-h-0 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)]">
+          <section className="h-full min-h-0 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-shell)]">
             <div className="h-full overflow-y-auto p-2">
               <div className="flex min-h-full flex-col gap-2">
                 {recentAction && (
@@ -1535,9 +1575,10 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
                   selectedTaskId,
                   selectedTaskJsonResult,
                   selectedTaskSrtResult,
-                  selectedTaskResultObjects,
+                  displayedResultObjects,
+                  taskResultMatches,
                   taskQuery,
-                  resultObjects: visibleResultObjects,
+                  resultObjects,
                   selectedResultObject,
                   resultPreview,
                   loadingJobDetail,
@@ -1549,7 +1590,6 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
                   resultPreviewError,
                   downloadingResultObjectName,
                   showResultViewerWorkspace,
-                  onOpenWorkspace: () => navigateToView("speechWorkspace"),
                   onRefreshJob: () => refreshSelectedJob(selectedJobId, selectedJob),
                   onRevealJob: () => {
                     if (selectedJobId) {
@@ -1565,6 +1605,8 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
                   onDownloadResult: handleDownloadResult,
                   onCancelJob: requestCancelJob,
                   cancellingJobId,
+                  jobTab,
+                  onJobTabChange: setJobTab,
                   navigateToView,
                 })}
               </div>
@@ -1631,30 +1673,20 @@ function renderSpeechInventoryPage({
   jobItemRefs: MutableRefObject<Map<string, HTMLDivElement>>
   onOpenJob: (jobId: string) => void
 }) {
+  const filteredJobCount = groupedJobs.reduce((total, group) => total + group.jobs.length, 0)
+
   return (
-    <section className="h-full min-h-0 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)]">
+    <section className="h-full min-h-0 overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-shell)]">
       <div className="h-full overflow-y-auto p-2">
         <div className="flex min-h-full flex-col gap-2">
-          <InlineNotice tone="info" icon={<AudioLines size={14} />} title="Speech Region">
-            Speech transcription is intentionally pinned to <code>{SPEECH_REGION}</code>. Open a job to inspect its details and latest result files on a dedicated page.
-          </InlineNotice>
-
-          <div className="grid gap-2 md:grid-cols-3">
+          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(140px,0.32fr)_minmax(140px,0.32fr)]">
             <WorkbenchInventorySummary
-              label="Jobs"
-              count={String(jobs.length)}
-              description="Speech transcription jobs in the selected compartments."
+              label="Speech inventory"
+              count={filteredJobCount === jobs.length ? `${jobs.length} jobs` : `${filteredJobCount} of ${jobs.length} jobs`}
+              description="Select a job to inspect task progress and open output files."
             />
-            <WorkbenchInventorySummary
-              label="Buckets"
-              count={String(speechBuckets.length)}
-              description="Object Storage buckets available in Chicago for Speech inputs and outputs."
-            />
-            <WorkbenchInventorySummary
-              label="Compartments"
-              count={String(selectedCompartmentIds.length)}
-              description="Compartment scope currently driving the Speech inventory."
-            />
+            <SummaryMetaCard label="Buckets" value={String(speechBuckets.length)} />
+            <SummaryMetaCard label="Compartments" value={String(selectedCompartmentIds.length)} />
           </div>
 
           {recentAction && (
@@ -1680,7 +1712,7 @@ function renderSpeechInventoryPage({
           ) : groupedJobs.length === 0 ? (
             <WorkbenchInventoryFilterEmpty
               message={jobs.length === 0
-                ? "No Speech jobs found yet. Open the dedicated workspace to create your first transcription job."
+                ? "No Speech jobs found yet. Open the workspace to create the first transcription job."
                 : "No Speech jobs match the current filter."}
             />
           ) : (
@@ -1754,13 +1786,13 @@ function renderCreateWorkspace({
   onSelectOutputBucket,
   onSelectPrefix,
   onToggleInputObject,
-  onBack,
-  onRefreshBuckets,
   onRefreshObjects,
   onCreateJob,
   creating,
   createDisabled,
   oversizedSelectedObjectName,
+  workspaceTab,
+  onWorkspaceTabChange,
   navigateToView,
 }: {
   draft: SpeechJobDraft
@@ -1785,15 +1817,20 @@ function renderCreateWorkspace({
   onSelectOutputBucket: (value: string) => void
   onSelectPrefix: (value: string) => void
   onToggleInputObject: (objectName: string) => void
-  onBack: () => void
-  onRefreshBuckets: () => void
   onRefreshObjects: () => void
   onCreateJob: () => void
   creating: boolean
   createDisabled: boolean
   oversizedSelectedObjectName: string | null
+  workspaceTab: SpeechWorkspaceTab
+  onWorkspaceTabChange: (value: SpeechWorkspaceTab) => void
   navigateToView: (view: "objectStorage" | "speech" | "speechWorkspace") => void
 }) {
+  const selectedObjectPreview = draft.selectedObjectNames.slice(0, 6)
+  const hiddenSelectedPreviewCount = Math.max(0, draft.selectedObjectNames.length - selectedObjectPreview.length)
+  const promptLength = draft.whisperPrompt.trim().length
+  const hasPromptError = promptLength > MAX_WHISPER_PROMPT_LENGTH
+
   return (
     <div className="flex min-h-full flex-col gap-2">
       <WorkbenchHero
@@ -1809,345 +1846,374 @@ function renderCreateWorkspace({
         ]}
       />
 
-      <InlineNotice
-        tone="info"
-        icon={<Sparkles size={14} />}
-        title="Speech Job Scope"
-        actions={(
-          <>
-            <WorkbenchActionButton type="button" variant="ghost" onClick={onRefreshBuckets}>
-              Refresh Workspace
-            </WorkbenchActionButton>
-            <WorkbenchActionButton type="button" variant="ghost" onClick={() => navigateToView("objectStorage")}>
-              {openViewLabel("Object Storage")}
-            </WorkbenchActionButton>
-          </>
-        )}
+      <Tabs
+        value={workspaceTab}
+        onValueChange={(value) => onWorkspaceTabChange(value as SpeechWorkspaceTab)}
+        className="min-h-0 flex-1"
       >
-        The transcription job is always created in <code>{SPEECH_REGION}</code>. The job compartment follows the selected input bucket's compartment.
-      </InlineNotice>
+        <TabsList>
+          <TabsTrigger value="source">Source Setup</TabsTrigger>
+          <TabsTrigger value="profile">Output &amp; Profile</TabsTrigger>
+        </TabsList>
 
-      <InlineNotice tone="info" icon={<FileAudio size={14} />} title="Supported Media Types">
-        Only OCI Speech-supported objects are listed here. The current workspace shows files ending in {SPEECH_SUPPORTED_FORMATS_TEXT}.
-      </InlineNotice>
-
-      <WorkbenchSection
-        title="Job Identity"
-        subtitle="Keep the job name descriptive enough to find it quickly in the inventory."
-        actions={<WorkbenchBackButton type="button" label={backToLabel("Speech")} onClick={onBack} />}
-      >
-        <Input
-          label="Display Name"
-          value={draft.displayName}
-          onChange={(event) => updateDraft({ displayName: event.target.value })}
-          placeholder="speech-customer-call-20260311"
-          aria-invalid={Boolean(displayNameValidationError)}
-          className={clsx(displayNameValidationError && "border-[var(--vscode-errorForeground)]")}
-        />
-        <div className={clsx("text-[11px]", displayNameValidationError ? "text-[var(--vscode-errorForeground)]" : "text-description")}>
-          {displayNameValidationError || (
-            <>
-              Use only letters, numbers, dashes, or underscores. Leave blank to auto-generate <code>{suggestedDisplayName}</code>.
-            </>
-          )}
-          {displayNameValidationError && (
-            <>
-              {" "}Try <code>{sanitizedManualDisplayName || suggestedDisplayName}</code>.
-            </>
-          )}
-        </div>
-        <Textarea
-          label="Description"
-          value={draft.description}
-          onChange={(event) => updateDraft({ description: event.target.value })}
-          placeholder="Optional context about the meeting, call, or batch."
-          className="min-h-[88px]"
-        />
-      </WorkbenchSection>
-
-      <WorkbenchSection
-        title="Input Files"
-        subtitle={`Choose a Chicago bucket, navigate to a prefix if needed, then select up to ${MAX_SPEECH_OBJECTS_PER_JOB} audio objects to transcribe.`}
-        actions={(
-          <WorkbenchCompactActionCluster>
-            <WorkbenchRefreshButton onClick={onRefreshObjects} disabled={!selectedInputBucket || loadingObjects} spinning={loadingObjects} />
-          </WorkbenchCompactActionCluster>
-        )}
-      >
-        <div className="grid gap-2 lg:grid-cols-[minmax(0,0.48fr)_minmax(0,0.52fr)]">
-          <WorkbenchSurface className="space-y-2">
-            <Select
-              label="Input Bucket"
-              value={draft.inputBucketKey}
-              onChange={(event) => {
-                const value = event.target.value
-                updateDraft({
-                  inputBucketKey: value,
-                  inputPrefix: "",
-                  selectedObjectNames: [],
-                  outputBucketKey: draft.outputMode === "same" ? value : draft.outputBucketKey,
-                })
-              }}
-              disabled={loadingBuckets}
-              options={speechBuckets.map((bucket) => ({
-                value: getBucketKey(bucket),
-                label: bucket.name,
-                description: `${bucket.namespaceName} • ${bucket.compartmentId}`,
-              }))}
-              placeholder={loadingBuckets ? "Loading buckets..." : "Select a bucket"}
-            />
-
+        <TabsContent value="source" className="flex min-h-0 flex-1 flex-col gap-2 pt-1.5">
+          <WorkbenchSection
+            title="Job Identity"
+            subtitle="Keep the name recognizable in the Speech inventory. Leave it blank to auto-generate one."
+          >
             <Input
-              label="Prefix"
-              value={draft.inputPrefix}
-              onChange={(event) => updateDraft({ inputPrefix: event.target.value })}
-              placeholder="Optional folder prefix, e.g. calls/2026/03/"
+              label="Display Name"
+              value={draft.displayName}
+              onChange={(event) => updateDraft({ displayName: event.target.value })}
+              placeholder="speech-customer-call-20260311"
+              aria-invalid={Boolean(displayNameValidationError)}
+              className={clsx(displayNameValidationError && "border-[var(--vscode-errorForeground)]")}
             />
-
-            <FeatureSearchInput
-              value={objectQuery}
-              onChange={onObjectQueryChange}
-              placeholder="Filter objects in the current prefix..."
-            />
-
-            <div className="flex flex-wrap gap-1">
-              <WorkbenchMicroOptionButton onClick={() => onSelectPrefix("")} title="Jump to bucket root">
-                Root
-              </WorkbenchMicroOptionButton>
-              {draft.inputPrefix && (
-                <WorkbenchMicroOptionButton
-                  onClick={() => onSelectPrefix(getParentPrefix(draft.inputPrefix))}
-                  title="Go to the parent prefix"
-                >
-                  Up
-                </WorkbenchMicroOptionButton>
+            <div className={clsx("text-[11px]", displayNameValidationError ? "text-[var(--vscode-errorForeground)]" : "text-description")}>
+              {displayNameValidationError || (
+                <>
+                  Use only letters, numbers, dashes, or underscores. Auto-generated jobs use <code>{suggestedDisplayName}</code>.
+                </>
               )}
-              {inputPrefixes.map((prefix) => (
-                <WorkbenchMicroOptionButton key={prefix} onClick={() => onSelectPrefix(prefix)} title={prefix}>
-                  {trimTrailingSlash(getLeafName(prefix))}
-                </WorkbenchMicroOptionButton>
-              ))}
-            </div>
-          </WorkbenchSurface>
-
-          <WorkbenchSurface className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <div className="text-[12px] font-medium text-foreground">Audio Objects</div>
-                <div className="text-[11px] text-description">
-                  {draft.selectedObjectNames.length} selected from {selectedInputBucket?.name || "no bucket"}
-                </div>
-              </div>
-              {loadingObjects && (
-                <div className="inline-flex items-center gap-1 text-[11px] text-description">
-                  <Loader2 size={12} className="animate-spin" />
-                  Loading...
-                </div>
+              {displayNameValidationError && (
+                <>
+                  {" "}Try <code>{sanitizedManualDisplayName || suggestedDisplayName}</code>.
+                </>
               )}
             </div>
+            <Textarea
+              label="Description"
+              value={draft.description}
+              onChange={(event) => updateDraft({ description: event.target.value })}
+              placeholder="Optional context about the meeting, call, or batch."
+              className="min-h-[88px]"
+            />
+          </WorkbenchSection>
 
-            {hiddenSelectedObjectCount > 0 && (
-              <InlineNotice
-                tone="info"
-                actions={(
-                  <WorkbenchSecondaryActionButton type="button" variant="secondary" onClick={() => onObjectQueryChange("")}>
-                    Clear Filter
-                  </WorkbenchSecondaryActionButton>
+          <WorkbenchSection
+            title="Input Files"
+            subtitle={`Choose a Chicago bucket, narrow by prefix when needed, and select up to ${MAX_SPEECH_OBJECTS_PER_JOB} supported audio files.`}
+            actions={(
+              <WorkbenchCompactActionCluster>
+                <WorkbenchSecondaryActionButton type="button" variant="secondary" onClick={() => navigateToView("objectStorage")}>
+                  {openViewLabel("Object Storage")}
+                </WorkbenchSecondaryActionButton>
+                <WorkbenchRefreshButton onClick={onRefreshObjects} disabled={!selectedInputBucket || loadingObjects} spinning={loadingObjects} />
+              </WorkbenchCompactActionCluster>
+            )}
+          >
+            <div className="grid gap-2 xl:grid-cols-[minmax(240px,0.72fr)_minmax(0,1.28fr)]">
+              <WorkbenchSurface className="space-y-2">
+                <Select
+                  label="Input Bucket"
+                  value={draft.inputBucketKey}
+                  onChange={(event) => onInputBucketChange(event.target.value)}
+                  disabled={loadingBuckets}
+                  options={speechBuckets.map((bucket) => ({
+                    value: getBucketKey(bucket),
+                    label: bucket.name,
+                    description: `${bucket.namespaceName} • ${bucket.compartmentId}`,
+                  }))}
+                  placeholder={loadingBuckets ? "Loading buckets..." : "Select a bucket"}
+                />
+
+                <Input
+                  label="Prefix"
+                  value={draft.inputPrefix}
+                  onChange={(event) => updateDraft({ inputPrefix: event.target.value })}
+                  placeholder="Optional folder prefix, e.g. calls/2026/03/"
+                />
+
+                <FeatureSearchInput
+                  value={objectQuery}
+                  onChange={onObjectQueryChange}
+                  placeholder="Filter objects in the current prefix..."
+                />
+
+                <div className="flex flex-wrap gap-1">
+                  <WorkbenchMicroOptionButton onClick={() => onSelectPrefix("")} title="Jump to bucket root">
+                    Root
+                  </WorkbenchMicroOptionButton>
+                  {draft.inputPrefix && (
+                    <WorkbenchMicroOptionButton
+                      onClick={() => onSelectPrefix(getParentPrefix(draft.inputPrefix))}
+                      title="Go to the parent prefix"
+                    >
+                      Up
+                    </WorkbenchMicroOptionButton>
+                  )}
+                  {inputPrefixes.map((prefix) => (
+                    <WorkbenchMicroOptionButton key={prefix} onClick={() => onSelectPrefix(prefix)} title={prefix}>
+                      {trimTrailingSlash(getLeafName(prefix))}
+                    </WorkbenchMicroOptionButton>
+                  ))}
+                </div>
+
+                <div className="text-[11px] leading-5 text-description">
+                  Supported media: {SPEECH_SUPPORTED_FORMATS_TEXT}
+                </div>
+              </WorkbenchSurface>
+
+              <WorkbenchSurface className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-[12px] font-medium text-foreground">Audio Objects</div>
+                    <div className="text-[11px] text-description">
+                      {draft.selectedObjectNames.length} selected from {selectedInputBucket?.name || "no bucket"}
+                    </div>
+                  </div>
+                  {loadingObjects && (
+                    <div className="inline-flex items-center gap-1 text-[11px] text-description">
+                      <Loader2 size={12} className="animate-spin" />
+                      Loading...
+                    </div>
+                  )}
+                </div>
+
+                {hiddenSelectedObjectCount > 0 && (
+                  <InlineNotice
+                    tone="info"
+                    actions={(
+                      <WorkbenchSecondaryActionButton type="button" variant="secondary" onClick={() => onObjectQueryChange("")}>
+                        Clear Filter
+                      </WorkbenchSecondaryActionButton>
+                    )}
+                  >
+                    {hiddenSelectedObjectCount} selected object{hiddenSelectedObjectCount === 1 ? "" : "s"} hidden by the current prefix or filter.
+                  </InlineNotice>
                 )}
-              >
-                {hiddenSelectedObjectCount} selected object{hiddenSelectedObjectCount === 1 ? "" : "s"} hidden by the current prefix or filter.
-              </InlineNotice>
-            )}
 
-            {hasUnavailableSelectedObjects && (
-              <InlineNotice tone="warning" title="Selection Needs Refresh">
-                Some previously selected objects are no longer available in the current object list. Refresh the objects and reselect the files before creating a job.
-              </InlineNotice>
-            )}
+                {hasUnavailableSelectedObjects && (
+                  <InlineNotice tone="warning" title="Selection Needs Refresh">
+                    Some previously selected objects are no longer available. Refresh the bucket objects and reselect the files before creating the job.
+                  </InlineNotice>
+                )}
 
-            {draft.selectedObjectNames.length > MAX_SPEECH_OBJECTS_PER_JOB && (
-              <InlineNotice tone="warning" title="Too Many Input Files">
-                OCI Speech accepts up to {MAX_SPEECH_OBJECTS_PER_JOB} files per job. Deselect some files before creating the job.
-              </InlineNotice>
-            )}
+                {draft.selectedObjectNames.length > MAX_SPEECH_OBJECTS_PER_JOB && (
+                  <InlineNotice tone="warning" title="Too Many Input Files">
+                    OCI Speech accepts up to {MAX_SPEECH_OBJECTS_PER_JOB} files per job.
+                  </InlineNotice>
+                )}
 
-            {oversizedSelectedObjectName && (
-              <InlineNotice tone="warning" title="Selected File Too Large">
-                {oversizedSelectedObjectName} exceeds the 2 GB per-file Speech limit.
-              </InlineNotice>
-            )}
+                {oversizedSelectedObjectName && (
+                  <InlineNotice tone="warning" title="Selected File Too Large">
+                    {oversizedSelectedObjectName} exceeds the 2 GB per-file Speech limit.
+                  </InlineNotice>
+                )}
 
-            {!selectedInputBucket ? (
-              <WorkbenchEmptyState
-                icon={<FileAudio size={18} />}
-                title="No Input Bucket Selected"
-                description="Pick a Speech input bucket to browse audio objects in Chicago."
+                {!selectedInputBucket ? (
+                  <WorkbenchEmptyState
+                    icon={<FileAudio size={18} />}
+                    title="No Input Bucket Selected"
+                    description="Pick a Speech input bucket to browse audio objects in Chicago."
+                  />
+                ) : loadingObjects ? (
+                  <WorkbenchLoadingState label="Loading bucket objects..." />
+                ) : availableInputObjectCount === 0 ? (
+                  <WorkbenchEmptyState
+                    icon={<FileAudio size={18} />}
+                    title="No Supported Objects Under This Prefix"
+                    description="Adjust the prefix, pick another bucket, or upload supported media files to Object Storage first."
+                  />
+                ) : inputObjects.length === 0 ? (
+                  <WorkbenchEmptyState
+                    icon={<FileAudio size={18} />}
+                    title="No Objects Match This Filter"
+                    description="Clear the object filter or change the prefix to see other supported media files."
+                  />
+                ) : (
+                  <div className="space-y-1.5">
+                    {inputObjects.map((item) => {
+                      const selected = draft.selectedObjectNames.includes(item.name)
+                      return (
+                        <WorkbenchActionInventoryCard
+                          key={item.name}
+                          title={getLeafName(item.name)}
+                          subtitle={item.name}
+                          selected={selected}
+                          trailing={<StatusBadge label={selected ? "Selected" : "Ready"} tone={selected ? "success" : "neutral"} size="compact" />}
+                          meta={(
+                            <div className="flex flex-wrap gap-2 text-[10px] text-description">
+                              <span>{formatBytes(item.size)}</span>
+                              <span>{formatDateTime(item.timeModified || item.timeCreated)}</span>
+                            </div>
+                          )}
+                          actions={(
+                            <WorkbenchSelectButton type="button" selected={selected} onClick={() => onToggleInputObject(item.name)} />
+                          )}
+                          onSelect={() => onToggleInputObject(item.name)}
+                        />
+                      )
+                    })}
+                  </div>
+                )}
+              </WorkbenchSurface>
+            </div>
+          </WorkbenchSection>
+        </TabsContent>
+
+        <TabsContent value="profile" className="flex min-h-0 flex-1 flex-col gap-2 pt-1.5">
+          <WorkbenchSection
+            title="Output"
+            subtitle="JSON output is always produced. Enable SRT if subtitle output is also required."
+          >
+            <WorkbenchSegmentedControl<OutputMode>
+              value={draft.outputMode}
+              onChange={onOutputModeChange}
+              items={[
+                { value: "same", label: "Use Input Bucket" },
+                { value: "different", label: "Choose Another Bucket" },
+              ]}
+            />
+
+            <div className="grid gap-2 lg:grid-cols-2">
+              <Select
+                label={draft.outputMode === "same" ? "Effective Output Bucket" : "Output Bucket"}
+                value={draft.outputMode === "same" ? draft.inputBucketKey : draft.outputBucketKey}
+                onChange={(event) => onSelectOutputBucket(event.target.value)}
+                disabled={draft.outputMode === "same" || loadingBuckets}
+                options={speechBuckets.map((bucket) => ({
+                  value: getBucketKey(bucket),
+                  label: bucket.name,
+                  description: `${bucket.namespaceName} • ${bucket.compartmentId}`,
+                }))}
+                placeholder={loadingBuckets ? "Loading buckets..." : "Select a bucket"}
               />
-            ) : loadingObjects ? (
-              <WorkbenchLoadingState label="Loading bucket objects..." />
-            ) : availableInputObjectCount === 0 ? (
-              <WorkbenchEmptyState
-                icon={<FileAudio size={18} />}
-                title="No Supported Objects Under This Prefix"
-                description="Adjust the prefix, pick another bucket, or upload OCI Speech-supported media files to Object Storage first."
+
+              <Input
+                label="Output Prefix"
+                value={draft.outputPrefix}
+                onChange={(event) => updateDraft({ outputPrefix: event.target.value })}
+                placeholder="speech-output/"
               />
-            ) : inputObjects.length === 0 ? (
-              <WorkbenchEmptyState
-                icon={<FileAudio size={18} />}
-                title="No Objects Match This Filter"
-                description="Clear the object filter or change the prefix to see other supported media files."
+            </div>
+          </WorkbenchSection>
+
+          <WorkbenchSection
+            title="Transcription Profile"
+            subtitle="Keep the profile focused on the language, model, and output options that affect the resulting transcript."
+          >
+            <div className="grid gap-2 lg:grid-cols-2">
+              <Select
+                label="Transcription Model"
+                value={draft.modelType}
+                onChange={(event) =>
+                  updateDraft({
+                    modelType: event.target.value as SpeechTranscriptionModelType,
+                  })}
+                options={MODEL_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                  description: option.description,
+                }))}
               />
-            ) : (
-              <div className="space-y-1.5">
-                {inputObjects.map((item) => {
-                  const selected = draft.selectedObjectNames.includes(item.name)
-                  return (
-                    <WorkbenchActionInventoryCard
-                      key={item.name}
-                      title={getLeafName(item.name)}
-                      subtitle={item.name}
-                      selected={selected}
-                      trailing={<StatusBadge label={selected ? "Selected" : "Ready"} tone={selected ? "success" : "neutral"} size="compact" />}
-                      meta={(
-                        <div className="flex flex-wrap gap-2 text-[10px] text-description">
-                          <span>{formatBytes(item.size)}</span>
-                          <span>{formatDateTime(item.timeModified || item.timeCreated)}</span>
-                        </div>
-                      )}
-                      actions={(
-                        <WorkbenchSelectButton type="button" selected={selected} onClick={() => onToggleInputObject(item.name)} />
-                      )}
-                      onSelect={() => onToggleInputObject(item.name)}
-                    />
-                  )
-                })}
-              </div>
-            )}
+
+              <Select
+                label="Language"
+                value={draft.languageCode}
+                onChange={(event) => updateDraft({ languageCode: event.target.value as SpeechTranscriptionLanguageCode })}
+                options={LANGUAGE_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                }))}
+              />
+            </div>
+
+            <div className="grid gap-2 lg:grid-cols-2">
+              <Toggle
+                checked={draft.includeSrt}
+                onChange={(checked) => updateDraft({ includeSrt: checked })}
+                label="Generate SRT"
+                description="Add subtitle output alongside the default JSON transcription."
+              />
+              <Toggle
+                checked
+                onChange={() => undefined}
+                label="Enable Punctuation"
+                description="Pinned on for the supported Whisper models in this workspace."
+                disabled
+              />
+              <Toggle
+                checked={draft.enableDiarization}
+                onChange={(checked) => updateDraft({ enableDiarization: checked })}
+                label="Enable Diarization"
+                description="Add speaker tags when multiple voices are present."
+              />
+              <Toggle
+                checked={draft.enableProfanityFilter}
+                onChange={(checked) => updateDraft({ enableProfanityFilter: checked })}
+                label="Mask Profanity"
+                description="Apply the official profanity filter using MASK mode."
+              />
+            </div>
+
+            <Textarea
+              label="Whisper Prompt"
+              value={draft.whisperPrompt}
+              onChange={(event) => updateDraft({ whisperPrompt: event.target.value })}
+              placeholder="Optional context to bias recognition for names, products, or domain-specific terms."
+              className="min-h-[100px]"
+            />
+            <div className="text-[11px] text-description">
+              <span className={clsx(hasPromptError && "text-[var(--vscode-errorForeground)]")}>
+                {promptLength} / {MAX_WHISPER_PROMPT_LENGTH} characters
+              </span>
+            </div>
+          </WorkbenchSection>
+        </TabsContent>
+      </Tabs>
+
+      <WorkbenchSection
+        title="Create Speech Job"
+        subtitle={`Jobs are created in ${SPEECH_REGION_LABEL}. The job compartment follows the selected input bucket.`}
+        className="shrink-0"
+      >
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+          <SummaryMetaCard label="Files" value={formatCount(draft.selectedObjectNames.length)} />
+          <SummaryMetaCard label="Input" value={selectedInputBucket?.name || "Not set"} />
+          <SummaryMetaCard label="Output" value={selectedOutputBucket?.name || "Not set"} />
+          <SummaryMetaCard label="Profile" value={`${getModelLabel(draft.modelType)} • ${getLanguageLabel(draft.languageCode)}`} />
+        </div>
+
+        {selectedObjectPreview.length > 0 && (
+          <WorkbenchSurface className="space-y-1.5">
+            <div className="text-[12px] font-medium text-foreground">Selected Files</div>
+            <div className="flex flex-wrap gap-1.5">
+              {selectedObjectPreview.map((objectName) => (
+                <span key={objectName} className="rounded-full border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface)] px-2 py-0.5 text-[10px] text-description">
+                  {getLeafName(objectName)}
+                </span>
+              ))}
+              {hiddenSelectedPreviewCount > 0 && (
+                <span className="rounded-full border border-dashed border-[var(--vscode-panel-border)] px-2 py-0.5 text-[10px] text-description">
+                  +{hiddenSelectedPreviewCount} more
+                </span>
+              )}
+            </div>
           </WorkbenchSurface>
+        )}
+
+        {hasPromptError && (
+          <InlineNotice tone="warning" title="Prompt Too Long">
+            Whisper prompt must be {MAX_WHISPER_PROMPT_LENGTH} characters or fewer.
+          </InlineNotice>
+        )}
+
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-[11px] leading-5 text-description">
+            Review the current draft, then create the job when the source files and profile are ready.
+          </div>
+          <WorkbenchSubmitButton
+            type="button"
+            variant="secondary"
+            disabled={createDisabled}
+            onClick={onCreateJob}
+          >
+            {creating ? <Loader2 size={12} className="animate-spin" /> : <ListChecks size={12} />}
+            Create Speech Job
+          </WorkbenchSubmitButton>
         </div>
       </WorkbenchSection>
-
-      <WorkbenchSection
-        title="Output"
-        subtitle="JSON output is always produced. Enable SRT below if you also want subtitle output."
-      >
-        <WorkbenchSegmentedControl<OutputMode>
-          value={draft.outputMode}
-          onChange={onOutputModeChange}
-          items={[
-            { value: "same", label: "Use Input Bucket" },
-            { value: "different", label: "Choose Another Bucket" },
-          ]}
-        />
-
-        <div className="grid gap-2 lg:grid-cols-2">
-          <Select
-            label={draft.outputMode === "same" ? "Effective Output Bucket" : "Output Bucket"}
-            value={draft.outputMode === "same" ? draft.inputBucketKey : draft.outputBucketKey}
-            onChange={(event) => onSelectOutputBucket(event.target.value)}
-            disabled={draft.outputMode === "same" || loadingBuckets}
-            options={speechBuckets.map((bucket) => ({
-              value: getBucketKey(bucket),
-              label: bucket.name,
-              description: `${bucket.namespaceName} • ${bucket.compartmentId}`,
-            }))}
-            placeholder={loadingBuckets ? "Loading buckets..." : "Select a bucket"}
-          />
-
-          <Input
-            label="Output Prefix"
-            value={draft.outputPrefix}
-            onChange={(event) => updateDraft({ outputPrefix: event.target.value })}
-            placeholder="speech-output/"
-          />
-        </div>
-      </WorkbenchSection>
-
-      <WorkbenchSection
-        title="Transcription Profile"
-        subtitle="This version intentionally exposes only the requested language and model combinations."
-      >
-        <div className="grid gap-2 lg:grid-cols-2">
-          <Select
-            label="Transcription Model"
-            value={draft.modelType}
-            onChange={(event) =>
-              updateDraft({
-                modelType: event.target.value as SpeechTranscriptionModelType,
-              })
-            }
-            options={MODEL_OPTIONS.map((option) => ({
-              value: option.value,
-              label: option.label,
-              description: option.description,
-            }))}
-          />
-
-          <Select
-            label="Language"
-            value={draft.languageCode}
-            onChange={(event) => updateDraft({ languageCode: event.target.value as SpeechTranscriptionLanguageCode })}
-            options={LANGUAGE_OPTIONS.map((option) => ({
-              value: option.value,
-              label: option.label,
-            }))}
-          />
-        </div>
-
-        <div className="grid gap-2 lg:grid-cols-2">
-          <Toggle
-            checked={draft.includeSrt}
-            onChange={(checked) => updateDraft({ includeSrt: checked })}
-            label="Generate SRT"
-            description="Add subtitle output alongside the default JSON transcription."
-          />
-          <Toggle
-            checked
-            onChange={() => undefined}
-            label="Enable Punctuation"
-            description="Pinned on. Oracle keeps punctuation enabled for the supported Whisper models in this workspace."
-            disabled
-          />
-          <Toggle
-            checked={draft.enableDiarization}
-            onChange={(checked) => updateDraft({ enableDiarization: checked })}
-            label="Enable Diarization"
-            description="Ask OCI Speech to add speaker tags when multiple voices are present."
-          />
-          <Toggle
-            checked={draft.enableProfanityFilter}
-            onChange={(checked) => updateDraft({ enableProfanityFilter: checked })}
-            label="Mask Profanity"
-            description="Apply the official profanity filter using the MASK mode."
-          />
-        </div>
-
-        <Textarea
-          label="Whisper Prompt"
-          value={draft.whisperPrompt}
-          onChange={(event) => updateDraft({ whisperPrompt: event.target.value })}
-          placeholder="Optional context to bias recognition for names, products, or domain-specific terms."
-          className="min-h-[100px]"
-        />
-        <div className="text-[11px] text-description">
-          <span className={clsx(draft.whisperPrompt.trim().length > MAX_WHISPER_PROMPT_LENGTH && "text-[var(--vscode-errorForeground)]")}>
-            {draft.whisperPrompt.trim().length} / {MAX_WHISPER_PROMPT_LENGTH} characters
-          </span>
-        </div>
-      </WorkbenchSection>
-
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <WorkbenchDismissButton type="button" label={backToLabel("Speech")} onClick={onBack} />
-        <WorkbenchSubmitButton
-          type="button"
-          variant="secondary"
-          disabled={createDisabled}
-          onClick={onCreateJob}
-        >
-          {creating ? <Loader2 size={12} className="animate-spin" /> : <ListChecks size={12} />}
-          Create Speech Job
-        </WorkbenchSubmitButton>
-      </div>
     </div>
   )
 }
@@ -2161,7 +2227,8 @@ function renderJobDetailWorkspace({
   selectedTaskId,
   selectedTaskJsonResult,
   selectedTaskSrtResult,
-  selectedTaskResultObjects,
+  displayedResultObjects,
+  taskResultMatches,
   taskQuery,
   resultObjects,
   selectedResultObject,
@@ -2175,7 +2242,6 @@ function renderJobDetailWorkspace({
   resultPreviewError,
   downloadingResultObjectName,
   showResultViewerWorkspace,
-  onOpenWorkspace,
   onRefreshJob,
   onRevealJob,
   onTaskQueryChange,
@@ -2186,6 +2252,8 @@ function renderJobDetailWorkspace({
   onDownloadResult,
   onCancelJob,
   cancellingJobId,
+  jobTab,
+  onJobTabChange,
   navigateToView,
 }: {
   selectedJob: SpeechTranscriptionJobResource | null
@@ -2196,7 +2264,8 @@ function renderJobDetailWorkspace({
   selectedTaskId: string
   selectedTaskJsonResult: ObjectStorageObjectResource | null
   selectedTaskSrtResult: ObjectStorageObjectResource | null
-  selectedTaskResultObjects: ObjectStorageObjectResource[]
+  displayedResultObjects: ObjectStorageObjectResource[]
+  taskResultMatches: Map<string, SpeechTaskResultMatch>
   taskQuery: string
   resultObjects: ObjectStorageObjectResource[]
   selectedResultObject: ObjectStorageObjectResource | null
@@ -2210,7 +2279,6 @@ function renderJobDetailWorkspace({
   resultPreviewError: string | null
   downloadingResultObjectName: string | null
   showResultViewerWorkspace: boolean
-  onOpenWorkspace: () => void
   onRefreshJob: () => void
   onRevealJob: () => void
   onTaskQueryChange: (value: string) => void
@@ -2221,6 +2289,8 @@ function renderJobDetailWorkspace({
   onDownloadResult: (objectName: string) => void
   onCancelJob: (job: SpeechTranscriptionJobResource) => void
   cancellingJobId: string | null
+  jobTab: SpeechJobTab
+  onJobTabChange: (value: SpeechJobTab) => void
   navigateToView: (view: "objectStorage" | "speech" | "speechWorkspace") => void
 }) {
   if (!selectedJobId) {
@@ -2249,7 +2319,6 @@ function renderJobDetailWorkspace({
 
   const selectedFileCount = getSpeechInputFileCount(selectedJob)
   const canCancel = ["ACCEPTED", "IN_PROGRESS"].includes(selectedJob.lifecycleState.toUpperCase())
-  const displayedResultObjects = selectedTask ? selectedTaskResultObjects : resultObjects
 
   return (
     <div className="flex min-h-full flex-col gap-2">
@@ -2273,9 +2342,6 @@ function renderJobDetailWorkspace({
 
         <WorkbenchCompactActionCluster>
           <WorkbenchRefreshButton onClick={onRefreshJob} />
-          <WorkbenchSecondaryActionButton type="button" variant="secondary" onClick={onOpenWorkspace}>
-            {openWorkspaceLabel("Speech")}
-          </WorkbenchSecondaryActionButton>
           {canCancel && (
             <WorkbenchActionButton
               type="button"
@@ -2319,251 +2385,271 @@ function renderJobDetailWorkspace({
           onDownloadResult,
         })
       ) : (
-        <>
-          <WorkbenchSection
-            title="Tasks"
-            subtitle="Modeled after the OCI Speech task list: search by file name, select a task, and download its JSON or SRT output directly."
-          >
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <WorkbenchCompactActionCluster>
-                <WorkbenchSecondaryActionButton
-                  type="button"
-                  variant="secondary"
-                  disabled={!selectedTaskJsonResult}
-                  onClick={() => {
-                    if (selectedTaskJsonResult) {
-                      onDownloadResult(selectedTaskJsonResult.name)
-                    }
-                  }}
-                >
-                  <ArrowDownToLine size={12} />
-                  Download JSON
-                </WorkbenchSecondaryActionButton>
-                <WorkbenchSecondaryActionButton
-                  type="button"
-                  variant="secondary"
-                  disabled={!selectedTaskSrtResult}
-                  onClick={() => {
-                    if (selectedTaskSrtResult) {
-                      onDownloadResult(selectedTaskSrtResult.name)
-                    }
-                  }}
-                >
-                  <ArrowDownToLine size={12} />
-                  Download SRT
-                </WorkbenchSecondaryActionButton>
-              </WorkbenchCompactActionCluster>
+        <Tabs
+          value={jobTab}
+          onValueChange={(value) => onJobTabChange(value as SpeechJobTab)}
+          className="min-h-0 flex-1"
+        >
+          <TabsList>
+            <TabsTrigger value="tasks">Tasks</TabsTrigger>
+            <TabsTrigger value="results">Results</TabsTrigger>
+            <TabsTrigger value="configuration">Configuration</TabsTrigger>
+          </TabsList>
 
-              <div className="w-full sm:max-w-[280px]">
-                <Input
-                  value={taskQuery}
-                  onChange={(event) => onTaskQueryChange(event.target.value)}
-                  placeholder="Search tasks by name..."
-                  aria-label="Search tasks by name"
-                />
-              </div>
-            </div>
+          <TabsContent value="tasks" className="flex min-h-0 flex-1 flex-col gap-2 pt-1.5">
+            <WorkbenchSection
+              title="Tasks"
+              subtitle="Search by file name, select a task, and download matched JSON or SRT output directly."
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <WorkbenchCompactActionCluster>
+                  <WorkbenchSecondaryActionButton
+                    type="button"
+                    variant="secondary"
+                    disabled={!selectedTaskJsonResult}
+                    onClick={() => {
+                      if (selectedTaskJsonResult) {
+                        onDownloadResult(selectedTaskJsonResult.name)
+                      }
+                    }}
+                  >
+                    <ArrowDownToLine size={12} />
+                    Download JSON
+                  </WorkbenchSecondaryActionButton>
+                  <WorkbenchSecondaryActionButton
+                    type="button"
+                    variant="secondary"
+                    disabled={!selectedTaskSrtResult}
+                    onClick={() => {
+                      if (selectedTaskSrtResult) {
+                        onDownloadResult(selectedTaskSrtResult.name)
+                      }
+                    }}
+                  >
+                    <ArrowDownToLine size={12} />
+                    Download SRT
+                  </WorkbenchSecondaryActionButton>
+                </WorkbenchCompactActionCluster>
 
-            {loadingTasks ? (
-              <WorkbenchLoadingState label="Loading transcription tasks..." />
-            ) : tasks.length === 0 ? (
-              <WorkbenchEmptyState
-                icon={<ListChecks size={18} />}
-                title="No Tasks Returned"
-                description="The Speech service has not reported task details for this job yet."
-              />
-            ) : filteredTasks.length === 0 ? (
-              <WorkbenchEmptyState
-                icon={<ListChecks size={18} />}
-                title="No Tasks Match This Filter"
-                description="Clear the task search or use a broader file name to find task activity."
-              />
-            ) : (
-              <div className="overflow-hidden rounded-[2px] border border-[var(--vscode-panel-border)]">
-                <div className="max-h-[320px] overflow-auto">
-                  <table className="min-w-full border-collapse text-[11px]">
-                    <thead className="sticky top-0 bg-[var(--vscode-list-hoverBackground)]">
-                      <tr>
-                        <th className="w-10 border-b border-[var(--vscode-panel-border)] px-2 py-1.5 text-left font-semibold"> </th>
-                        <th className="border-b border-[var(--vscode-panel-border)] px-2 py-1.5 text-left font-semibold">Name</th>
-                        <th className="border-b border-[var(--vscode-panel-border)] px-2 py-1.5 text-left font-semibold">Status</th>
-                        <th className="border-b border-[var(--vscode-panel-border)] px-2 py-1.5 text-left font-semibold">File Duration</th>
-                        <th className="border-b border-[var(--vscode-panel-border)] px-2 py-1.5 text-left font-semibold">File Size</th>
-                        <th className="border-b border-[var(--vscode-panel-border)] px-2 py-1.5 text-left font-semibold">Task Start Date</th>
-                        <th className="border-b border-[var(--vscode-panel-border)] px-2 py-1.5 text-left font-semibold">Processing Time</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredTasks.map((task, index) => {
-                        const selected = task.id === selectedTaskId
-                        const matchedJson = getPreferredSpeechTaskResultObject(task, resultObjects, "json")
-                        const matchedSrt = getPreferredSpeechTaskResultObject(task, resultObjects, "srt")
-                        return (
-                          <tr
-                            key={task.id}
-                            onClick={() => onSelectTask(task.id)}
-                            className={clsx(
-                              "cursor-pointer border-b border-[var(--vscode-panel-border)]/50 align-top",
-                              selected
-                                ? "bg-[var(--vscode-list-activeSelectionBackground)] text-[var(--vscode-list-activeSelectionForeground)]"
-                                : index % 2 === 0
-                                  ? "bg-[color-mix(in_srgb,var(--vscode-editor-background)_98%,white_2%)] hover:bg-[var(--vscode-list-hoverBackground)]"
-                                  : "hover:bg-[var(--vscode-list-hoverBackground)]",
-                            )}
-                          >
-                            <td className="px-2 py-2">
-                              <span
-                                className={clsx(
-                                  "flex h-4 w-4 items-center justify-center rounded-[2px] border border-[var(--vscode-panel-border)]",
-                                  selected
-                                    ? "border-[var(--vscode-button-background)] bg-[var(--vscode-button-background)] text-[var(--vscode-button-foreground)]"
-                                    : "bg-[var(--vscode-editor-background)] text-transparent",
-                                )}
-                              >
-                                <Check size={11} />
-                              </span>
-                            </td>
-                            <td className="px-2 py-2">
-                              <div className="font-medium">{getLeafName(task.name)}</div>
-                              <div className={clsx("text-[10px]", selected ? "text-[var(--vscode-list-activeSelectionForeground)]/80" : "text-description")}>
-                                {matchedJson ? "JSON" : "-"} / {matchedSrt ? "SRT" : "-"}
-                              </div>
-                            </td>
-                            <td className="px-2 py-2">
-                              <LifecycleBadge state={task.lifecycleState} size="compact" />
-                            </td>
-                            <td className="px-2 py-2">{formatDuration(task.fileDurationInSeconds)}</td>
-                            <td className="px-2 py-2">{formatBytes(task.fileSizeInBytes)}</td>
-                            <td className="px-2 py-2">{formatDateTime(task.timeStarted)}</td>
-                            <td className="px-2 py-2">{formatDuration(task.processingDurationInSeconds)}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="flex items-center justify-between gap-2 border-t border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface-subtle)] px-2 py-1.5 text-[11px] text-description">
-                  <span>{selectedTask ? "1 selected" : "0 selected"}</span>
-                  <span>Showing {filteredTasks.length} of {tasks.length}</span>
+                <div className="w-full sm:max-w-[280px]">
+                  <FeatureSearchInput
+                    value={taskQuery}
+                    onChange={onTaskQueryChange}
+                    placeholder="Search tasks by name..."
+                  />
                 </div>
               </div>
-            )}
 
-            {selectedTask && !selectedTaskJsonResult && !selectedTaskSrtResult && (
-              <InlineNotice tone="info" icon={<FileText size={14} />} title="No Direct JSON/SRT Match">
-                The selected task does not have a confidently matched JSON or SRT file yet. Refresh the job after more output files appear, or review the full result list below.
-              </InlineNotice>
-            )}
-          </WorkbenchSection>
-
-          {renderSpeechResultOverviewSection({
-            selectedJob,
-            selectedTask,
-            displayedResultObjects,
-            selectedResultObject,
-            loadingResultObjects,
-            resultObjectsError,
-            downloadingResultObjectName,
-            onSelectResultObject,
-            onOpenResultViewer,
-            onDownloadResult,
-          })}
-        </>
-      )}
-
-      {!showResultViewerWorkspace && (
-        <>
-          <WorkbenchSection
-            title="Input and Output"
-            subtitle="Speech jobs read from Object Storage and write results back to Object Storage in the same fixed region."
-            actions={(
-              <WorkbenchSecondaryActionButton type="button" variant="secondary" onClick={() => navigateToView("objectStorage")}>
-                {openViewLabel("Object Storage")}
-              </WorkbenchSecondaryActionButton>
-            )}
-          >
-            <WorkbenchKeyValueStrip
-              items={[
-                { label: "Input Bucket", value: selectedJob.inputBucketName || "-" },
-                { label: "Input Namespace", value: selectedJob.inputNamespaceName || "-" },
-                { label: "Output Bucket", value: selectedJob.outputBucketName || "-" },
-                { label: "Output Namespace", value: selectedJob.outputNamespaceName || "-" },
-                { label: "Output Prefix", value: selectedJob.outputPrefix || "/" },
-              ]}
-            />
-
-            <WorkbenchSurface className="space-y-1.5">
-              <div className="text-[12px] font-medium text-foreground">Selected Input Files</div>
-              {selectedJob.inputObjectNames && selectedJob.inputObjectNames.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {selectedJob.inputObjectNames.map((objectName) => (
-                    <span key={objectName} className="rounded-full border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface-subtle)] px-2 py-0.5 text-[10px] text-description">
-                      {objectName}
-                    </span>
-                  ))}
+              <div className="grid gap-2 xl:grid-cols-[minmax(0,1.3fr)_minmax(280px,0.7fr)]">
+                <div>
+                  {loadingTasks ? (
+                    <WorkbenchLoadingState label="Loading transcription tasks..." />
+                  ) : tasks.length === 0 ? (
+                    <WorkbenchEmptyState
+                      icon={<ListChecks size={18} />}
+                      title="No Tasks Returned"
+                      description="The Speech service has not reported task details for this job yet."
+                    />
+                  ) : filteredTasks.length === 0 ? (
+                    <WorkbenchEmptyState
+                      icon={<ListChecks size={18} />}
+                      title="No Tasks Match This Filter"
+                      description="Clear the task search or use a broader file name to find task activity."
+                    />
+                  ) : (
+                    <div className="overflow-hidden rounded-[2px] border border-[var(--vscode-panel-border)]">
+                      <div className="max-h-[360px] overflow-auto">
+                        <table className="min-w-full border-collapse text-[11px]">
+                          <thead className="sticky top-0 bg-[var(--vscode-list-hoverBackground)]">
+                            <tr>
+                              <th className="w-10 border-b border-[var(--vscode-panel-border)] px-2 py-1.5 text-left font-semibold"> </th>
+                              <th className="border-b border-[var(--vscode-panel-border)] px-2 py-1.5 text-left font-semibold">Name</th>
+                              <th className="border-b border-[var(--vscode-panel-border)] px-2 py-1.5 text-left font-semibold">Status</th>
+                              <th className="border-b border-[var(--vscode-panel-border)] px-2 py-1.5 text-left font-semibold">File Duration</th>
+                              <th className="border-b border-[var(--vscode-panel-border)] px-2 py-1.5 text-left font-semibold">File Size</th>
+                              <th className="border-b border-[var(--vscode-panel-border)] px-2 py-1.5 text-left font-semibold">Task Start Date</th>
+                              <th className="border-b border-[var(--vscode-panel-border)] px-2 py-1.5 text-left font-semibold">Processing Time</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredTasks.map((task, index) => {
+                              const selected = task.id === selectedTaskId
+                              const taskMatch = taskResultMatches.get(task.id)
+                              const matchedJson = taskMatch?.json ?? null
+                              const matchedSrt = taskMatch?.srt ?? null
+                              return (
+                                <tr
+                                  key={task.id}
+                                  onClick={() => onSelectTask(task.id)}
+                                  className={clsx(
+                                    "cursor-pointer border-b border-[var(--vscode-panel-border)]/50 align-top",
+                                    selected
+                                      ? "bg-[var(--vscode-list-activeSelectionBackground)] text-[var(--vscode-list-activeSelectionForeground)]"
+                                      : index % 2 === 0
+                                        ? "bg-[color-mix(in_srgb,var(--vscode-editor-background)_98%,white_2%)] hover:bg-[var(--vscode-list-hoverBackground)]"
+                                        : "hover:bg-[var(--vscode-list-hoverBackground)]",
+                                  )}
+                                >
+                                  <td className="px-2 py-2">
+                                    <span
+                                      className={clsx(
+                                        "flex h-4 w-4 items-center justify-center rounded-[2px] border border-[var(--vscode-panel-border)]",
+                                        selected
+                                          ? "border-[var(--vscode-button-background)] bg-[var(--vscode-button-background)] text-[var(--vscode-button-foreground)]"
+                                          : "bg-[var(--vscode-editor-background)] text-transparent",
+                                      )}
+                                    >
+                                      <Check size={11} />
+                                    </span>
+                                  </td>
+                                  <td className="px-2 py-2">
+                                    <div className="font-medium">{getLeafName(task.name)}</div>
+                                    <div className={clsx("text-[10px]", selected ? "text-[var(--vscode-list-activeSelectionForeground)]/80" : "text-description")}>
+                                      {matchedJson ? "JSON" : "-"} / {matchedSrt ? "SRT" : "-"}
+                                    </div>
+                                  </td>
+                                  <td className="px-2 py-2">
+                                    <LifecycleBadge state={task.lifecycleState} size="compact" />
+                                  </td>
+                                  <td className="px-2 py-2">{formatDuration(task.fileDurationInSeconds)}</td>
+                                  <td className="px-2 py-2">{formatBytes(task.fileSizeInBytes)}</td>
+                                  <td className="px-2 py-2">{formatDateTime(task.timeStarted)}</td>
+                                  <td className="px-2 py-2">{formatDuration(task.processingDurationInSeconds)}</td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 border-t border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface-subtle)] px-2 py-1.5 text-[11px] text-description">
+                        <span>{selectedTask ? "1 selected" : "0 selected"}</span>
+                        <span>Showing {filteredTasks.length} of {tasks.length}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="text-[11px] text-description">Input file details were not returned for this job yet.</div>
+
+                <WorkbenchSurface className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[12px] font-medium text-foreground">Selected Task</div>
+                    {selectedTask && <LifecycleBadge state={selectedTask.lifecycleState} size="compact" />}
+                  </div>
+
+                  {!selectedTask ? (
+                    <WorkbenchEmptyState
+                      icon={<ListChecks size={18} />}
+                      title="No Task Selected"
+                      description="Select a task to inspect its timing and output availability."
+                    />
+                  ) : (
+                    <>
+                      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-1">
+                        <SummaryMetaCard label="Progress" value={formatPercent(selectedTask.percentComplete)} />
+                        <SummaryMetaCard label="File Duration" value={formatDuration(selectedTask.fileDurationInSeconds)} />
+                        <SummaryMetaCard label="File Size" value={formatBytes(selectedTask.fileSizeInBytes)} />
+                        <SummaryMetaCard label="Processing Time" value={formatDuration(selectedTask.processingDurationInSeconds)} />
+                      </div>
+
+                      <WorkbenchKeyValueStrip
+                        items={[
+                          { label: "Task Name", value: selectedTask.name || "-" },
+                          { label: "Task OCID", value: selectedTask.id || "-", breakAll: true },
+                          { label: "Started", value: formatDateTime(selectedTask.timeStarted) },
+                          { label: "Finished", value: formatDateTime(selectedTask.timeFinished) },
+                        ]}
+                      />
+
+                      {selectedTask.lifecycleDetails && (
+                        <InlineNotice tone={toneFromLifecycleState(selectedTask.lifecycleState) === "danger" ? "danger" : "info"} icon={<AlertCircle size={14} />} title="Task Lifecycle Details">
+                          {selectedTask.lifecycleDetails}
+                        </InlineNotice>
+                      )}
+                    </>
+                  )}
+                </WorkbenchSurface>
+              </div>
+
+              {selectedTask && !selectedTaskJsonResult && !selectedTaskSrtResult && (
+                <InlineNotice tone="info" icon={<FileText size={14} />} title="No Direct JSON/SRT Match">
+                  The selected task does not have a confidently matched JSON or SRT file yet. Refresh the job after more output files appear, or review the full result list.
+                </InlineNotice>
               )}
-            </WorkbenchSurface>
-          </WorkbenchSection>
+            </WorkbenchSection>
+          </TabsContent>
 
-          <WorkbenchSection title="Transcription Profile" subtitle="These values reflect the effective Speech configuration returned by the service.">
-            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-              <SummaryMetaCard label="Model" value={getModelLabel(selectedJob.modelType)} />
-              <SummaryMetaCard label="Language" value={getLanguageLabel(selectedJob.languageCode)} />
-              <SummaryMetaCard label="SRT" value={selectedJob.additionalTranscriptionFormats?.includes("SRT") ? "Enabled" : "Disabled"} />
-              <SummaryMetaCard label="Punctuation" value={selectedJob.isPunctuationEnabled === false ? "Disabled" : "Enabled"} />
-              <SummaryMetaCard label="Diarization" value={selectedJob.isDiarizationEnabled ? "Enabled" : "Disabled"} />
-              <SummaryMetaCard label="Profanity Filter" value={selectedJob.profanityFilterMode || "Disabled"} />
-            </div>
+          <TabsContent value="results" className="flex min-h-0 flex-1 flex-col gap-2 pt-1.5">
+            {renderSpeechResultOverviewSection({
+              selectedJob,
+              selectedTask,
+              displayedResultObjects,
+              selectedResultObject,
+              loadingResultObjects,
+              resultObjectsError,
+              downloadingResultObjectName,
+              onSelectResultObject,
+              onOpenResultViewer,
+              onDownloadResult,
+            })}
+          </TabsContent>
 
-            <WorkbenchSurface className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <Sparkles size={13} className="text-description" />
-                <div className="text-[12px] font-medium text-foreground">Whisper Prompt</div>
-              </div>
-              <div className="text-[11px] leading-5 text-description">
-                {selectedJob.whisperPrompt || "No whisper prompt was provided for this job."}
-              </div>
-            </WorkbenchSurface>
-          </WorkbenchSection>
-
-          <WorkbenchSection title="Selected Task" subtitle="Focused metadata for the task currently selected in the task table.">
-            {!selectedTask ? (
-              <WorkbenchEmptyState
-                icon={<ListChecks size={18} />}
-                title="No Task Selected"
-                description="Select a task above to inspect its timing and output availability."
+          <TabsContent value="configuration" className="flex min-h-0 flex-1 flex-col gap-2 pt-1.5">
+            <WorkbenchSection
+              title="Input and Output"
+              subtitle="Speech jobs read from Object Storage and write results back to Object Storage in the same fixed region."
+              actions={(
+                <WorkbenchSecondaryActionButton type="button" variant="secondary" onClick={() => navigateToView("objectStorage")}>
+                  {openViewLabel("Object Storage")}
+                </WorkbenchSecondaryActionButton>
+              )}
+            >
+              <WorkbenchKeyValueStrip
+                items={[
+                  { label: "Input Bucket", value: selectedJob.inputBucketName || "-" },
+                  { label: "Input Namespace", value: selectedJob.inputNamespaceName || "-" },
+                  { label: "Output Bucket", value: selectedJob.outputBucketName || "-" },
+                  { label: "Output Namespace", value: selectedJob.outputNamespaceName || "-" },
+                  { label: "Output Prefix", value: selectedJob.outputPrefix || "/" },
+                ]}
               />
-            ) : (
-              <>
-                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
-                  <SummaryMetaCard label="Status" value={selectedTask.lifecycleState || "Unknown"} />
-                  <SummaryMetaCard label="Progress" value={formatPercent(selectedTask.percentComplete)} />
-                  <SummaryMetaCard label="File Duration" value={formatDuration(selectedTask.fileDurationInSeconds)} />
-                  <SummaryMetaCard label="File Size" value={formatBytes(selectedTask.fileSizeInBytes)} />
-                  <SummaryMetaCard label="Processing Time" value={formatDuration(selectedTask.processingDurationInSeconds)} />
-                </div>
 
-                <WorkbenchKeyValueStrip
-                  items={[
-                    { label: "Task Name", value: selectedTask.name || "-" },
-                    { label: "Task OCID", value: selectedTask.id || "-", breakAll: true },
-                    { label: "Started", value: formatDateTime(selectedTask.timeStarted) },
-                    { label: "Finished", value: formatDateTime(selectedTask.timeFinished) },
-                  ]}
-                />
-
-                {selectedTask.lifecycleDetails && (
-                  <InlineNotice tone={toneFromLifecycleState(selectedTask.lifecycleState) === "danger" ? "danger" : "info"} icon={<AlertCircle size={14} />} title="Task Lifecycle Details">
-                    {selectedTask.lifecycleDetails}
-                  </InlineNotice>
+              <WorkbenchSurface className="space-y-1.5">
+                <div className="text-[12px] font-medium text-foreground">Selected Input Files</div>
+                {selectedJob.inputObjectNames && selectedJob.inputObjectNames.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedJob.inputObjectNames.map((objectName) => (
+                      <span key={objectName} className="rounded-full border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-surface-subtle)] px-2 py-0.5 text-[10px] text-description">
+                        {getLeafName(objectName)}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-description">Input file details were not returned for this job yet.</div>
                 )}
-              </>
-            )}
-          </WorkbenchSection>
-        </>
+              </WorkbenchSurface>
+            </WorkbenchSection>
+
+            <WorkbenchSection title="Transcription Profile" subtitle="These values reflect the effective Speech configuration returned by the service.">
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                <SummaryMetaCard label="Model" value={getModelLabel(selectedJob.modelType)} />
+                <SummaryMetaCard label="Language" value={getLanguageLabel(selectedJob.languageCode)} />
+                <SummaryMetaCard label="SRT" value={selectedJob.additionalTranscriptionFormats?.includes("SRT") ? "Enabled" : "Disabled"} />
+                <SummaryMetaCard label="Punctuation" value={selectedJob.isPunctuationEnabled === false ? "Disabled" : "Enabled"} />
+                <SummaryMetaCard label="Diarization" value={selectedJob.isDiarizationEnabled ? "Enabled" : "Disabled"} />
+                <SummaryMetaCard label="Profanity Filter" value={selectedJob.profanityFilterMode || "Disabled"} />
+              </div>
+
+              <WorkbenchSurface className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <Sparkles size={13} className="text-description" />
+                  <div className="text-[12px] font-medium text-foreground">Whisper Prompt</div>
+                </div>
+                <div className="text-[11px] leading-5 text-description">
+                  {selectedJob.whisperPrompt || "No whisper prompt was provided for this job."}
+                </div>
+              </WorkbenchSurface>
+            </WorkbenchSection>
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   )
@@ -2929,6 +3015,26 @@ function getPreferredSpeechTaskResultObject(
   return filteredObjects[0] ?? null
 }
 
+function buildSpeechTaskResultMatches(
+  tasks: SpeechTranscriptionTaskResource[],
+  objects: ObjectStorageObjectResource[],
+) {
+  const matches = new Map<string, SpeechTaskResultMatch>()
+
+  for (const task of tasks) {
+    const matchedObjects = getSpeechResultObjectsForTask(objects, task)
+    const json = matchedObjects.find((item) => getFileExtension(item.name) === "json") ?? null
+    const srt = matchedObjects.find((item) => getFileExtension(item.name) === "srt") ?? null
+    matches.set(task.id, {
+      objects: matchedObjects,
+      json,
+      srt,
+    })
+  }
+
+  return matches
+}
+
 function getLikelySpeechResultObjects(
   objects: ObjectStorageObjectResource[],
   job: SpeechTranscriptionJobResource | null,
@@ -3015,11 +3121,9 @@ function syncDraftBuckets(draft: SpeechJobDraft, buckets: ObjectStorageBucketRes
   const bucketKeys = new Set(buckets.map((bucket) => getBucketKey(bucket)))
   const nextInputBucketKey = bucketKeys.has(draft.inputBucketKey) ? draft.inputBucketKey : firstBucketKey
   const inputBucketChanged = nextInputBucketKey !== draft.inputBucketKey
-  const nextOutputBucketKey = draft.outputMode === "same"
-    ? nextInputBucketKey
-    : bucketKeys.has(draft.outputBucketKey)
-      ? draft.outputBucketKey
-      : nextInputBucketKey
+  const nextOutputBucketKey = bucketKeys.has(draft.outputBucketKey)
+    ? draft.outputBucketKey
+    : nextInputBucketKey
   return {
     ...draft,
     inputBucketKey: nextInputBucketKey,

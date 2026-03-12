@@ -1,6 +1,6 @@
 import { clsx } from "clsx"
-import { AlertCircle, ChevronDown, Loader2, Shield, Upload, X } from "lucide-react"
-import { useEffect, useMemo, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react"
+import { AlertCircle, Loader2, Shield, Upload, X } from "lucide-react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useExtensionState } from "../../context/ExtensionStateContext"
 import { useScrollFlashTarget } from "../../hooks/useScrollFlashTarget"
 import { ResourceServiceClient } from "../../services/grpc-client"
@@ -11,7 +11,6 @@ import Input from "../ui/Input"
 import Textarea from "../ui/Textarea"
 import Select from "../ui/Select"
 import ResourceDropdown from "../ui/ResourceDropdown"
-import Toggle from "../ui/Toggle"
 import { WorkbenchDismissButton } from "../workbench/WorkbenchActionButtons"
 import { WorkbenchRefreshButton } from "../workbench/WorkbenchToolbar"
 
@@ -1161,7 +1160,7 @@ function isValidIpv4Address(value: string) {
   if (octets.length !== 4) {
     return false
   }
-  return octets.every((octet) => /^\d+$/.test(octet) && Number(octet) >= 0 && Number(octet) <= 255)
+  return octets.every((octet) => /^(0|[1-9]\d*)$/.test(octet) && Number(octet) >= 0 && Number(octet) <= 255)
 }
 
 function filterTargetsByCompartment(targets: ComputeResource[], compartmentId: string) {
@@ -1215,7 +1214,7 @@ function getCreateSessionValidationIssue({
     }
   }
 
-  if (!isWholeNumberInRange(sessionTtlInSeconds, { min: 1 })) {
+  if (!isWholeNumberInRange(sessionTtlInSeconds, { min: 1, max: 10800 })) {
     return {
       field: "sessionTtlInSeconds",
       message: "Session TTL must be a positive whole number of seconds.",
