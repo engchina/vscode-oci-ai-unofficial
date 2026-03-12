@@ -198,7 +198,7 @@ export default function AdbView() {
           }, {
             label: openWorkspaceLabel("Database"),
             run: () => {
-              setActiveTab("overview")
+              setActiveTab("connection")
               setShowDatabaseWorkspace(true)
             },
             variant: "secondary" as const,
@@ -1040,7 +1040,7 @@ export default function AdbView() {
                                     onSelect={setSelectedAdbId}
                                     onOpenWorkspace={(id) => {
                                       setSelectedAdbId(id)
-                                      setActiveTab("overview")
+                                      setActiveTab("connection")
                                       setShowDatabaseWorkspace(true)
                                     }}
                                   />

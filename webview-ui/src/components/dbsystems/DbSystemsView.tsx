@@ -215,7 +215,7 @@ export default function DbSystemsView() {
                     }, {
                         label: openWorkspaceLabel("DB System"),
                         run: () => {
-                            setActiveTab("overview")
+                            setActiveTab("connection")
                             setShowDbSystemWorkspace(true)
                         },
                         variant: "secondary" as const,
@@ -1072,7 +1072,7 @@ export default function DbSystemsView() {
                                                                         onSelect={setSelectedDbId}
                                                                         onOpenWorkspace={(id) => {
                                                                             setSelectedDbId(id)
-                                                                            setActiveTab("overview")
+                                                                            setActiveTab("connection")
                                                                             setShowDbSystemWorkspace(true)
                                                                         }}
                                                                         onConnectSsh={handleSshConnect}

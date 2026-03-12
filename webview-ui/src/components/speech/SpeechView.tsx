@@ -6,7 +6,6 @@ import {
   Check,
   CheckCircle2,
   CircleSlash,
-  Eye,
   FileAudio,
   FileText,
   ListChecks,
@@ -132,7 +131,8 @@ type RecentActionState =
 
 type SpeechViewMode = "inventory" | "job" | "workspace"
 type SpeechWorkspaceTab = "source" | "profile"
-type SpeechJobTab = "tasks" | "results" | "configuration"
+type SpeechJobTab = "overview" | "tasks" | "results" | "configuration"
+type SpeechResultTab = "json" | "srt"
 type SpeechBucketLoadResult = {
   applied: boolean
   buckets: ObjectStorageBucketResource[]
@@ -206,12 +206,11 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
   const [resultObjectsError, setResultObjectsError] = useState<string | null>(null)
   const [resultPreviewError, setResultPreviewError] = useState<string | null>(null)
   const [selectedTaskId, setSelectedTaskId] = useState("")
-  const [selectedResultObjectName, setSelectedResultObjectName] = useState("")
+  const [resultPreviewTab, setResultPreviewTab] = useState<SpeechResultTab>("json")
   const [resultPreview, setResultPreview] = useState<SpeechResultPreviewState>(null)
   const [guardrail, setGuardrail] = useState<WorkbenchGuardrailState>(null)
   const [recentAction, setRecentAction] = useState<RecentActionState>(null)
   const [highlightedJobId, setHighlightedJobId] = useState<string | null>(null)
-  const [showResultViewerWorkspace, setShowResultViewerWorkspace] = useState(false)
   const [workspaceTab, setWorkspaceTab] = useState<SpeechWorkspaceTab>("source")
   const [jobTab, setJobTab] = useState<SpeechJobTab>("tasks")
 
@@ -278,6 +277,7 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
       ...jobDetail,
     } as SpeechTranscriptionJobResource
   }, [jobDetail, selectedJobId, selectedJobSummary])
+  const hasCurrentJobDetail = Boolean(jobDetail && jobDetail.id === selectedJobId)
 
   const visibleTasks = useMemo(
     () => tasksJobId === selectedJobId ? tasks : [],
@@ -331,9 +331,19 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
     [selectedTask, taskResultMatches],
   )
 
-  const selectedResultObject = useMemo(
-    () => displayedResultObjects.find((item) => item.name === selectedResultObjectName) ?? null,
-    [displayedResultObjects, selectedResultObjectName],
+  const displayedJsonResult = useMemo(
+    () => selectedTask ? selectedTaskJsonResult : getPreferredSpeechResultObject(displayedResultObjects, "json"),
+    [displayedResultObjects, selectedTask, selectedTaskJsonResult],
+  )
+
+  const displayedSrtResult = useMemo(
+    () => selectedTask ? selectedTaskSrtResult : getPreferredSpeechResultObject(displayedResultObjects, "srt"),
+    [displayedResultObjects, selectedTask, selectedTaskSrtResult],
+  )
+
+  const activeResultObject = useMemo(
+    () => resultPreviewTab === "json" ? displayedJsonResult : displayedSrtResult,
+    [displayedJsonResult, displayedSrtResult, resultPreviewTab],
   )
 
   const filteredJobs = useMemo(() => {
@@ -399,7 +409,7 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
   const isSyncing = creating
     || (isWorkspaceView && (loadingBuckets || loadingObjects))
     || (isInventoryView && (loadingJobs || loadingBuckets))
-    || (isJobView && (loadingJobs || loadingJobDetail || loadingTasks || loadingResultObjects || (showResultViewerWorkspace && loadingResultPreview)))
+    || (isJobView && (loadingJobs || loadingJobDetail || loadingTasks || loadingResultObjects || (jobTab === "results" && loadingResultPreview)))
 
   const createActionDisabled = creating
     || loadingBuckets
@@ -458,28 +468,15 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
     setSelectedTaskId("")
     setResultObjects([])
     setResultObjectsError(null)
-    setSelectedResultObjectName("")
+    setResultPreviewTab("json")
     setResultPreview(null)
     setResultPreviewError(null)
-    setShowResultViewerWorkspace(false)
   }, [cancelSelectedJobRequests])
 
   const openJobDetails = useCallback((jobId: string) => {
     selectJob(jobId)
     navigateToView("speechJob")
   }, [navigateToView, selectJob])
-
-  const openResultViewerWorkspace = useCallback((objectName?: string) => {
-    const normalizedObjectName = objectName?.trim() || ""
-    if (normalizedObjectName) {
-      setSelectedResultObjectName(normalizedObjectName)
-    }
-    setShowResultViewerWorkspace(true)
-  }, [])
-
-  const closeResultViewerWorkspace = useCallback(() => {
-    setShowResultViewerWorkspace(false)
-  }, [])
 
   const loadJobs = useCallback(async (preferredJobId?: string) => {
     const requestId = jobsLoadRequestIdRef.current + 1
@@ -500,11 +497,10 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
       setSelectedTaskId("")
       setResultObjects([])
       setResultObjectsError(null)
-      setSelectedResultObjectName("")
+      setResultPreviewTab("json")
       setResultPreview(null)
       setResultPreviewError(null)
       setHighlightedJobId(null)
-      setShowResultViewerWorkspace(false)
       setLoadingJobs(false)
       return
     }
@@ -667,7 +663,6 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
     if (!job || !namespaceName || !bucketName) {
       setResultObjects([])
       setResultObjectsError(null)
-      setSelectedResultObjectName("")
       setResultPreview(null)
       setResultPreviewError(null)
       setLoadingResultObjects(false)
@@ -691,18 +686,11 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
 
       const nextObjects = response.objects ?? []
       setResultObjects(nextObjects)
-      setSelectedResultObjectName((currentSelectedName) => {
-        if (currentSelectedName && nextObjects.some((item) => item.name === currentSelectedName)) {
-          return currentSelectedName
-        }
-        return getDefaultResultObjectName(nextObjects, job)
-      })
     } catch (loadError) {
       if (resultLoadRequestIdRef.current !== requestId) {
         return
       }
       setResultObjects([])
-      setSelectedResultObjectName("")
       setResultPreview(null)
       setResultPreviewError(null)
       setResultObjectsError(loadError instanceof Error ? loadError.message : String(loadError))
@@ -836,12 +824,6 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
 
   useEffect(() => {
     if (!isJobView) {
-      setShowResultViewerWorkspace(false)
-    }
-  }, [isJobView])
-
-  useEffect(() => {
-    if (!isJobView) {
       return
     }
     setSelectedTaskId((currentSelectedTaskId) => {
@@ -851,21 +833,6 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
       return filteredTasks[0]?.id ?? ""
     })
   }, [filteredTasks, isJobView])
-
-  useEffect(() => {
-    setSelectedResultObjectName((currentSelectedName) => {
-      if (currentSelectedName && displayedResultObjects.some((item) => item.name === currentSelectedName)) {
-        return currentSelectedName
-      }
-      if (selectedTask) {
-        return selectedTaskJsonResult?.name
-          ?? selectedTaskSrtResult?.name
-          ?? displayedResultObjects[0]?.name
-          ?? ""
-      }
-      return getDefaultResultObjectName(resultObjects, selectedJob)
-    })
-  }, [displayedResultObjects, resultObjects, selectedJob, selectedTask, selectedTaskJsonResult, selectedTaskSrtResult])
 
   useEffect(() => {
     if (isWorkspaceView) {
@@ -896,10 +863,9 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
       setSelectedTaskId("")
       setResultObjects([])
       setResultObjectsError(null)
-      setSelectedResultObjectName("")
+      setResultPreviewTab("json")
       setResultPreview(null)
       setResultPreviewError(null)
-      setShowResultViewerWorkspace(false)
       return
     }
 
@@ -946,22 +912,22 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
   ])
 
   useEffect(() => {
-    if (!isJobView || !showResultViewerWorkspace || !selectedJob || !selectedResultObject) {
+    if (!isJobView || jobTab !== "results" || !activeResultObject) {
       setLoadingResultPreview(false)
       setResultPreview(null)
       setResultPreviewError(null)
       return
     }
 
-    if (!canPreviewSpeechResultObject(selectedResultObject.name)) {
+    if (!canPreviewSpeechResultObject(activeResultObject.name)) {
       setLoadingResultPreview(false)
       setResultPreview(null)
       setResultPreviewError(null)
       return
     }
 
-    const namespaceName = selectedJob.outputNamespaceName?.trim() || ""
-    const bucketName = selectedJob.outputBucketName?.trim() || ""
+    const namespaceName = selectedJob?.outputNamespaceName?.trim() || ""
+    const bucketName = selectedJob?.outputBucketName?.trim() || ""
     if (!namespaceName || !bucketName) {
       setLoadingResultPreview(false)
       setResultPreview(null)
@@ -978,8 +944,8 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
     void ResourceServiceClient.readObjectStorageObjectText({
       namespaceName,
       bucketName,
-      objectName: selectedResultObject.name,
-      region: selectedJob.region || SPEECH_REGION,
+      objectName: activeResultObject.name,
+      region: selectedJob?.region || SPEECH_REGION,
       maxBytes: MAX_RESULT_PREVIEW_BYTES,
     })
       .then((response) => {
@@ -987,7 +953,7 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
           return
         }
         setResultPreview({
-          objectName: selectedResultObject.name,
+          objectName: activeResultObject.name,
           text: response.text ?? "",
           truncated: Boolean(response.truncated),
         })
@@ -1005,10 +971,13 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
         }
       })
   }, [
+    activeResultObject,
     isJobView,
-    showResultViewerWorkspace,
-    selectedJob,
-    selectedResultObject,
+    jobTab,
+    selectedJob?.id,
+    selectedJob?.outputBucketName,
+    selectedJob?.outputNamespaceName,
+    selectedJob?.region,
   ])
 
   useEffect(() => {
@@ -1131,8 +1100,7 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
     }
 
     const selectedFileCount = getSpeechInputFileCount(selectedJob)
-    const selectedResultObjectLabel = selectedResultObject ? getLeafName(selectedResultObject.name) : ""
-    const canOpenResultViewer = selectedResultObject ? canPreviewSpeechResultObject(selectedResultObject.name) : false
+    const activeResultObjectLabel = activeResultObject ? getLeafName(activeResultObject.name) : ""
     setResource({
       view: "speechJob",
       title: selectedJob.name,
@@ -1151,7 +1119,7 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
       notes: [
         `Input bucket: ${selectedJob.inputBucketName || "-"}`,
         `Output bucket: ${selectedJob.outputBucketName || "-"}`,
-        ...(showResultViewerWorkspace && selectedResultObjectLabel ? [`Viewing result: ${selectedResultObjectLabel}`] : []),
+        ...(jobTab === "results" && activeResultObjectLabel ? [`Previewing ${resultPreviewTab.toUpperCase()}: ${activeResultObjectLabel}`] : []),
         selectedJob.whisperPrompt ? "Whisper prompt is configured." : "Whisper prompt is empty.",
       ],
       actions: [
@@ -1175,19 +1143,6 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
           run: () => navigateToView("speechWorkspace"),
           variant: "secondary",
         },
-        ...(canOpenResultViewer
-          ? [{
-            label: showResultViewerWorkspace ? backToLabel("Speech Job") : openViewLabel("Result Viewer"),
-            run: () => {
-              if (showResultViewerWorkspace) {
-                closeResultViewerWorkspace()
-                return
-              }
-              openResultViewerWorkspace(selectedResultObject?.name)
-            },
-            variant: "secondary" as const,
-          }]
-          : []),
         {
           label: "Refresh Job",
           run: () => refreshSelectedJob(selectedJob.id, selectedJob),
@@ -1207,17 +1162,16 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
     isJobView,
     isWorkspaceView,
     navigateToView,
-    openResultViewerWorkspace,
-    closeResultViewerWorkspace,
+    resultPreviewTab,
+    jobTab,
     query,
     refreshSelectedJob,
     revealJob,
-    selectedResultObject,
+    activeResultObject,
     selectedInputBucket?.name,
     selectedJob,
     selectedOutputBucket?.name,
     setResource,
-    showResultViewerWorkspace,
   ])
 
   const updateDraft = useCallback((patch: Partial<SpeechJobDraft>) => {
@@ -1418,12 +1372,12 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
   const handleDownloadResult = useCallback(async (objectName: string) => {
     const namespaceName = selectedJob?.outputNamespaceName?.trim() || ""
     const bucketName = selectedJob?.outputBucketName?.trim() || ""
-    if (!selectedJob || !namespaceName || !bucketName || !objectName.trim()) {
+    if (!selectedJob || !namespaceName || !bucketName || !objectName.trim() || downloadingResultObjectName) {
       return
     }
 
     setDownloadingResultObjectName(objectName)
-    setResultPreviewError(null)
+    setError(null)
     try {
       const response = await ResourceServiceClient.downloadObjectStorageObject({
         namespaceName,
@@ -1438,11 +1392,11 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
         })
       }
     } catch (downloadError) {
-      setResultPreviewError(downloadError instanceof Error ? downloadError.message : String(downloadError))
+      setError(downloadError instanceof Error ? downloadError.message : String(downloadError))
     } finally {
       setDownloadingResultObjectName(null)
     }
-  }, [selectedJob])
+  }, [downloadingResultObjectName, selectedJob])
 
   return (
     <>
@@ -1451,9 +1405,7 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
         description={isWorkspaceView
           ? "Configure OCI Speech transcription jobs with focused source, output, and model controls."
           : isJobView
-            ? showResultViewerWorkspace
-              ? "Review previewable output artifacts for the selected Speech job."
-              : "Inspect task progress, outputs, and the effective configuration for the selected Speech job."
+            ? "Inspect task progress, inline results, and the effective configuration for the selected Speech job."
             : "Create and monitor OCI Speech transcription jobs in Chicago."}
         icon={<AudioLines size={14} />}
         leading={isWorkspaceView || isJobView
@@ -1568,6 +1520,7 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
 
                 {renderJobDetailWorkspace({
                   selectedJob,
+                  hasCurrentJobDetail,
                   selectedJobId,
                   tasks: visibleTasks,
                   filteredTasks,
@@ -1576,10 +1529,12 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
                   selectedTaskJsonResult,
                   selectedTaskSrtResult,
                   displayedResultObjects,
+                  displayedJsonResult,
+                  displayedSrtResult,
                   taskResultMatches,
                   taskQuery,
-                  resultObjects,
-                  selectedResultObject,
+                  activeResultObject,
+                  resultPreviewTab,
                   resultPreview,
                   loadingJobDetail,
                   loadingTasks,
@@ -1589,19 +1544,9 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
                   resultObjectsError,
                   resultPreviewError,
                   downloadingResultObjectName,
-                  showResultViewerWorkspace,
-                  onRefreshJob: () => refreshSelectedJob(selectedJobId, selectedJob),
-                  onRevealJob: () => {
-                    if (selectedJobId) {
-                      navigateToView("speech")
-                      requestAnimationFrame(() => revealJob(selectedJobId))
-                    }
-                  },
                   onTaskQueryChange: setTaskQuery,
                   onSelectTask: setSelectedTaskId,
-                  onSelectResultObject: setSelectedResultObjectName,
-                  onOpenResultViewer: openResultViewerWorkspace,
-                  onCloseResultViewer: closeResultViewerWorkspace,
+                  onResultPreviewTabChange: setResultPreviewTab,
                   onDownloadResult: handleDownloadResult,
                   onCancelJob: requestCancelJob,
                   cancellingJobId,
@@ -1624,6 +1569,7 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
             error,
             highlightedJobId,
             jobItemRefs,
+            onSelectJob: selectJob,
             onOpenJob: openJobDetails,
           })
         )}
@@ -1659,6 +1605,7 @@ function renderSpeechInventoryPage({
   error,
   highlightedJobId,
   jobItemRefs,
+  onSelectJob,
   onOpenJob,
 }: {
   jobs: SpeechTranscriptionJobResource[]
@@ -1671,6 +1618,7 @@ function renderSpeechInventoryPage({
   error: string | null
   highlightedJobId: string | null
   jobItemRefs: MutableRefObject<Map<string, HTMLDivElement>>
+  onSelectJob: (jobId: string) => void
   onOpenJob: (jobId: string) => void
 }) {
   const filteredJobCount = groupedJobs.reduce((total, group) => total + group.jobs.length, 0)
@@ -1683,7 +1631,7 @@ function renderSpeechInventoryPage({
             <WorkbenchInventorySummary
               label="Speech inventory"
               count={filteredJobCount === jobs.length ? `${jobs.length} jobs` : `${filteredJobCount} of ${jobs.length} jobs`}
-              description="Select a job to inspect task progress and open output files."
+              description="Select a job, then open the Speech job view to inspect task progress and output files."
             />
             <SummaryMetaCard label="Buckets" value={String(speechBuckets.length)} />
             <SummaryMetaCard label="Compartments" value={String(selectedCompartmentIds.length)} />
@@ -1746,10 +1694,11 @@ function renderSpeechInventoryPage({
                         )}
                         actions={(
                           <WorkbenchCompactActionCluster>
+                            <WorkbenchSelectButton type="button" selected={job.id === selectedJobId} onClick={() => onSelectJob(job.id)} />
                             <WorkbenchRevealButton type="button" label={openViewLabel("Speech Job")} onClick={() => onOpenJob(job.id)} />
                           </WorkbenchCompactActionCluster>
                         )}
-                        onSelect={() => onOpenJob(job.id)}
+                        onSelect={() => onSelectJob(job.id)}
                       />
                     ))}
                   </div>
@@ -1833,19 +1782,6 @@ function renderCreateWorkspace({
 
   return (
     <div className="flex min-h-full flex-col gap-2">
-      <WorkbenchHero
-        eyebrow="Speech Workspace"
-        title={draft.displayName.trim() || suggestedDisplayName}
-        resourceId={`${SPEECH_REGION_LABEL} • ${draft.selectedObjectNames.length} input files`}
-        badge={<StatusBadge label="Draft" tone="neutral" />}
-        metaItems={[
-          { label: "Input Bucket", value: selectedInputBucket?.name || "Not set" },
-          { label: "Output Bucket", value: selectedOutputBucket?.name || "Not set" },
-          { label: "Model", value: getModelLabel(draft.modelType) },
-          { label: "Language", value: getLanguageLabel(draft.languageCode) },
-        ]}
-      />
-
       <Tabs
         value={workspaceTab}
         onValueChange={(value) => onWorkspaceTabChange(value as SpeechWorkspaceTab)}
@@ -2220,6 +2156,7 @@ function renderCreateWorkspace({
 
 function renderJobDetailWorkspace({
   selectedJob,
+  hasCurrentJobDetail,
   selectedJobId,
   tasks,
   filteredTasks,
@@ -2228,10 +2165,12 @@ function renderJobDetailWorkspace({
   selectedTaskJsonResult,
   selectedTaskSrtResult,
   displayedResultObjects,
+  displayedJsonResult,
+  displayedSrtResult,
   taskResultMatches,
   taskQuery,
-  resultObjects,
-  selectedResultObject,
+  activeResultObject,
+  resultPreviewTab,
   resultPreview,
   loadingJobDetail,
   loadingTasks,
@@ -2241,14 +2180,9 @@ function renderJobDetailWorkspace({
   resultObjectsError,
   resultPreviewError,
   downloadingResultObjectName,
-  showResultViewerWorkspace,
-  onRefreshJob,
-  onRevealJob,
   onTaskQueryChange,
   onSelectTask,
-  onSelectResultObject,
-  onOpenResultViewer,
-  onCloseResultViewer,
+  onResultPreviewTabChange,
   onDownloadResult,
   onCancelJob,
   cancellingJobId,
@@ -2257,6 +2191,7 @@ function renderJobDetailWorkspace({
   navigateToView,
 }: {
   selectedJob: SpeechTranscriptionJobResource | null
+  hasCurrentJobDetail: boolean
   selectedJobId: string
   tasks: SpeechTranscriptionTaskResource[]
   filteredTasks: SpeechTranscriptionTaskResource[]
@@ -2265,10 +2200,12 @@ function renderJobDetailWorkspace({
   selectedTaskJsonResult: ObjectStorageObjectResource | null
   selectedTaskSrtResult: ObjectStorageObjectResource | null
   displayedResultObjects: ObjectStorageObjectResource[]
+  displayedJsonResult: ObjectStorageObjectResource | null
+  displayedSrtResult: ObjectStorageObjectResource | null
   taskResultMatches: Map<string, SpeechTaskResultMatch>
   taskQuery: string
-  resultObjects: ObjectStorageObjectResource[]
-  selectedResultObject: ObjectStorageObjectResource | null
+  activeResultObject: ObjectStorageObjectResource | null
+  resultPreviewTab: SpeechResultTab
   resultPreview: SpeechResultPreviewState
   loadingJobDetail: boolean
   loadingTasks: boolean
@@ -2278,14 +2215,9 @@ function renderJobDetailWorkspace({
   resultObjectsError: string | null
   resultPreviewError: string | null
   downloadingResultObjectName: string | null
-  showResultViewerWorkspace: boolean
-  onRefreshJob: () => void
-  onRevealJob: () => void
   onTaskQueryChange: (value: string) => void
   onSelectTask: (taskId: string) => void
-  onSelectResultObject: (objectName: string) => void
-  onOpenResultViewer: (objectName?: string) => void
-  onCloseResultViewer: () => void
+  onResultPreviewTabChange: (value: SpeechResultTab) => void
   onDownloadResult: (objectName: string) => void
   onCancelJob: (job: SpeechTranscriptionJobResource) => void
   cancellingJobId: string | null
@@ -2303,7 +2235,7 @@ function renderJobDetailWorkspace({
     )
   }
 
-  if (!selectedJob && loadingJobDetail) {
+  if ((!selectedJob || !hasCurrentJobDetail) && loadingJobDetail) {
     return <WorkbenchLoadingState label="Loading Speech job details..." />
   }
 
@@ -2322,40 +2254,6 @@ function renderJobDetailWorkspace({
 
   return (
     <div className="flex min-h-full flex-col gap-2">
-      <WorkbenchHero
-        eyebrow="Speech Job"
-        title={selectedJob.name}
-        resourceId={selectedJob.id}
-        badge={<LifecycleBadge state={selectedJob.lifecycleState} />}
-        metaItems={[
-          { label: "Region", value: SPEECH_REGION_LABEL },
-          { label: "Progress", value: formatPercent(selectedJob.percentComplete) },
-          { label: "Files", value: formatCount(selectedFileCount) },
-          { label: "Tasks", value: formatTaskProgress(selectedJob.successfulTasks, selectedJob.totalTasks) },
-        ]}
-      />
-
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <WorkbenchCompactActionCluster>
-          <WorkbenchRevealButton type="button" label={showInListLabel("Speech Job")} onClick={onRevealJob} />
-        </WorkbenchCompactActionCluster>
-
-        <WorkbenchCompactActionCluster>
-          <WorkbenchRefreshButton onClick={onRefreshJob} />
-          {canCancel && (
-            <WorkbenchActionButton
-              type="button"
-              variant="secondary"
-              onClick={() => onCancelJob(selectedJob)}
-              disabled={cancellingJobId === selectedJob.id}
-            >
-              {cancellingJobId === selectedJob.id ? <Loader2 size={12} className="animate-spin" /> : <CircleSlash size={12} />}
-              Cancel Job
-            </WorkbenchActionButton>
-          )}
-        </WorkbenchCompactActionCluster>
-      </div>
-
       {detailError && (
         <InlineNotice tone="danger" icon={<AlertCircle size={14} />} title="Speech Detail Error">
           {detailError}
@@ -2368,45 +2266,69 @@ function renderJobDetailWorkspace({
         </InlineNotice>
       )}
 
-      {showResultViewerWorkspace ? (
-        renderSpeechResultViewerWorkspace({
-          selectedJob,
-          selectedTask,
-          displayedResultObjects,
-          selectedResultObject,
-          resultPreview,
-          loadingResultObjects,
-          loadingResultPreview,
-          resultObjectsError,
-          resultPreviewError,
-          downloadingResultObjectName,
-          onSelectResultObject,
-          onCloseResultViewer,
-          onDownloadResult,
-        })
-      ) : (
-        <Tabs
-          value={jobTab}
-          onValueChange={(value) => onJobTabChange(value as SpeechJobTab)}
-          className="min-h-0 flex-1"
-        >
-          <TabsList>
-            <TabsTrigger value="tasks">Tasks</TabsTrigger>
-            <TabsTrigger value="results">Results</TabsTrigger>
-            <TabsTrigger value="configuration">Configuration</TabsTrigger>
-          </TabsList>
+      <Tabs
+        value={jobTab}
+        onValueChange={(value) => onJobTabChange(value as SpeechJobTab)}
+        className="min-h-0 flex-1"
+      >
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="tasks">Tasks</TabsTrigger>
+          <TabsTrigger value="results">Results</TabsTrigger>
+          <TabsTrigger value="configuration">Configuration</TabsTrigger>
+        </TabsList>
 
-          <TabsContent value="tasks" className="flex min-h-0 flex-1 flex-col gap-2 pt-1.5">
-            <WorkbenchSection
-              title="Tasks"
-              subtitle="Search by file name, select a task, and download matched JSON or SRT output directly."
-            >
+        <TabsContent value="overview" className="flex min-h-0 flex-1 flex-col gap-2 pt-1.5">
+          <WorkbenchSection
+            title="Overview"
+            subtitle="Review the selected Speech job status and top-level context before drilling into tasks, results, or configuration."
+          >
+            <WorkbenchHero
+              eyebrow="Speech Job"
+              title={selectedJob.name}
+              resourceId={selectedJob.id}
+              badge={<LifecycleBadge state={selectedJob.lifecycleState} />}
+              metaItems={[
+                { label: "Region", value: SPEECH_REGION_LABEL },
+                { label: "Progress", value: formatPercent(selectedJob.percentComplete) },
+                { label: "Files", value: formatCount(selectedFileCount) },
+                { label: "Tasks", value: formatTaskProgress(selectedJob.successfulTasks, selectedJob.totalTasks) },
+              ]}
+            />
+
+              <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.75fr)]">
+                <WorkbenchKeyValueStrip
+                  items={[
+                    { label: "Accepted", value: formatDateTime(selectedJob.timeAccepted) },
+                    { label: "Started", value: formatDateTime(selectedJob.timeStarted) },
+                    { label: "Finished", value: formatDateTime(selectedJob.timeFinished) },
+                    { label: "Input Bucket", value: selectedJob.inputBucketName || "-" },
+                    { label: "Output Bucket", value: selectedJob.outputBucketName || "-" },
+                    { label: "Output Prefix", value: selectedJob.outputPrefix || "/" },
+                  ]}
+                />
+
+                <WorkbenchSurface className="space-y-1.5">
+                  <div className="text-[12px] font-medium text-foreground">Description</div>
+                  <div className="text-[11px] leading-5 text-description">
+                    {selectedJob.description?.trim() || "No description was provided for this job."}
+                  </div>
+                </WorkbenchSurface>
+              </div>
+          </WorkbenchSection>
+        </TabsContent>
+
+        <TabsContent value="tasks" className="flex min-h-0 flex-1 flex-col gap-2 pt-1.5">
+          <WorkbenchSection
+            title="Tasks"
+            subtitle="Search by file name, select a task, and download matched JSON or SRT output directly."
+          >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <WorkbenchCompactActionCluster>
                   <WorkbenchSecondaryActionButton
                     type="button"
                     variant="secondary"
-                    disabled={!selectedTaskJsonResult}
+                    disabled={!selectedTaskJsonResult || Boolean(downloadingResultObjectName)}
                     onClick={() => {
                       if (selectedTaskJsonResult) {
                         onDownloadResult(selectedTaskJsonResult.name)
@@ -2419,7 +2341,7 @@ function renderJobDetailWorkspace({
                   <WorkbenchSecondaryActionButton
                     type="button"
                     variant="secondary"
-                    disabled={!selectedTaskSrtResult}
+                    disabled={!selectedTaskSrtResult || Boolean(downloadingResultObjectName)}
                     onClick={() => {
                       if (selectedTaskSrtResult) {
                         onDownloadResult(selectedTaskSrtResult.name)
@@ -2429,6 +2351,17 @@ function renderJobDetailWorkspace({
                     <ArrowDownToLine size={12} />
                     Download SRT
                   </WorkbenchSecondaryActionButton>
+                  {canCancel && (
+                    <WorkbenchActionButton
+                      type="button"
+                      variant="secondary"
+                      onClick={() => onCancelJob(selectedJob)}
+                      disabled={cancellingJobId === selectedJob.id}
+                    >
+                      {cancellingJobId === selectedJob.id ? <Loader2 size={12} className="animate-spin" /> : <CircleSlash size={12} />}
+                      Cancel Job
+                    </WorkbenchActionButton>
+                  )}
                 </WorkbenchCompactActionCluster>
 
                 <div className="w-full sm:max-w-[280px]">
@@ -2571,37 +2504,42 @@ function renderJobDetailWorkspace({
 
               {selectedTask && !selectedTaskJsonResult && !selectedTaskSrtResult && (
                 <InlineNotice tone="info" icon={<FileText size={14} />} title="No Direct JSON/SRT Match">
-                  The selected task does not have a confidently matched JSON or SRT file yet. Refresh the job after more output files appear, or review the full result list.
+                  The selected task does not have a confidently matched JSON or SRT file yet. Refresh the job after more output files appear, or review the latest outputs in Results.
                 </InlineNotice>
               )}
-            </WorkbenchSection>
-          </TabsContent>
+          </WorkbenchSection>
+        </TabsContent>
 
           <TabsContent value="results" className="flex min-h-0 flex-1 flex-col gap-2 pt-1.5">
-            {renderSpeechResultOverviewSection({
+            {renderSpeechResultsSection({
               selectedJob,
               selectedTask,
               displayedResultObjects,
-              selectedResultObject,
+              displayedJsonResult,
+              displayedSrtResult,
+              activeResultObject,
+              resultPreviewTab,
+              resultPreview,
               loadingResultObjects,
+              loadingResultPreview,
               resultObjectsError,
+              resultPreviewError,
               downloadingResultObjectName,
-              onSelectResultObject,
-              onOpenResultViewer,
+              onResultPreviewTabChange,
               onDownloadResult,
             })}
           </TabsContent>
 
-          <TabsContent value="configuration" className="flex min-h-0 flex-1 flex-col gap-2 pt-1.5">
-            <WorkbenchSection
-              title="Input and Output"
-              subtitle="Speech jobs read from Object Storage and write results back to Object Storage in the same fixed region."
-              actions={(
-                <WorkbenchSecondaryActionButton type="button" variant="secondary" onClick={() => navigateToView("objectStorage")}>
-                  {openViewLabel("Object Storage")}
-                </WorkbenchSecondaryActionButton>
-              )}
-            >
+        <TabsContent value="configuration" className="flex min-h-0 flex-1 flex-col gap-2 pt-1.5">
+          <WorkbenchSection
+            title="Input and Output"
+            subtitle="Speech jobs read from Object Storage and write results back to Object Storage in the same fixed region."
+            actions={(
+              <WorkbenchSecondaryActionButton type="button" variant="secondary" onClick={() => navigateToView("objectStorage")}>
+                {openViewLabel("Object Storage")}
+              </WorkbenchSecondaryActionButton>
+            )}
+          >
               <WorkbenchKeyValueStrip
                 items={[
                   { label: "Input Bucket", value: selectedJob.inputBucketName || "-" },
@@ -2626,9 +2564,9 @@ function renderJobDetailWorkspace({
                   <div className="text-[11px] text-description">Input file details were not returned for this job yet.</div>
                 )}
               </WorkbenchSurface>
-            </WorkbenchSection>
+          </WorkbenchSection>
 
-            <WorkbenchSection title="Transcription Profile" subtitle="These values reflect the effective Speech configuration returned by the service.">
+          <WorkbenchSection title="Transcription Profile" subtitle="These values reflect the effective Speech configuration returned by the service.">
               <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                 <SummaryMetaCard label="Model" value={getModelLabel(selectedJob.modelType)} />
                 <SummaryMetaCard label="Language" value={getLanguageLabel(selectedJob.languageCode)} />
@@ -2647,44 +2585,54 @@ function renderJobDetailWorkspace({
                   {selectedJob.whisperPrompt || "No whisper prompt was provided for this job."}
                 </div>
               </WorkbenchSurface>
-            </WorkbenchSection>
-          </TabsContent>
-        </Tabs>
-      )}
+          </WorkbenchSection>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
 
-function renderSpeechResultOverviewSection({
+function renderSpeechResultsSection({
   selectedJob,
   selectedTask,
   displayedResultObjects,
-  selectedResultObject,
+  displayedJsonResult,
+  displayedSrtResult,
+  activeResultObject,
+  resultPreviewTab,
+  resultPreview,
   loadingResultObjects,
+  loadingResultPreview,
   resultObjectsError,
+  resultPreviewError,
   downloadingResultObjectName,
-  onSelectResultObject,
-  onOpenResultViewer,
+  onResultPreviewTabChange,
   onDownloadResult,
 }: {
   selectedJob: SpeechTranscriptionJobResource
   selectedTask: SpeechTranscriptionTaskResource | null
   displayedResultObjects: ObjectStorageObjectResource[]
-  selectedResultObject: ObjectStorageObjectResource | null
+  displayedJsonResult: ObjectStorageObjectResource | null
+  displayedSrtResult: ObjectStorageObjectResource | null
+  activeResultObject: ObjectStorageObjectResource | null
+  resultPreviewTab: SpeechResultTab
+  resultPreview: SpeechResultPreviewState
   loadingResultObjects: boolean
+  loadingResultPreview: boolean
   resultObjectsError: string | null
+  resultPreviewError: string | null
   downloadingResultObjectName: string | null
-  onSelectResultObject: (objectName: string) => void
-  onOpenResultViewer: (objectName?: string) => void
+  onResultPreviewTabChange: (value: SpeechResultTab) => void
   onDownloadResult: (objectName: string) => void
 }) {
+  const scopeLabel = selectedTask ? getLeafName(selectedTask.name) : "Latest job output"
+  const availableFormats = [displayedJsonResult ? "JSON" : null, displayedSrtResult ? "SRT" : null].filter(Boolean).join(" / ") || "None"
+  const previewDescription = selectedTask
+    ? "Inline preview for the JSON and SRT artifacts matched to the selected task."
+    : "Inline preview for the latest JSON and SRT artifacts written by this job."
+
   return (
-    <WorkbenchSection
-      title="Latest Results"
-      subtitle={selectedTask
-        ? "Result files matched to the selected task. Open the dedicated result viewer when you need an inline text preview."
-        : "Review the newest output artifacts here, then open the dedicated result viewer for previewable files."}
-    >
+    <WorkbenchSection title="Results" subtitle={previewDescription}>
       {resultObjectsError && (
         <InlineNotice tone="danger" icon={<AlertCircle size={14} />} title="Speech Result Error">
           {resultObjectsError}
@@ -2704,274 +2652,151 @@ function renderSpeechResultOverviewSection({
           icon={<FileText size={18} />}
           title={selectedTask ? "No Result Files Matched This Task" : "No Result Files Found Yet"}
           description={selectedTask
-            ? "The selected task does not currently map to any previewable result files under the job output prefix."
+            ? "The selected task does not currently map to result files under the job output prefix."
             : selectedJob.lifecycleState.toUpperCase() === "SUCCEEDED"
               ? "No output objects were found under the configured Speech output prefix. Refresh the job or confirm the output prefix."
               : "OCI Speech has not written output files under the configured prefix yet. Refresh the job after processing advances."}
         />
+      ) : !displayedJsonResult && !displayedSrtResult ? (
+        <WorkbenchEmptyState
+          icon={<FileText size={18} />}
+          title="No JSON or SRT Preview Available"
+          description={selectedTask
+            ? "The selected task has output files, but no matched JSON or SRT artifact is available for inline preview yet."
+            : "This job returned output files, but no JSON or SRT artifact is available for inline preview yet."}
+        />
       ) : (
-        <WorkbenchSurface className="space-y-1.5">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <div className="text-[12px] font-medium text-foreground">Output Files</div>
+        <>
+          <WorkbenchSurface className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="truncate text-[12px] font-medium text-foreground">{scopeLabel}</div>
               <div className="text-[11px] text-description">
-                {displayedResultObjects.length} item{displayedResultObjects.length === 1 ? "" : "s"}
-                {selectedTask ? ` matched to ${getLeafName(selectedTask.name)}` : ` under ${selectedJob.outputPrefix || "/"}`}
+                {displayedResultObjects.length} matched file{displayedResultObjects.length === 1 ? "" : "s"} • {availableFormats} ready
               </div>
             </div>
-            <StatusBadge label={selectedJob.lifecycleState} tone={toneFromLifecycleState(selectedJob.lifecycleState)} size="compact" />
-          </div>
+            <WorkbenchCompactActionCluster>
+              <WorkbenchSecondaryActionButton
+                type="button"
+                variant="secondary"
+                disabled={!displayedJsonResult || Boolean(downloadingResultObjectName)}
+                onClick={() => {
+                  if (displayedJsonResult) {
+                    onDownloadResult(displayedJsonResult.name)
+                  }
+                }}
+              >
+                <ArrowDownToLine size={12} />
+                Download JSON
+              </WorkbenchSecondaryActionButton>
+              <WorkbenchSecondaryActionButton
+                type="button"
+                variant="secondary"
+                disabled={!displayedSrtResult || Boolean(downloadingResultObjectName)}
+                onClick={() => {
+                  if (displayedSrtResult) {
+                    onDownloadResult(displayedSrtResult.name)
+                  }
+                }}
+              >
+                <ArrowDownToLine size={12} />
+                Download SRT
+              </WorkbenchSecondaryActionButton>
+            </WorkbenchCompactActionCluster>
+          </WorkbenchSurface>
 
-          <div className="space-y-1.5">
-            {displayedResultObjects.map((item) => {
-              const selected = item.name === selectedResultObject?.name
-              const previewable = canPreviewSpeechResultObject(item.name)
-              return (
-                <WorkbenchActionInventoryCard
-                  key={item.name}
-                  title={getLeafName(item.name)}
-                  subtitle={item.name}
-                  selected={selected}
-                  trailing={<StatusBadge label={previewable ? "Preview" : "Download"} tone="neutral" size="compact" />}
-                  meta={(
-                    <div className="flex flex-wrap gap-2 text-[10px] text-description">
-                      <span>{formatBytes(item.size)}</span>
-                      <span>{formatDateTime(item.timeModified || item.timeCreated)}</span>
-                    </div>
-                  )}
-                  actions={(
-                    <WorkbenchCompactActionCluster>
-                      {previewable && (
-                        <WorkbenchRevealButton
-                          type="button"
-                          label={openViewLabel("Result Viewer")}
-                          onClick={() => onOpenResultViewer(item.name)}
-                        />
-                      )}
-                      <WorkbenchSecondaryActionButton
-                        type="button"
-                        variant="secondary"
-                        disabled={Boolean(downloadingResultObjectName) && downloadingResultObjectName !== item.name}
-                        onClick={() => onDownloadResult(item.name)}
-                      >
-                        {downloadingResultObjectName === item.name ? <Loader2 size={12} className="animate-spin" /> : <ArrowDownToLine size={12} />}
-                        Download
-                      </WorkbenchSecondaryActionButton>
-                    </WorkbenchCompactActionCluster>
-                  )}
-                  onSelect={() => onSelectResultObject(item.name)}
-                />
-              )
-            })}
-          </div>
-        </WorkbenchSurface>
+          <Tabs value={resultPreviewTab} onValueChange={(value) => onResultPreviewTabChange(value as SpeechResultTab)} className="min-h-0 flex-1">
+            <TabsList>
+              <TabsTrigger value="json">JSON Preview</TabsTrigger>
+              <TabsTrigger value="srt">SRT Preview</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="json" className="flex min-h-0 flex-1 flex-col gap-2 pt-1.5">
+              {renderSpeechResultPreviewPane({
+                formatLabel: "JSON",
+                object: displayedJsonResult,
+                activeResultObject,
+                resultPreview,
+                loadingResultPreview,
+                resultPreviewError,
+              })}
+            </TabsContent>
+
+            <TabsContent value="srt" className="flex min-h-0 flex-1 flex-col gap-2 pt-1.5">
+              {renderSpeechResultPreviewPane({
+                formatLabel: "SRT",
+                object: displayedSrtResult,
+                activeResultObject,
+                resultPreview,
+                loadingResultPreview,
+                resultPreviewError,
+              })}
+            </TabsContent>
+          </Tabs>
+        </>
       )}
     </WorkbenchSection>
   )
 }
 
-function renderSpeechResultViewerWorkspace({
-  selectedJob,
-  selectedTask,
-  displayedResultObjects,
-  selectedResultObject,
+function renderSpeechResultPreviewPane({
+  formatLabel,
+  object,
+  activeResultObject,
   resultPreview,
-  loadingResultObjects,
   loadingResultPreview,
-  resultObjectsError,
   resultPreviewError,
-  downloadingResultObjectName,
-  onSelectResultObject,
-  onCloseResultViewer,
-  onDownloadResult,
 }: {
-  selectedJob: SpeechTranscriptionJobResource
-  selectedTask: SpeechTranscriptionTaskResource | null
-  displayedResultObjects: ObjectStorageObjectResource[]
-  selectedResultObject: ObjectStorageObjectResource | null
+  formatLabel: "JSON" | "SRT"
+  object: ObjectStorageObjectResource | null
+  activeResultObject: ObjectStorageObjectResource | null
   resultPreview: SpeechResultPreviewState
-  loadingResultObjects: boolean
   loadingResultPreview: boolean
-  resultObjectsError: string | null
   resultPreviewError: string | null
-  downloadingResultObjectName: string | null
-  onSelectResultObject: (objectName: string) => void
-  onCloseResultViewer: () => void
-  onDownloadResult: (objectName: string) => void
 }) {
-  const previewAvailable = selectedResultObject ? canPreviewSpeechResultObject(selectedResultObject.name) : false
+  if (!object) {
+    return (
+      <WorkbenchEmptyState
+        icon={<FileText size={18} />}
+        title={`No ${formatLabel} File`}
+        description={`A ${formatLabel} result is not available for the current scope yet.`}
+      />
+    )
+  }
+
+  const isActivePreview = activeResultObject?.name === object.name
 
   return (
-    <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--workbench-panel-shell)]">
-      <div className="flex items-center justify-between gap-2 border-b border-[var(--vscode-panel-border)] px-3 py-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <WorkbenchBackButton type="button" label={backToLabel("Speech Job")} onClick={onCloseResultViewer} />
-          <div className="min-w-0">
-            <div className="truncate text-[12px] font-semibold uppercase tracking-wide text-[var(--vscode-sideBarTitle-foreground)]">
-              Result Viewer
-            </div>
-            <div className="truncate text-[10px] text-description">{selectedJob.name}</div>
-          </div>
+    <WorkbenchSurface className="min-h-[360px] min-w-0 space-y-2">
+      <div className="flex flex-wrap gap-2 text-[11px] text-description">
+        <span>{formatBytes(object.size)}</span>
+        <span>{formatDateTime(object.timeModified || object.timeCreated)}</span>
+        <StatusBadge label={formatLabel} tone="neutral" size="compact" />
+      </div>
+
+      {resultPreviewError && isActivePreview && (
+        <InlineNotice tone="danger" icon={<AlertCircle size={14} />} title="Preview Error">
+          {resultPreviewError}
+        </InlineNotice>
+      )}
+
+      {resultPreview?.truncated && resultPreview.objectName === object.name && (
+        <InlineNotice tone="info" icon={<FileText size={14} />} title="Preview Truncated">
+          Showing the first {formatBytes(MAX_RESULT_PREVIEW_BYTES)} of this result file. Download the artifact for the full content.
+        </InlineNotice>
+      )}
+
+      {loadingResultPreview && isActivePreview ? (
+        <WorkbenchLoadingState label={`Loading ${formatLabel} preview...`} className="min-h-[260px]" />
+      ) : !resultPreviewError || !isActivePreview ? (
+        <div className="min-h-[260px] overflow-auto rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2">
+          <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-5 text-[var(--vscode-foreground)]">
+            {resultPreview?.objectName === object.name && resultPreview.text
+              ? resultPreview.text
+              : "This result file is empty."}
+          </pre>
         </div>
-        {selectedResultObject && (
-          <WorkbenchCompactActionCluster>
-            <WorkbenchSecondaryActionButton
-              type="button"
-              variant="secondary"
-              disabled={Boolean(downloadingResultObjectName) && downloadingResultObjectName !== selectedResultObject.name}
-              onClick={() => onDownloadResult(selectedResultObject.name)}
-            >
-              {downloadingResultObjectName === selectedResultObject.name ? <Loader2 size={12} className="animate-spin" /> : <ArrowDownToLine size={12} />}
-              Download Current
-            </WorkbenchSecondaryActionButton>
-          </WorkbenchCompactActionCluster>
-        )}
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-auto p-2">
-        <WorkbenchSection
-          title="Speech Results"
-          subtitle={selectedTask
-            ? "Review result files matched to the selected task on a dedicated page and switch between previewable artifacts without returning to the job overview."
-            : "Review Speech output files on a dedicated page and switch between previewable artifacts without leaving the selected job."}
-          className="min-h-full"
-        >
-          {resultObjectsError && (
-            <InlineNotice tone="danger" icon={<AlertCircle size={14} />} title="Speech Result Error">
-              {resultObjectsError}
-            </InlineNotice>
-          )}
-
-          {!selectedJob.outputBucketName || !selectedJob.outputNamespaceName ? (
-            <WorkbenchEmptyState
-              icon={<FileText size={18} />}
-              title="No Output Location Returned"
-              description="This Speech job does not expose a readable output bucket or namespace yet."
-            />
-          ) : loadingResultObjects ? (
-            <WorkbenchLoadingState label="Loading Speech result files..." />
-          ) : displayedResultObjects.length === 0 ? (
-            <WorkbenchEmptyState
-              icon={<FileText size={18} />}
-              title={selectedTask ? "No Result Files Matched This Task" : "No Result Files Found Yet"}
-              description={selectedTask
-                ? "The selected task does not currently map to any previewable result files under the job output prefix."
-                : selectedJob.lifecycleState.toUpperCase() === "SUCCEEDED"
-                  ? "No output objects were found under the configured Speech output prefix. Refresh the job or confirm the output prefix."
-                  : "OCI Speech has not written output files under the configured prefix yet. Refresh the job after processing advances."}
-            />
-          ) : (
-            <div className="grid gap-2 xl:grid-cols-[minmax(260px,0.78fr)_minmax(0,1.22fr)]">
-              <WorkbenchSurface className="space-y-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <div className="text-[12px] font-medium text-foreground">Output Files</div>
-                    <div className="text-[11px] text-description">
-                      {displayedResultObjects.length} item{displayedResultObjects.length === 1 ? "" : "s"}
-                      {selectedTask ? ` matched to ${getLeafName(selectedTask.name)}` : ` under ${selectedJob.outputPrefix || "/"}`}
-                    </div>
-                  </div>
-                  <StatusBadge label={selectedJob.lifecycleState} tone={toneFromLifecycleState(selectedJob.lifecycleState)} size="compact" />
-                </div>
-
-                <div className="space-y-1.5">
-                  {displayedResultObjects.map((item) => {
-                    const selected = item.name === selectedResultObject?.name
-                    const previewable = canPreviewSpeechResultObject(item.name)
-                    return (
-                      <WorkbenchActionInventoryCard
-                        key={item.name}
-                        title={getLeafName(item.name)}
-                        subtitle={item.name}
-                        selected={selected}
-                        trailing={<StatusBadge label={previewable ? "Preview" : "Download"} tone="neutral" size="compact" />}
-                        meta={(
-                          <div className="flex flex-wrap gap-2 text-[10px] text-description">
-                            <span>{formatBytes(item.size)}</span>
-                            <span>{formatDateTime(item.timeModified || item.timeCreated)}</span>
-                          </div>
-                        )}
-                        actions={(
-                          <WorkbenchCompactActionCluster>
-                            <WorkbenchSelectButton
-                              type="button"
-                              selected={selected}
-                              selectedLabel={previewable ? "Viewing" : "Selected"}
-                              idleLabel={previewable ? "View" : "Select"}
-                              onClick={() => onSelectResultObject(item.name)}
-                            />
-                            <WorkbenchSecondaryActionButton
-                              type="button"
-                              variant="secondary"
-                              disabled={Boolean(downloadingResultObjectName) && downloadingResultObjectName !== item.name}
-                              onClick={() => onDownloadResult(item.name)}
-                            >
-                              {downloadingResultObjectName === item.name ? <Loader2 size={12} className="animate-spin" /> : <ArrowDownToLine size={12} />}
-                              Download
-                            </WorkbenchSecondaryActionButton>
-                          </WorkbenchCompactActionCluster>
-                        )}
-                        onSelect={() => onSelectResultObject(item.name)}
-                      />
-                    )
-                  })}
-                </div>
-              </WorkbenchSurface>
-
-              <WorkbenchSurface className="min-h-[320px] space-y-2">
-                {!selectedResultObject ? (
-                  <WorkbenchEmptyState
-                    icon={<Eye size={18} />}
-                    title="No Result File Selected"
-                    description="Choose an output file on the left to preview text results or download the artifact."
-                  />
-                ) : !previewAvailable ? (
-                  <WorkbenchEmptyState
-                    icon={<ArrowDownToLine size={18} />}
-                    title="Preview Not Available"
-                    description="This output artifact is not previewed in the Result Viewer yet. Download it directly from this page if you need the file."
-                  />
-                ) : loadingResultPreview ? (
-                  <WorkbenchLoadingState label="Loading result preview..." className="min-h-[280px]" />
-                ) : (
-                  <>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="truncate text-[12px] font-medium text-foreground">{getLeafName(selectedResultObject.name)}</div>
-                        <div className="truncate text-[11px] text-description">{selectedResultObject.name}</div>
-                      </div>
-                      <StatusBadge label="Preview" tone="neutral" size="compact" />
-                    </div>
-
-                    {resultPreviewError && (
-                      <InlineNotice tone="danger" icon={<AlertCircle size={14} />} title="Preview Error">
-                        {resultPreviewError}
-                      </InlineNotice>
-                    )}
-
-                    {resultPreview?.truncated && resultPreview.objectName === selectedResultObject.name && (
-                      <InlineNotice tone="info" icon={<FileText size={14} />} title="Preview Truncated">
-                        Showing the first {formatBytes(MAX_RESULT_PREVIEW_BYTES)} of this result file. Download the artifact for the full content.
-                      </InlineNotice>
-                    )}
-
-                    {!resultPreviewError && (
-                      <div className="min-h-[240px] overflow-auto rounded-[2px] border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-2">
-                        <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-5 text-[var(--vscode-foreground)]">
-                          {resultPreview?.objectName === selectedResultObject.name && resultPreview.text
-                            ? resultPreview.text
-                            : "This result file is empty."}
-                        </pre>
-                      </div>
-                    )}
-                  </>
-                )}
-              </WorkbenchSurface>
-            </div>
-          )}
-        </WorkbenchSection>
-      </div>
-    </section>
+      ) : null}
+    </WorkbenchSurface>
   )
 }
 
@@ -2994,23 +2819,19 @@ function getSpeechResultObjectsForTask(
   }
 
   const objectDetailsByName = new Map(objects.map((item) => [item.name, item]))
-  return outputObjectNames.map((objectName) => objectDetailsByName.get(objectName) ?? { name: objectName })
+  return outputObjectNames
+    .map((objectName) => objectDetailsByName.get(objectName) ?? null)
+    .filter((item): item is ObjectStorageObjectResource => Boolean(item))
 }
 
-function getPreferredSpeechTaskResultObject(
-  task: SpeechTranscriptionTaskResource | null,
+function getPreferredSpeechResultObject(
   objects: ObjectStorageObjectResource[],
   extension?: string,
 ) {
-  if (!task) {
-    return null
-  }
-
-  const matchedObjects = getSpeechResultObjectsForTask(objects, task)
   const normalizedExtension = extension?.toLowerCase()
   const filteredObjects = normalizedExtension
-    ? matchedObjects.filter((item) => getFileExtension(item.name) === normalizedExtension)
-    : matchedObjects
+    ? objects.filter((item) => getFileExtension(item.name) === normalizedExtension)
+    : objects
 
   return filteredObjects[0] ?? null
 }
@@ -3073,14 +2894,6 @@ function filterSpeechResultObjectsByTime(
     return []
   }
   return objects.filter((item) => getObjectTimestamp(item) >= acceptedAt - SPEECH_RESULT_RECENCY_BUFFER_MS)
-}
-
-function getDefaultResultObjectName(
-  objects: ObjectStorageObjectResource[],
-  job: SpeechTranscriptionJobResource | null,
-) {
-  const candidates = getLikelySpeechResultObjects(objects, job)
-  return candidates[0]?.name ?? ""
 }
 
 function getObjectTimestamp(object: ObjectStorageObjectResource) {

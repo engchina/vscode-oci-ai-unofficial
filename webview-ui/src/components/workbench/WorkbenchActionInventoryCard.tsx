@@ -36,7 +36,7 @@ export default function WorkbenchActionInventoryCard({
     <div
       ref={cardRef}
       className={clsx(
-        "flex flex-col gap-1 rounded-[2px] border p-1.5 outline-none transition-colors",
+        "flex min-w-0 flex-col gap-1 overflow-hidden rounded-[2px] border p-1.5 outline-none transition-colors",
         onSelect && "cursor-pointer",
         onSelect && "focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)] focus-visible:-outline-offset-1",
         selected && highlighted

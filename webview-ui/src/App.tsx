@@ -112,7 +112,7 @@ const VIEW_DEFINITIONS: Record<WorkbenchView, ViewDefinition> = {
   speechJob: {
     id: "speechJob",
     label: "Speech Job",
-    description: "Inspect a single Speech transcription job, its output files, and the dedicated result viewer workspace.",
+    description: "Inspect a single Speech transcription job, its tasks, inline results, and effective configuration.",
     primary: "resources",
     icon: <AudioLines size={15} />,
   },
