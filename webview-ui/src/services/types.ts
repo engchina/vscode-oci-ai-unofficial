@@ -767,6 +767,10 @@ export interface CancelSpeechTranscriptionJobRequest {
   transcriptionJobId: string
 }
 
+export interface DeleteSpeechTranscriptionJobRequest {
+  transcriptionJobId: string
+}
+
 export interface ListSpeechTranscriptionTasksRequest {
   transcriptionJobId: string
 }

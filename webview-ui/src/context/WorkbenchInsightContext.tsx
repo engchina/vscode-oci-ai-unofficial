@@ -95,12 +95,32 @@ export function useWorkbenchInsight() {
   return context
 }
 
+function normalizeLifecycleState(state: string | undefined) {
+  return (state || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_")
+}
+
 export function toneFromLifecycleState(state: string | undefined): WorkbenchInsightTone {
-  const normalized = (state || "").toUpperCase()
+  const normalized = normalizeLifecycleState(state)
   if (["AVAILABLE", "RUNNING", "ACTIVE", "SUCCEEDED"].includes(normalized)) {
     return "success"
   }
-  if (["STOPPED", "STOPPING", "STARTING", "UPDATING", "PROVISIONING", "MAINTENANCE_IN_PROGRESS", "ACCEPTED", "IN_PROGRESS", "CANCELING"].includes(normalized)) {
+  if ([
+    "STOPPED",
+    "STOPPING",
+    "STARTING",
+    "UPDATING",
+    "PROVISIONING",
+    "MAINTENANCE_IN_PROGRESS",
+    "ACCEPTED",
+    "IN_PROGRESS",
+    "CANCELING",
+    "CANCELED",
+    "CANCELLED",
+    "PARTIALLY_SUCCEEDED",
+  ].includes(normalized)) {
     return "warning"
   }
   if (["TERMINATED", "TERMINATING", "FAILED"].includes(normalized)) {

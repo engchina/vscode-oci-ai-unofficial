@@ -11,6 +11,7 @@ import {
   ListChecks,
   Loader2,
   Sparkles,
+  Trash2,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react"
 import { useExtensionState } from "../../context/ExtensionStateContext"
@@ -48,6 +49,8 @@ import {
   WorkbenchActionButton,
   WorkbenchBackButton,
   WorkbenchCompactActionCluster,
+  WorkbenchDestructiveButton,
+  WorkbenchIconDestructiveButton,
   WorkbenchRevealButton,
   WorkbenchSecondaryActionButton,
   WorkbenchSelectButton,
@@ -55,7 +58,12 @@ import {
 } from "../workbench/WorkbenchActionButtons"
 import { WorkbenchSegmentedControl, WorkbenchMicroOptionButton } from "../workbench/WorkbenchCompactControls"
 import type { WorkbenchGuardrailState } from "../workbench/guardrail"
-import { buildWorkbenchGuardrailDetails, buildWorkbenchResourceGuardrailDetails, createWorkbenchGuardrail } from "../workbench/guardrail"
+import {
+  buildWorkbenchGuardrailDetails,
+  buildWorkbenchResourceGuardrailDetails,
+  createDeleteResourceGuardrail,
+  createWorkbenchGuardrail,
+} from "../workbench/guardrail"
 import {
   WorkbenchInventoryFilterEmpty,
   WorkbenchInventoryGroupHeading,
@@ -82,6 +90,8 @@ const SPEECH_SUPPORTED_FORMATS_TEXT = SPEECH_SUPPORTED_FORMATS.join(", ")
 const SPEECH_RESULT_TEXT_FORMATS = ["json", "jsonl", "srt", "txt", "log", "csv", "tsv"] as const
 const TRANSITIONAL_JOB_STATES = new Set(["ACCEPTED", "IN_PROGRESS", "CANCELING"])
 const TRANSITIONAL_TASK_STATES = new Set(["ACCEPTED", "IN_PROGRESS"])
+const CANCELLABLE_JOB_STATES = new Set(["ACCEPTED", "IN_PROGRESS"])
+const DELETABLE_JOB_STATES = new Set(["SUCCEEDED", "FAILED", "CANCELED", "CANCELLED", "PARTIALLY_SUCCEEDED"])
 const DEFAULT_SPEECH_MODEL: SpeechTranscriptionModelType = "WHISPER_LARGE_V3T"
 
 const MODEL_OPTIONS: Array<{ value: SpeechTranscriptionModelType; label: string; description: string }> = [
@@ -197,6 +207,7 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
   const [loadingResultPreview, setLoadingResultPreview] = useState(false)
   const [creating, setCreating] = useState(false)
   const [cancellingJobId, setCancellingJobId] = useState<string | null>(null)
+  const [deletingJobId, setDeletingJobId] = useState<string | null>(null)
   const [downloadingResultObjectName, setDownloadingResultObjectName] = useState<string | null>(null)
   const [query, setQuery] = useState("")
   const [taskQuery, setTaskQuery] = useState("")
@@ -405,8 +416,10 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
   )
   const effectiveDisplayName = manualDisplayName || suggestedDisplayName
   const displayNameValidationError = manualDisplayName ? getSpeechDisplayNameValidationError(manualDisplayName) : null
+  const jobMutationBusy = Boolean(cancellingJobId || deletingJobId)
 
   const isSyncing = creating
+    || jobMutationBusy
     || (isWorkspaceView && (loadingBuckets || loadingObjects))
     || (isInventoryView && (loadingJobs || loadingBuckets))
     || (isJobView && (loadingJobs || loadingJobDetail || loadingTasks || loadingResultObjects || (jobTab === "results" && loadingResultPreview)))
@@ -427,8 +440,8 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
 
   const isPolling = useMemo(
     () =>
-      jobs.some((job) => TRANSITIONAL_JOB_STATES.has(job.lifecycleState.toUpperCase()))
-      || visibleTasks.some((task) => TRANSITIONAL_TASK_STATES.has(task.lifecycleState.toUpperCase())),
+      jobs.some((job) => TRANSITIONAL_JOB_STATES.has(normalizeSpeechLifecycleState(job.lifecycleState)))
+      || visibleTasks.some((task) => TRANSITIONAL_TASK_STATES.has(normalizeSpeechLifecycleState(task.lifecycleState))),
     [jobs, visibleTasks],
   )
 
@@ -1330,6 +1343,10 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
   }, [creating, displayNameValidationError, draft, effectiveDisplayName, hasUnavailableSelectedObjects, loadJobDetail, loadJobs, loadTasks, loadingBuckets, loadingObjects, navigateToView, selectedCompartmentIds, selectedInputBucket, selectedOutputBucket, selectedOversizedInputObject])
 
   const requestCancelJob = useCallback((job: SpeechTranscriptionJobResource) => {
+    if (!canCancelSpeechJob(job) || cancellingJobId || deletingJobId) {
+      return
+    }
+
     setGuardrail(createWorkbenchGuardrail({
       title: `Cancel ${job.name}?`,
       description: "Canceling the job stops all transcription tasks currently running under it.",
@@ -1349,6 +1366,7 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
       onConfirm: async () => {
         setCancellingJobId(job.id)
         try {
+          setError(null)
           await ResourceServiceClient.cancelSpeechTranscriptionJob({ transcriptionJobId: job.id })
           setRecentAction({
             message: `Cancellation requested for ${job.name}`,
@@ -1367,7 +1385,50 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
         }
       },
     }))
-  }, [loadJobDetail, loadJobs, loadTasks])
+  }, [cancellingJobId, deletingJobId, loadJobDetail, loadJobs, loadTasks])
+
+  const requestDeleteJob = useCallback((job: SpeechTranscriptionJobResource) => {
+    if (!canDeleteSpeechJob(job) || cancellingJobId || deletingJobId) {
+      return
+    }
+
+    setGuardrail(createDeleteResourceGuardrail({
+      resourceTitle: "Speech Job",
+      confirmTarget: "Job",
+      subject: "Speech transcription job",
+      effect: "removes the retained job record from OCI Speech. Result files already written to Object Storage are not deleted.",
+      details: buildWorkbenchResourceGuardrailDetails({
+        resourceLabel: "Speech Job",
+        resourceName: job.name,
+        region: SPEECH_REGION_LABEL,
+        extras: [
+          { label: "Status", value: job.lifecycleState || "UNKNOWN" },
+          { label: "Model", value: getModelLabel(job.modelType) },
+          { label: "Language", value: getLanguageLabel(job.languageCode) },
+        ],
+      }),
+      onConfirm: async () => {
+        setDeletingJobId(job.id)
+        try {
+          setError(null)
+          await ResourceServiceClient.deleteSpeechTranscriptionJob({ transcriptionJobId: job.id })
+          setRecentAction({
+            message: `Deleted ${job.name}`,
+            timestamp: Date.now(),
+          })
+          const preferredJobId = selectedJobIdRef.current && selectedJobIdRef.current !== job.id
+            ? selectedJobIdRef.current
+            : undefined
+          await loadJobs(preferredJobId)
+        } catch (deleteError) {
+          setError(deleteError instanceof Error ? deleteError.message : String(deleteError))
+        } finally {
+          setDeletingJobId(null)
+          setGuardrail(null)
+        }
+      },
+    }))
+  }, [cancellingJobId, deletingJobId, loadJobs])
 
   const handleDownloadResult = useCallback(async (objectName: string) => {
     const namespaceName = selectedJob?.outputNamespaceName?.trim() || ""
@@ -1549,7 +1610,10 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
                   onResultPreviewTabChange: setResultPreviewTab,
                   onDownloadResult: handleDownloadResult,
                   onCancelJob: requestCancelJob,
+                  onDeleteJob: requestDeleteJob,
                   cancellingJobId,
+                  deletingJobId,
+                  jobMutationBusy,
                   jobTab,
                   onJobTabChange: setJobTab,
                   navigateToView,
@@ -1569,8 +1633,11 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
             error,
             highlightedJobId,
             jobItemRefs,
+            deletingJobId,
+            jobMutationBusy,
             onSelectJob: selectJob,
             onOpenJob: openJobDetails,
+            onDeleteJob: requestDeleteJob,
           })
         )}
       </FeaturePageLayout>
@@ -1582,9 +1649,9 @@ export default function SpeechView({ mode = "inventory" }: { mode?: SpeechViewMo
         confirmLabel={guardrail?.confirmLabel ?? "Confirm"}
         details={guardrail?.details}
         tone={guardrail?.tone}
-        busy={Boolean(cancellingJobId)}
+        busy={Boolean(cancellingJobId || deletingJobId)}
         onCancel={() => {
-          if (!cancellingJobId) {
+          if (!cancellingJobId && !deletingJobId) {
             setGuardrail(null)
           }
         }}
@@ -1605,8 +1672,11 @@ function renderSpeechInventoryPage({
   error,
   highlightedJobId,
   jobItemRefs,
+  deletingJobId,
+  jobMutationBusy,
   onSelectJob,
   onOpenJob,
+  onDeleteJob,
 }: {
   jobs: SpeechTranscriptionJobResource[]
   speechBuckets: ObjectStorageBucketResource[]
@@ -1618,8 +1688,11 @@ function renderSpeechInventoryPage({
   error: string | null
   highlightedJobId: string | null
   jobItemRefs: MutableRefObject<Map<string, HTMLDivElement>>
+  deletingJobId: string | null
+  jobMutationBusy: boolean
   onSelectJob: (jobId: string) => void
   onOpenJob: (jobId: string) => void
+  onDeleteJob: (job: SpeechTranscriptionJobResource) => void
 }) {
   const filteredJobCount = groupedJobs.reduce((total, group) => total + group.jobs.length, 0)
 
@@ -1696,6 +1769,15 @@ function renderSpeechInventoryPage({
                           <WorkbenchCompactActionCluster>
                             <WorkbenchSelectButton type="button" selected={job.id === selectedJobId} onClick={() => onSelectJob(job.id)} />
                             <WorkbenchRevealButton type="button" label={openViewLabel("Speech Job")} onClick={() => onOpenJob(job.id)} />
+                            {canDeleteSpeechJob(job) && (
+                              <WorkbenchIconDestructiveButton
+                                icon={<Trash2 size={12} />}
+                                onClick={() => onDeleteJob(job)}
+                                disabled={jobMutationBusy}
+                                title={deletingJobId === job.id ? "Deleting Speech job" : "Delete this completed Speech job"}
+                                busy={deletingJobId === job.id}
+                              />
+                            )}
                           </WorkbenchCompactActionCluster>
                         )}
                         onSelect={() => onSelectJob(job.id)}
@@ -2154,6 +2236,56 @@ function renderCreateWorkspace({
   )
 }
 
+function renderSpeechJobLifecycleActions({
+  job,
+  onCancelJob,
+  onDeleteJob,
+  cancellingJobId,
+  deletingJobId,
+  jobMutationBusy,
+}: {
+  job: SpeechTranscriptionJobResource
+  onCancelJob: (job: SpeechTranscriptionJobResource) => void
+  onDeleteJob: (job: SpeechTranscriptionJobResource) => void
+  cancellingJobId: string | null
+  deletingJobId: string | null
+  jobMutationBusy: boolean
+}) {
+  const canCancel = canCancelSpeechJob(job)
+  const canDelete = canDeleteSpeechJob(job)
+  const actionBusy = jobMutationBusy
+
+  if (!canCancel && !canDelete) {
+    return null
+  }
+
+  return (
+    <>
+      {canCancel && (
+        <WorkbenchActionButton
+          type="button"
+          variant="secondary"
+          onClick={() => onCancelJob(job)}
+          disabled={actionBusy}
+        >
+          {cancellingJobId === job.id ? <Loader2 size={12} className="animate-spin" /> : <CircleSlash size={12} />}
+          Cancel Job
+        </WorkbenchActionButton>
+      )}
+      {canDelete && (
+        <WorkbenchDestructiveButton
+          type="button"
+          onClick={() => onDeleteJob(job)}
+          disabled={actionBusy}
+        >
+          {deletingJobId === job.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+          Delete Job
+        </WorkbenchDestructiveButton>
+      )}
+    </>
+  )
+}
+
 function renderJobDetailWorkspace({
   selectedJob,
   hasCurrentJobDetail,
@@ -2185,7 +2317,10 @@ function renderJobDetailWorkspace({
   onResultPreviewTabChange,
   onDownloadResult,
   onCancelJob,
+  onDeleteJob,
   cancellingJobId,
+  deletingJobId,
+  jobMutationBusy,
   jobTab,
   onJobTabChange,
   navigateToView,
@@ -2220,7 +2355,10 @@ function renderJobDetailWorkspace({
   onResultPreviewTabChange: (value: SpeechResultTab) => void
   onDownloadResult: (objectName: string) => void
   onCancelJob: (job: SpeechTranscriptionJobResource) => void
+  onDeleteJob: (job: SpeechTranscriptionJobResource) => void
   cancellingJobId: string | null
+  deletingJobId: string | null
+  jobMutationBusy: boolean
   jobTab: SpeechJobTab
   onJobTabChange: (value: SpeechJobTab) => void
   navigateToView: (view: "objectStorage" | "speech" | "speechWorkspace") => void
@@ -2250,7 +2388,6 @@ function renderJobDetailWorkspace({
   }
 
   const selectedFileCount = getSpeechInputFileCount(selectedJob)
-  const canCancel = ["ACCEPTED", "IN_PROGRESS"].includes(selectedJob.lifecycleState.toUpperCase())
 
   return (
     <div className="flex min-h-full flex-col gap-2">
@@ -2282,6 +2419,18 @@ function renderJobDetailWorkspace({
           <WorkbenchSection
             title="Overview"
             subtitle="Review the selected Speech job status and top-level context before drilling into tasks, results, or configuration."
+            actions={(
+              <WorkbenchCompactActionCluster>
+                {renderSpeechJobLifecycleActions({
+                  job: selectedJob,
+                  onCancelJob,
+                  onDeleteJob,
+                  cancellingJobId,
+                  deletingJobId,
+                  jobMutationBusy,
+                })}
+              </WorkbenchCompactActionCluster>
+            )}
           >
             <WorkbenchHero
               eyebrow="Speech Job"
@@ -2351,17 +2500,14 @@ function renderJobDetailWorkspace({
                     <ArrowDownToLine size={12} />
                     Download SRT
                   </WorkbenchSecondaryActionButton>
-                  {canCancel && (
-                    <WorkbenchActionButton
-                      type="button"
-                      variant="secondary"
-                      onClick={() => onCancelJob(selectedJob)}
-                      disabled={cancellingJobId === selectedJob.id}
-                    >
-                      {cancellingJobId === selectedJob.id ? <Loader2 size={12} className="animate-spin" /> : <CircleSlash size={12} />}
-                      Cancel Job
-                    </WorkbenchActionButton>
-                  )}
+                  {renderSpeechJobLifecycleActions({
+                    job: selectedJob,
+                    onCancelJob,
+                    onDeleteJob,
+                    cancellingJobId,
+                    deletingJobId,
+                    jobMutationBusy,
+                  })}
                 </WorkbenchCompactActionCluster>
 
                 <div className="w-full sm:max-w-[280px]">
@@ -2653,7 +2799,7 @@ function renderSpeechResultsSection({
           title={selectedTask ? "No Result Files Matched This Task" : "No Result Files Found Yet"}
           description={selectedTask
             ? "The selected task does not currently map to result files under the job output prefix."
-            : selectedJob.lifecycleState.toUpperCase() === "SUCCEEDED"
+            : hasFinishedSpeechJob(selectedJob)
               ? "No output objects were found under the configured Speech output prefix. Refresh the job or confirm the output prefix."
               : "OCI Speech has not written output files under the configured prefix yet. Refresh the job after processing advances."}
         />
@@ -3028,6 +3174,28 @@ function getSpeechInputFileCount(job: SpeechTranscriptionJobResource) {
   return job.totalTasks ?? 0
 }
 
+function normalizeSpeechLifecycleState(lifecycleState: string | undefined) {
+  return String(lifecycleState ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_")
+}
+
+function canCancelSpeechJob(job: SpeechTranscriptionJobResource | null) {
+  const lifecycleState = normalizeSpeechLifecycleState(job?.lifecycleState)
+  return CANCELLABLE_JOB_STATES.has(lifecycleState)
+}
+
+function canDeleteSpeechJob(job: SpeechTranscriptionJobResource | null) {
+  const lifecycleState = normalizeSpeechLifecycleState(job?.lifecycleState)
+  return DELETABLE_JOB_STATES.has(lifecycleState)
+}
+
+function hasFinishedSpeechJob(job: SpeechTranscriptionJobResource | null) {
+  const lifecycleState = normalizeSpeechLifecycleState(job?.lifecycleState)
+  return lifecycleState === "SUCCEEDED" || lifecycleState === "FAILED" || DELETABLE_JOB_STATES.has(lifecycleState)
+}
+
 function getModelLabel(modelType: string | undefined) {
   if (modelType === "WHISPER_MEDIUM") {
     return "Whisper Medium"
@@ -3056,7 +3224,7 @@ function formatCount(value: number | undefined) {
 }
 
 function formatPercent(value: number | undefined, lifecycleState?: string) {
-  const normalizedState = String(lifecycleState ?? "").trim().toUpperCase()
+  const normalizedState = normalizeSpeechLifecycleState(lifecycleState)
   if (typeof value === "number" && Number.isFinite(value)) {
     const bounded = Math.max(0, Math.min(100, value))
     if (bounded === 0 && normalizedState === "SUCCEEDED") {

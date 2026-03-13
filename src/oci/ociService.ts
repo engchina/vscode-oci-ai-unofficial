@@ -22,6 +22,13 @@ export const OCI_SPEECH_REGION = "us-chicago-1";
 const OCI_SPEECH_MAX_INPUT_OBJECTS = 100;
 const OCI_SPEECH_MAX_WHISPER_PROMPT_LENGTH = 4000;
 const OCI_SPEECH_AUTO_DISPLAY_NAME_SEED_LENGTH = 96;
+const OCI_SPEECH_DELETABLE_JOB_STATES = new Set([
+  "SUCCEEDED",
+  "FAILED",
+  "CANCELED",
+  "CANCELLED",
+  "PARTIALLY_SUCCEEDED",
+]);
 const OCI_SPEECH_SUPPORTED_OBJECT_EXTENSIONS = new Set([
   "aac",
   "ac3",
@@ -38,6 +45,13 @@ const OCI_SPEECH_SUPPORTED_OBJECT_EXTENSIONS = new Set([
   "wav",
   "webm",
 ]);
+
+function normalizeSpeechLifecycleState(lifecycleState: string | undefined): string {
+  return String(lifecycleState ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
+}
 
 export class OciService {
   constructor(private readonly factory: OciClientFactory) { }
@@ -798,6 +812,18 @@ export class OciService {
   public async cancelSpeechTranscriptionJob(transcriptionJobId: string): Promise<void> {
     const client = await this.factory.createSpeechClientAsync(OCI_SPEECH_REGION);
     await client.cancelTranscriptionJob({ transcriptionJobId });
+  }
+
+  public async deleteSpeechTranscriptionJob(transcriptionJobId: string): Promise<void> {
+    const client = await this.factory.createSpeechClientAsync(OCI_SPEECH_REGION);
+    const response = await client.getTranscriptionJob({ transcriptionJobId });
+    const lifecycleState = normalizeSpeechLifecycleState(response.transcriptionJob?.lifecycleState as string | undefined);
+
+    if (!OCI_SPEECH_DELETABLE_JOB_STATES.has(lifecycleState)) {
+      throw new Error("Speech jobs can be deleted only after they reach SUCCEEDED, FAILED, CANCELED/CANCELLED, or PARTIALLY_SUCCEEDED.");
+    }
+
+    await client.deleteTranscriptionJob({ transcriptionJobId });
   }
 
   public async listSpeechTranscriptionTasks(transcriptionJobId: string): Promise<SpeechTranscriptionTaskResource[]> {

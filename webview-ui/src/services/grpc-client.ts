@@ -70,6 +70,7 @@ import type {
   CreateSpeechTranscriptionJobRequest,
   CreateSpeechTranscriptionJobResponse,
   CancelSpeechTranscriptionJobRequest,
+  DeleteSpeechTranscriptionJobRequest,
   ListSpeechTranscriptionTasksRequest,
   ListSpeechTranscriptionTasksResponse,
 } from "./types"
@@ -368,6 +369,10 @@ export class ResourceServiceClient extends ProtoBusClient {
 
   static cancelSpeechTranscriptionJob(request: CancelSpeechTranscriptionJobRequest): Promise<void> {
     return this.makeUnaryRequest<void>("cancelSpeechTranscriptionJob", request)
+  }
+
+  static deleteSpeechTranscriptionJob(request: DeleteSpeechTranscriptionJobRequest): Promise<void> {
+    return this.makeUnaryRequest<void>("deleteSpeechTranscriptionJob", request)
   }
 
   static listSpeechTranscriptionTasks(request: ListSpeechTranscriptionTasksRequest): Promise<ListSpeechTranscriptionTasksResponse> {

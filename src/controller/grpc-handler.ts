@@ -353,6 +353,11 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
       showStatusMessage("Speech transcription job cancellation requested.");
       return {};
     },
+    deleteSpeechTranscriptionJob: async (c, msg) => {
+      await c.deleteSpeechTranscriptionJob(String(msg.transcriptionJobId ?? ""));
+      showStatusMessage("Speech transcription job deleted.");
+      return {};
+    },
     listSpeechTranscriptionTasks: async (c, msg) => c.listSpeechTranscriptionTasks(String(msg.transcriptionJobId ?? "")),
     listBastions: async (c) => c.listBastions(),
     listBastionSessions: async (c, msg) => c.listBastionSessions(msg),

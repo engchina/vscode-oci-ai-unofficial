@@ -1320,6 +1320,14 @@ export class Controller {
     await this.ociService.cancelSpeechTranscriptionJob(trimmedJobId);
   }
 
+  public async deleteSpeechTranscriptionJob(transcriptionJobId: string): Promise<void> {
+    const trimmedJobId = String(transcriptionJobId ?? "").trim();
+    if (!trimmedJobId) {
+      throw new Error("transcriptionJobId is required.");
+    }
+    await this.ociService.deleteSpeechTranscriptionJob(trimmedJobId);
+  }
+
   public async listSpeechTranscriptionTasks(transcriptionJobId: string): Promise<ListSpeechTranscriptionTasksResponse> {
     const trimmedJobId = String(transcriptionJobId ?? "").trim();
     if (!trimmedJobId) {
