@@ -50,7 +50,7 @@ export default function CreateBastionSessionDialog({
   onSuccess,
 }: CreateBastionSessionDialogProps) {
   const { activeProfile, profilesConfig, tenancyOcid, computeCompartmentIds, bastionCompartmentIds } = useExtensionState()
-  const [sessionType, setSessionType] = useState<"MANAGED_SSH" | "PORT_FORWARDING">("MANAGED_SSH")
+  const [sessionType, setSessionType] = useState<"MANAGED_SSH" | "PORT_FORWARDING">("PORT_FORWARDING")
   const [displayName, setDisplayName] = useState("")
   const [publicKey, setPublicKey] = useState("")
   const [publicKeyFileName, setPublicKeyFileName] = useState("")
@@ -63,7 +63,7 @@ export default function CreateBastionSessionDialog({
   const [osUserName, setOsUserName] = useState("opc")
   const [targetIp, setTargetIp] = useState("")
   const [targetPort, setTargetPort] = useState("22")
-  const [portForwardTargetType, setPortForwardTargetType] = useState<PortForwardTargetType>("PRIVATE_IP")
+  const [portForwardTargetType, setPortForwardTargetType] = useState<PortForwardTargetType>("COMPUTE_INSTANCE")
   const [sessionTtlInSeconds, setSessionTtlInSeconds] = useState(DEFAULT_SESSION_TTL_SECONDS)
   const [sshKeyMode, setSshKeyMode] = useState<SshKeyMode>("UPLOAD")
   const [submitting, setSubmitting] = useState(false)
@@ -173,7 +173,7 @@ export default function CreateBastionSessionDialog({
     if (!open) {
       return
     }
-    setSessionType("MANAGED_SSH")
+    setSessionType("PORT_FORWARDING")
     setDisplayName(buildDefaultSessionName())
     setPublicKey("")
     setPublicKeyFileName("")
@@ -186,7 +186,7 @@ export default function CreateBastionSessionDialog({
     setOsUserName("opc")
     setTargetIp("")
     setTargetPort("22")
-    setPortForwardTargetType("PRIVATE_IP")
+    setPortForwardTargetType("COMPUTE_INSTANCE")
     setSessionTtlInSeconds(DEFAULT_SESSION_TTL_SECONDS)
     setSshKeyMode("UPLOAD")
     setSubmitting(false)

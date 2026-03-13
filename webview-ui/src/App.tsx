@@ -165,7 +165,7 @@ const DEFAULT_VIEW_BY_PRIMARY: Record<PrimarySection, WorkbenchView> = {
   home: "home",
   assistant: "chat",
   resources: "vcn",
-  databases: "sqlWorkbench",
+  databases: "adb",
   administration: "settings",
 }
 
