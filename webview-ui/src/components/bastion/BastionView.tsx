@@ -937,6 +937,13 @@ function hasSshCommand(session: BastionSessionResource | null | undefined) {
   return getSshCommand(session).length > 0
 }
 
+const BASTION_SSH_KEEPALIVE_OPTIONS = "-o ServerAliveInterval=30 -o ServerAliveCountMax=20 -o TCPKeepAlive=yes"
+
+function injectSshKeepaliveOptions(command: string): string {
+  // Insert keepalive options after the "ssh" command token
+  return command.replace(/^(ssh\b)/, `$1 ${BASTION_SSH_KEEPALIVE_OPTIONS}`)
+}
+
 function getSshCommand(session: BastionSessionResource | null | undefined) {
   const metadata = session?.sshMetadata
   if (!metadata || typeof metadata !== "object") {
@@ -944,11 +951,11 @@ function getSshCommand(session: BastionSessionResource | null | undefined) {
   }
   const directCommand = typeof metadata.command === "string" ? metadata.command.trim() : ""
   if (directCommand) {
-    return directCommand
+    return injectSshKeepaliveOptions(directCommand)
   }
   for (const [key, value] of Object.entries(metadata as Record<string, unknown>)) {
     if (/command/i.test(key) && typeof value === "string" && value.trim()) {
-      return value.trim()
+      return injectSshKeepaliveOptions(value.trim())
     }
   }
   return ""
