@@ -783,6 +783,8 @@ export interface ListSpeechTranscriptionTasksResponse {
 
 export interface OcaProxyStatus {
   isAuthenticated: boolean
+  authInProgress: boolean
+  authError: string | null
   proxyRunning: boolean
   proxyPort: number
   model: string

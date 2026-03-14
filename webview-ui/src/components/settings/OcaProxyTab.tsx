@@ -31,6 +31,8 @@ const REASONING_EFFORT_OPTIONS = [
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
 ]
+const AUTH_POLL_INTERVAL_MS = 3000
+const AUTH_POLL_MAX_ATTEMPTS = 100
 
 export default function OcaProxyTab() {
   const [status, setStatus] = useState<OcaProxyStatus | null>(null)
@@ -51,26 +53,61 @@ export default function OcaProxyTab() {
   const copiedTimerRef = useRef<number | null>(null)
   const authPollRef = useRef<number | null>(null)
 
+  const applyStatus = useCallback((s: OcaProxyStatus) => {
+    setStatus(s)
+    setLocalModel(s.model)
+    setLocalReasoningEffort(s.reasoningEffort)
+    setLocalPort(s.proxyPort)
+    setModels(s.availableModels)
+  }, [])
+
+  const stopAuthPolling = useCallback(() => {
+    if (authPollRef.current !== null) {
+      window.clearInterval(authPollRef.current)
+      authPollRef.current = null
+    }
+  }, [])
+
   const loadStatus = useCallback(async () => {
     try {
       const s = await OcaProxyServiceClient.getOcaProxyStatus()
-      setStatus(s)
-      setLocalModel(s.model)
-      setLocalReasoningEffort(s.reasoningEffort)
-      setLocalPort(s.proxyPort)
-      setModels(s.availableModels)
+      applyStatus(s)
+      setError(s.authError ?? null)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
-  }, [])
+  }, [applyStatus])
+
+  useEffect(() => {
+    setLoadingAuth(status?.authInProgress ?? false)
+    if (!(status?.authInProgress ?? false)) {
+      stopAuthPolling()
+    }
+  }, [status?.authInProgress, stopAuthPolling])
 
   useEffect(() => {
     void loadStatus()
     return () => {
       // Clean up polling on unmount
-      if (authPollRef.current !== null) window.clearInterval(authPollRef.current)
+      stopAuthPolling()
       if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
     }
+  }, [loadStatus, stopAuthPolling])
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      const msg = event.data
+      if (
+        msg?.type === "grpc_response" &&
+        msg?.grpc_response?.request_id === "__refresh__" &&
+        msg?.grpc_response?.message?.refresh
+      ) {
+        void loadStatus()
+      }
+    }
+
+    window.addEventListener("message", onMessage)
+    return () => window.removeEventListener("message", onMessage)
   }, [loadStatus])
 
   const handleSignIn = useCallback(async () => {
@@ -78,45 +115,57 @@ export default function OcaProxyTab() {
     setError(null)
     try {
       await OcaProxyServiceClient.startOcaAuth()
-      // Poll for auth completion — the browser callback triggers a refresh
+      const currentStatus = await OcaProxyServiceClient.getOcaProxyStatus()
+      applyStatus(currentStatus)
+      if (currentStatus.authError) {
+        setError(currentStatus.authError)
+      }
+      if (!currentStatus.authInProgress) {
+        setLoadingAuth(false)
+        return
+      }
+
+      // Poll as a fallback in case the refresh signal is missed.
       let attempts = 0
-      if (authPollRef.current !== null) window.clearInterval(authPollRef.current)
+      stopAuthPolling()
       authPollRef.current = window.setInterval(async () => {
         attempts++
         try {
           const s = await OcaProxyServiceClient.getOcaProxyStatus()
-          if (s.isAuthenticated) {
-            window.clearInterval(authPollRef.current!)
-            authPollRef.current = null
-            setStatus(s)
-            setLocalModel(s.model)
-            setLocalReasoningEffort(s.reasoningEffort)
-            setLocalPort(s.proxyPort)
-            setModels(s.availableModels)
+          applyStatus(s)
+          if (s.authError) {
+            setError(s.authError)
+          }
+          if (s.isAuthenticated || !s.authInProgress) {
+            stopAuthPolling()
             setLoadingAuth(false)
+            return
           }
         } catch { /* ignore poll errors */ }
-        if (attempts > 60) {
-          window.clearInterval(authPollRef.current!)
-          authPollRef.current = null
+        if (attempts >= AUTH_POLL_MAX_ATTEMPTS) {
+          stopAuthPolling()
           setLoadingAuth(false)
+          setError("Sign-in timed out. Try again.")
         }
-      }, 3000)
+      }, AUTH_POLL_INTERVAL_MS)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
+      stopAuthPolling()
       setLoadingAuth(false)
     }
-  }, [])
+  }, [applyStatus, stopAuthPolling])
 
   const handleLogout = useCallback(async () => {
     setError(null)
+    stopAuthPolling()
+    setLoadingAuth(false)
     try {
       await OcaProxyServiceClient.logoutOca()
       await loadStatus()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
-  }, [loadStatus])
+  }, [loadStatus, stopAuthPolling])
 
   const handleFetchModels = useCallback(async () => {
     setLoadingModels(true)
@@ -124,6 +173,7 @@ export default function OcaProxyTab() {
     try {
       const res = await OcaProxyServiceClient.fetchOcaModels()
       setModels(res.models)
+      setStatus((prev) => (prev ? { ...prev, availableModels: res.models } : prev))
       if (res.models.length > 0 && !localModel) {
         setLocalModel(res.models[0])
       }
@@ -203,7 +253,7 @@ export default function OcaProxyTab() {
     localReasoningEffort !== status.reasoningEffort ||
     localPort !== status.proxyPort
 
-  const baseUrl = `http://localhost:${status.proxyPort}`
+  const baseUrl = status.baseUrl || `http://localhost:${status.proxyPort}`
 
   return (
     <div className="flex flex-col gap-4">
@@ -242,7 +292,7 @@ export default function OcaProxyTab() {
             <WorkbenchActionButton
               variant="primary"
               onClick={() => void handleSignIn()}
-              disabled={loadingAuth}
+              disabled={loadingAuth || status.authInProgress}
             >
               {loadingAuth ? (
                 <Loader2 size={12} className="mr-1 animate-spin" />
@@ -253,7 +303,7 @@ export default function OcaProxyTab() {
             </WorkbenchActionButton>
           )}
         </div>
-        {loadingAuth && (
+        {(loadingAuth || status.authInProgress) && (
           <p className="text-[11px] text-description">
             A browser window has opened. Complete sign-in there, then return here.
           </p>
@@ -272,7 +322,7 @@ export default function OcaProxyTab() {
             <label className="text-xs text-description font-medium">Model</label>
             <button
               onClick={() => void handleFetchModels()}
-              disabled={loadingModels || !status.isAuthenticated}
+              disabled={loadingModels || !status.isAuthenticated || status.authInProgress}
               className="flex items-center gap-1 text-[10px] text-description hover:text-foreground transition-colors disabled:opacity-50"
             >
               {loadingModels ? (
@@ -287,7 +337,7 @@ export default function OcaProxyTab() {
             <select
               value={localModel}
               onChange={(e) => setLocalModel(e.target.value)}
-              disabled={!status.isAuthenticated}
+              disabled={!status.isAuthenticated || status.authInProgress}
               className="w-full appearance-none rounded-md border border-input-border bg-input-background px-2 py-1.5 pr-7 text-xs outline-none focus:border-border disabled:opacity-50"
             >
               {localModel && !models.includes(localModel) && (
@@ -359,7 +409,7 @@ export default function OcaProxyTab() {
           <WorkbenchActionButton
             variant={status.proxyRunning ? "secondary" : "primary"}
             onClick={() => void handleToggleProxy()}
-            disabled={togglingProxy || (!status.isAuthenticated && !status.proxyRunning)}
+            disabled={togglingProxy || status.authInProgress || (!status.isAuthenticated && !status.proxyRunning)}
           >
             {togglingProxy ? (
               <Loader2 size={12} className="mr-1 animate-spin" />
@@ -424,7 +474,11 @@ export default function OcaProxyTab() {
 
       {/* Save Settings */}
       <WorkbenchInlineActionCluster>
-        <WorkbenchActionButton onClick={() => void handleSaveConfig()} disabled={savingConfig} className="self-start px-4">
+        <WorkbenchActionButton
+          onClick={() => void handleSaveConfig()}
+          disabled={savingConfig || !configDirty || !localModel.trim()}
+          className="self-start px-4"
+        >
           {savingConfig ? (
             <Loader2 size={14} className="mr-1.5 animate-spin" />
           ) : (

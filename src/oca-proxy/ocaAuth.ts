@@ -14,6 +14,7 @@ export const OCA_CONFIG = {
 };
 
 const REFRESH_TOKEN_SECRET_KEY = "ociAi.ocaProxy.refreshToken";
+const OAUTH_TIMEOUT_MS = 5 * 60 * 1000;
 
 // --- OIDC discovery cache ---
 
@@ -150,14 +151,20 @@ export class OcaTokenManager {
 
 // --- OAuth Flow ---
 
+export interface OcaOAuthFlowHandle {
+  completion: Promise<string>;
+  cancel: (reason?: string) => void;
+}
+
 /**
  * Start the OAuth2 PKCE flow:
  * 1. Start a temporary HTTP server on callbackPort to receive the redirect
  * 2. Open the browser to the OCA authorization URL
  * 3. Wait for the callback, exchange code for tokens
- * Returns the refresh token.
+ * Returns once the callback server is listening and the browser launch has been attempted.
+ * The returned handle's completion promise resolves with the refresh token once the flow finishes.
  */
-export async function startOAuthFlow(callbackPort: number): Promise<string> {
+export async function startOAuthFlow(callbackPort: number): Promise<OcaOAuthFlowHandle> {
   const codeVerifier = generateCodeVerifier();
   const codeChallenge = generateCodeChallenge(codeVerifier);
   const state = generateRandomString(32);
@@ -179,11 +186,47 @@ export async function startOAuthFlow(callbackPort: number): Promise<string> {
 
   const authUrl = `${authEndpoint}?${params.toString()}`;
 
-  return new Promise<string>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      server.close();
-      reject(new Error("OAuth timeout: no callback received within 5 minutes"));
-    }, 5 * 60 * 1000);
+  return new Promise<OcaOAuthFlowHandle>((resolveLaunch, rejectLaunch) => {
+    let completionSettled = false;
+    let launchResolved = false;
+
+    let resolveCompletion: (value: string) => void = () => { };
+    let rejectCompletion: (reason?: unknown) => void = () => { };
+    const completion = new Promise<string>((resolve, reject) => {
+      resolveCompletion = resolve;
+      rejectCompletion = reject;
+    });
+
+    const settleCompletion = (fn: () => void) => {
+      if (completionSettled) {
+        return;
+      }
+      completionSettled = true;
+      clearTimeout(timeout);
+      fn();
+    };
+
+    const failLaunch = (error: Error) => {
+      clearTimeout(timeout);
+      if (!completionSettled) {
+        completionSettled = true;
+        void completion.catch(() => undefined);
+        rejectCompletion(error);
+      }
+      rejectLaunch(error);
+    };
+
+    const cancelFlow = (reason = "Oracle Code Assist sign-in cancelled.") => {
+      const error = new Error(reason);
+      if (server.listening) {
+        server.close();
+      }
+      if (launchResolved) {
+        settleCompletion(() => rejectCompletion(error));
+      } else {
+        failLaunch(error);
+      }
+    };
 
     const server = http.createServer(async (req, res) => {
       if (!req.url?.startsWith("/callback")) {
@@ -198,20 +241,20 @@ export async function startOAuthFlow(callbackPort: number): Promise<string> {
       const errorParam = url.searchParams.get("error");
 
       if (errorParam) {
-        clearTimeout(timeout);
+        const error = new Error(`OAuth error: ${errorParam}`);
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
         res.end(buildCallbackHtml(false, `Authentication error: ${escapeHtml(errorParam)}`));
         server.close();
-        reject(new Error(`OAuth error: ${errorParam}`));
+        settleCompletion(() => rejectCompletion(error));
         return;
       }
 
       if (!code || returnedState !== state) {
-        clearTimeout(timeout);
+        const error = new Error("Invalid OAuth callback: missing code or state mismatch");
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
         res.end(buildCallbackHtml(false, "Invalid callback parameters."));
         server.close();
-        reject(new Error("Invalid OAuth callback: missing code or state mismatch"));
+        settleCompletion(() => rejectCompletion(error));
         return;
       }
 
@@ -234,34 +277,48 @@ export async function startOAuthFlow(callbackPort: number): Promise<string> {
           throw new Error(`Token exchange failed: ${String(tokenResponse.error)}`);
         }
 
-        clearTimeout(timeout);
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
         res.end(buildCallbackHtml(true, "Signed in to Oracle Code Assist successfully. You may close this tab."));
         server.close();
-        resolve(tokenResponse.refresh_token as string);
+        settleCompletion(() => resolveCompletion(tokenResponse.refresh_token as string));
       } catch (err) {
-        clearTimeout(timeout);
         const msg = err instanceof Error ? err.message : String(err);
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
         res.end(buildCallbackHtml(false, escapeHtml(msg)));
         server.close();
-        reject(err instanceof Error ? err : new Error(msg));
+        settleCompletion(() => rejectCompletion(err instanceof Error ? err : new Error(msg)));
       }
     });
 
-    // Startup error (e.g., EADDRINUSE)
+    const timeout = setTimeout(() => {
+      const error = new Error("OAuth timeout: no callback received within 5 minutes");
+      server.close();
+      if (launchResolved) {
+        settleCompletion(() => rejectCompletion(error));
+      } else {
+        failLaunch(error);
+      }
+    }, OAUTH_TIMEOUT_MS);
+
     server.once("error", (err) => {
-      clearTimeout(timeout);
-      reject(new Error(`Failed to start OAuth callback server on port ${callbackPort}: ${err.message}`));
+      const error = new Error(`Failed to start OAuth callback server on port ${callbackPort}: ${err.message}`);
+      if (launchResolved) {
+        settleCompletion(() => rejectCompletion(error));
+      } else {
+        failLaunch(error);
+      }
     });
 
     server.listen(callbackPort, "127.0.0.1", () => {
       vscode.env.openExternal(vscode.Uri.parse(authUrl)).then(
-        () => {},
+        () => {
+          launchResolved = true;
+          resolveLaunch({ completion, cancel: cancelFlow });
+        },
         (err: unknown) => {
-          clearTimeout(timeout);
+          const error = new Error(`Failed to open browser: ${String(err)}`);
           server.close();
-          reject(new Error(`Failed to open browser: ${String(err)}`));
+          failLaunch(error);
         }
       );
     });
