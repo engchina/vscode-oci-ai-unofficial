@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
@@ -7,6 +8,25 @@ import { GenAiService, type ChatMessage } from "../oci/genAiService";
 import { AdbSqlService } from "../oci/adbSqlService";
 import { OciService } from "../oci/ociService";
 import { OcaProxyManager } from "../oca-proxy/ocaProxyManager";
+import { McpHub, type McpAllowlistAction } from "../mcp/mcpHub";
+import { AgentService } from "../agent/agentService";
+import { AgentSkillService, type SkillTurnContext } from "../agent/skillService";
+import { SubagentService, type SubagentRun } from "../agent/subagentService";
+import type {
+  McpServerState,
+  AddMcpServerRequest,
+  ToggleMcpToolAutoApproveRequest,
+  AgentSettings,
+  AgentSkillsState,
+  McpPromptPreviewRequest,
+  McpPromptPreviewResponse,
+  McpResourcePreviewRequest,
+  McpResourcePreviewResponse,
+  ToolCallData,
+  ToolCallResult,
+  ToolApprovalResponse,
+  McpSmokeTestResult,
+} from "../shared/mcp-types";
 import type {
   ConnectComputeSshRequest,
   ConnectComputeSshResponse,
@@ -29,6 +49,7 @@ import type {
   LoadAdbConnectionResponse,
   AppState,
   ChatImageData,
+  ChatMessageData,
   DeleteSqlFavoriteRequest,
   SavedCompartment,
   SaveSettingsRequest,
@@ -55,6 +76,11 @@ import type {
   OcaFetchModelsResponse,
   OcaProxySaveConfigRequest,
   OcaGenerateApiKeyResponse,
+  SubagentRunData,
+  SubagentMessageRequest,
+  SubagentKillRequest,
+  SubagentTranscriptRequest,
+  SubagentTranscriptResponse,
 } from "../shared/services";
 import type { ExtensionMessage } from "../shared/messages";
 
@@ -82,6 +108,9 @@ const DEFAULT_CHAT_TOP_P = 1;
 const MAX_IMAGES_PER_MESSAGE = 10;
 const MAX_SPEECH_OBJECTS_PER_JOB = 100;
 const MAX_WHISPER_PROMPT_LENGTH = 4000;
+const MAX_MCP_EXECUTION_ATTEMPTS = 2;
+const MAX_MCP_PARSE_REPAIR_ATTEMPTS = 2;
+const MCP_RETRY_BACKOFF_MS = 350;
 
 function getMissingApiKeyFields(secrets: ApiKeySecrets): string[] {
   const missing: string[] = [];
@@ -97,8 +126,41 @@ type ActiveChatRequest = {
   cancelled: boolean;
 };
 
+type AgentToolExecution =
+  | {
+      kind: "tool";
+      toolCall: ToolCallData;
+      serverName: string;
+      toolName: string;
+      args: Record<string, unknown>;
+    }
+  | {
+      kind: "prompt";
+      toolCall: ToolCallData;
+      serverName: string;
+      promptName: string;
+      args: Record<string, string>;
+    }
+  | {
+      kind: "resource";
+      toolCall: ToolCallData;
+      serverName: string;
+      uri: string;
+    };
+
+type McpExecutionContext = {
+  requester: "main" | "subagent";
+  subagentRun?: SubagentRun;
+};
+
+type ParsedAssistantMcpActions = {
+  displayText: string;
+  actions: AgentToolExecution[];
+  repairPrompt?: string;
+};
+
 export class Controller {
-  private chatHistory: ChatMessage[] = [];
+  private chatHistory: ChatMessageData[] = [];
   private sqlHistory: SqlHistoryEntry[] = [];
   private sqlFavorites: SqlFavoriteEntry[] = [];
   private stateSubscribers: Map<string, StreamingResponseHandler<AppState>> = new Map();
@@ -106,7 +168,13 @@ export class Controller {
   private chatButtonSubscribers: Map<string, StreamingResponseHandler<unknown>> = new Map();
   private codeContextSubscribers: Map<string, StreamingResponseHandler<CodeContextPayload>> = new Map();
   private activeChatRequests: Map<string, ActiveChatRequest> = new Map();
+  private mcpServerSubscribers: Map<string, StreamingResponseHandler<{ servers: McpServerState[] }>> = new Map();
+  private skillSubscribers: Map<string, StreamingResponseHandler<AgentSkillsState>> = new Map();
   readonly ocaProxyManager: OcaProxyManager;
+  readonly mcpHub: McpHub;
+  readonly agentService: AgentService;
+  readonly agentSkillService: AgentSkillService;
+  readonly subagentService: SubagentService;
 
   constructor(
     private readonly authManager: AuthManager,
@@ -115,11 +183,36 @@ export class Controller {
     private readonly adbSqlService: AdbSqlService,
     private readonly workspaceState: vscode.Memento,
     ocaProxyManager: OcaProxyManager,
+    private readonly extensionPath: string,
   ) {
     this.ocaProxyManager = ocaProxyManager;
+    this.mcpHub = new McpHub();
+    this.agentService = new AgentService();
+    this.agentSkillService = new AgentSkillService(extensionPath);
+    this.subagentService = new SubagentService();
+
+    // Subscribe to MCP server changes and broadcast to webview subscribers
+    this.mcpHub.onDidChange(() => {
+      const servers = this.mcpHub.getServers();
+      for (const [, handler] of this.mcpServerSubscribers) {
+        handler({ servers }).catch(() => {});
+      }
+    });
+
+    this.agentSkillService.onDidChange(() => {
+      const state = this.agentSkillService.getState();
+      for (const [, handler] of this.skillSubscribers) {
+        handler(state).catch(() => {});
+      }
+    });
+
+    this.subagentService.onDidChange(() => {
+      void this.broadcastState();
+    });
+
     // Restore persisted chat history
     if (workspaceState) {
-      const persisted = workspaceState.get<ChatMessage[]>(CHAT_HISTORY_KEY, []);
+      const persisted = workspaceState.get<ChatMessageData[]>(CHAT_HISTORY_KEY, []);
       this.chatHistory = Array.isArray(persisted) ? persisted : [];
       const persistedSqlWorkbench = workspaceState.get<SqlWorkbenchState>(SQL_WORKBENCH_STATE_KEY, {
         history: [],
@@ -138,15 +231,25 @@ export class Controller {
     const chatCompartmentId = cfg.get<string>("chatCompartmentId", "").trim();
     const genAiLlmModelIdRaw =
       cfg.get<string>("genAiLlmModelId", "").trim() || cfg.get<string>("genAiModelId", "").trim();
-    const hasModelName = splitModelNames(genAiLlmModelIdRaw).length > 0;
+    const configuredOciAssistantModels = splitModelNames(genAiLlmModelIdRaw);
+    const exposedOcaAssistantModels = this.ocaProxyManager.getAssistantModels();
+    const assistantModelNames = dedupeModelNames([
+      ...configuredOciAssistantModels,
+      ...exposedOcaAssistantModels,
+    ]).join(",");
+    const hasAnyAssistantModel = configuredOciAssistantModels.length > 0 || exposedOcaAssistantModels.length > 0;
     const secrets = await this.authManager.getApiKeySecrets();
     const effectiveChatCompartmentId = chatCompartmentId || secrets.tenancyOcid.trim() || compartmentId;
 
     const warnings: string[] = [];
-    if (!effectiveChatCompartmentId) warnings.push("Chat compartment not set (select one in Chat, or configure Tenancy OCID).");
-    if (!hasModelName) warnings.push("LLM Model Name not set (Settings → LLM Model Name).");
+    if (!effectiveChatCompartmentId && configuredOciAssistantModels.length > 0) {
+      warnings.push("Chat compartment not set for OCI Generative AI models (select one in Chat, or use the OCA Proxy assistant model).");
+    }
+    if (!hasAnyAssistantModel) {
+      warnings.push("No Assistant model is available (configure Settings → LLM Model Name, or sign in to OCA Proxy and enable Show this model in Assistant).");
+    }
     const missingApiKeyFields = getMissingApiKeyFields(secrets);
-    if (missingApiKeyFields.length > 0) {
+    if (missingApiKeyFields.length > 0 && configuredOciAssistantModels.length > 0) {
       warnings.push(`API Key Auth incomplete for profile "${activeProfile}": ${missingApiKeyFields.join(", ")}.`);
     }
 
@@ -166,8 +269,15 @@ export class Controller {
       tenancyOcid: secrets.tenancyOcid || "",
       genAiRegion: cfg.get<string>("genAiRegion", ""),
       genAiLlmModelId: genAiLlmModelIdRaw,
+      assistantModelNames,
       genAiEmbeddingModelId: cfg.get<string>("genAiEmbeddingModelId", ""),
-      chatMessages: this.chatHistory.map(m => ({ role: m.role, text: m.text, images: m.images })),
+      chatMessages: this.chatHistory.map((message) => ({
+        role: message.role,
+        text: message.text,
+        images: message.images,
+        toolCalls: message.toolCalls,
+      })),
+      subagents: this.buildSubagentState(),
       isStreaming: false,
       configWarning: warnings.join(" "),
       sqlWorkbench: {
@@ -369,6 +479,36 @@ export class Controller {
     }
   }
 
+  private async streamAssistantModelResponse(
+    messages: ChatMessage[],
+    onToken: (token: string) => void,
+    options: {
+      signal?: AbortSignal;
+      modelName?: string;
+      runtimeSystemPrompt?: string;
+    } = {},
+  ): Promise<void> {
+    const unavailableOcaReason = this.ocaProxyManager.getUnavailableAssistantModelReason(options.modelName);
+    if (unavailableOcaReason) {
+      throw new Error(unavailableOcaReason);
+    }
+
+    if (this.ocaProxyManager.handlesAssistantModel(options.modelName)) {
+      await this.ocaProxyManager.chatStream(messages, onToken, {
+        signal: options.signal,
+        modelNameOverride: options.modelName,
+        runtimeSystemPrompt: options.runtimeSystemPrompt,
+      });
+      return;
+    }
+
+    await this.genAiService.chatStream(messages, onToken, {
+      signal: options.signal,
+      modelNameOverride: options.modelName,
+      runtimeSystemPrompt: options.runtimeSystemPrompt,
+    });
+  }
+
   /** Subscribe to settings button events */
   public subscribeToSettingsButton(requestId: string, stream: StreamingResponseHandler<unknown>): void {
     this.settingsButtonSubscribers.set(requestId, stream);
@@ -393,20 +533,82 @@ export class Controller {
     }
   }
 
+  private async resolveTurnContext(rawText: string): Promise<SkillTurnContext> {
+    const skillContext = this.agentSkillService.prepareTurn(rawText);
+    const text = rawText.trim();
+    if (!text.startsWith("/")) {
+      return skillContext;
+    }
+
+    const commandMatch = text.match(/^\/([^\s]+)(?:\s+([\s\S]*))?$/i);
+    if (!commandMatch) {
+      return skillContext;
+    }
+
+    const commandName = normalizeSlashCommand(commandMatch[1]);
+    const rawArgs = (commandMatch[2] ?? "").trim();
+
+    switch (commandName) {
+      case "help":
+      case "commands":
+        return {
+          kind: "local-response",
+          responseText: this.renderCommandsHelp(),
+        };
+      case "allowlist":
+        return await this.resolveAllowlistSlashCommand(rawArgs);
+      case "approve":
+        return await this.resolveApproveSlashCommand(rawArgs);
+      case "status":
+        return {
+          kind: "local-response",
+          responseText: this.renderStatusReport(),
+        };
+      case "context":
+        return {
+          kind: "local-response",
+          responseText: this.renderContextReport(rawArgs),
+        };
+      case "export-session":
+      case "export":
+        return {
+          kind: "local-response",
+          responseText: await this.exportCurrentSession(rawArgs),
+        };
+      case "mcp-prompt":
+      case "prompt":
+        return await this.resolveMcpPromptSlashCommand(rawArgs);
+      case "subagents":
+        return await this.resolveSubagentsSlashCommand(rawArgs);
+      case "kill":
+        return await this.resolveSubagentsSlashCommand(`kill ${rawArgs}`);
+      case "steer":
+        return await this.resolveSubagentsSlashCommand(`steer ${rawArgs}`);
+      case "tell":
+      case "send":
+        return await this.resolveSubagentsSlashCommand(`send ${rawArgs}`);
+      default:
+        return skillContext;
+    }
+  }
+
   /** Send chat message with streaming response */
   public async sendChatMessage(
     payload: SendMessageRequest,
     responseStream: StreamingResponseHandler<StreamTokenResponse>,
     requestId: string
   ): Promise<void> {
-    const text = String(payload.text ?? "").trim();
+    const rawText = String(payload.text ?? "").trim();
     const images = normalizeImages(payload.images);
     const modelName = typeof payload.modelName === "string" ? payload.modelName.trim() : undefined;
 
-    if (!text && images.length === 0) {
+    if (!rawText && images.length === 0) {
       await responseStream({ token: "", done: true }, true);
       return;
     }
+
+    const turnContext = await this.resolveTurnContext(rawText);
+    const text = turnContext.kind === "model" ? turnContext.userText : rawText;
 
     this.chatHistory.push({
       role: "user",
@@ -414,23 +616,80 @@ export class Controller {
       images: images.length > 0 ? images : undefined,
     });
 
+    if (turnContext.kind === "local-response") {
+      const responseText = turnContext.responseText.trim();
+      await responseStream({ token: responseText, done: false }, false);
+      await responseStream({ token: "", done: true }, true);
+      if (responseText) {
+        this.chatHistory.push({ role: "model", text: responseText });
+      }
+      this.persistChatHistory();
+      return;
+    }
+
+    if (turnContext.kind === "tool-dispatch") {
+      try {
+        await this.persistAndBroadcastChatHistory();
+        await this.executeSkillToolDispatchTurn(turnContext);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        const errorMessage = `Skill dispatch failed: ${detail}`;
+        this.chatHistory.push({ role: "model", text: errorMessage });
+        await this.persistAndBroadcastChatHistory();
+        await responseStream({ token: errorMessage, done: false }, false);
+      }
+      await responseStream({ token: "", done: true }, true);
+      return;
+    }
+
     const active: ActiveChatRequest = {
       abortController: new AbortController(),
       cancelled: false,
     };
     this.activeChatRequests.set(requestId, active);
 
+    const runtimeSystemPrompt = [turnContext.runtimeSystemPrompt, this.buildMcpAgentPrompt()]
+      .filter((section) => section && section.trim().length > 0)
+      .join("\n\n");
+
+    if (this.shouldUseAgentMcpLoop()) {
+      try {
+        await this.persistAndBroadcastChatHistory();
+        await this.runAgentMcpLoop({
+          active,
+          modelName,
+          runtimeSystemPrompt,
+        });
+      } catch (error) {
+        if (!active.cancelled) {
+          const detail = error instanceof Error ? error.message : String(error);
+          const errorMessage = `Agent request failed: ${detail}`;
+          this.chatHistory.push({ role: "model", text: errorMessage });
+          await this.persistAndBroadcastChatHistory();
+          await responseStream({ token: errorMessage, done: false }, false);
+        }
+      } finally {
+        this.activeChatRequests.delete(requestId);
+      }
+
+      await responseStream({ token: "", done: true }, true);
+      return;
+    }
+
     let assistantText = "";
     let requestFailed = false;
     try {
-      await this.genAiService.chatStream(
-        this.chatHistory,
+      await this.streamAssistantModelResponse(
+        this.buildModelMessagesFromChatHistory(),
         async (token) => {
           assistantText += token;
           await responseStream({ token, done: false }, false);
         },
-        active.abortController.signal,
-        modelName
+        {
+          signal: active.abortController.signal,
+          modelName,
+          runtimeSystemPrompt,
+        }
       );
     } catch (error) {
       if (active.cancelled) {
@@ -466,14 +725,1579 @@ export class Controller {
     this.persistChatHistory();
   }
 
+  private async executeSkillToolDispatchTurn(turnContext: Extract<SkillTurnContext, { kind: "tool-dispatch" }>): Promise<void> {
+    const resolvedTool = this.resolveConnectedMcpTool(turnContext.toolName);
+    if (!resolvedTool) {
+      throw new Error(
+        `No connected MCP tool matched "${turnContext.toolName}". Check MCP Servers or use /status to inspect live capabilities.`,
+      );
+    }
+
+    const args = this.buildDispatchedToolArgs(turnContext);
+    const createdAt = new Date().toISOString();
+    const toolCall: ToolCallData = {
+      id: randomUUID(),
+      toolName: resolvedTool.tool.name,
+      serverName: resolvedTool.serverName,
+      createdAt,
+      updatedAt: createdAt,
+      actionKind: "tool",
+      actionTarget: resolvedTool.tool.name,
+      parameters: args,
+      status: "pending",
+    };
+
+    this.chatHistory.push({
+      role: "model",
+      text: `Running /${turnContext.slashCommandName} via ${resolvedTool.serverName}/${resolvedTool.tool.name}.`,
+      toolCalls: [toolCall],
+    });
+    await this.persistAndBroadcastChatHistory();
+
+    await this.executeAgentMcpAction(
+      {
+        kind: "tool",
+        toolCall,
+        serverName: resolvedTool.serverName,
+        toolName: resolvedTool.tool.name,
+        args,
+      },
+      undefined,
+      { requester: "main" },
+    );
+  }
+
+  private async resolveMcpPromptSlashCommand(rawArgs: string): Promise<SkillTurnContext> {
+    const parts = rawArgs.match(/^([^\s]+)\s+([^\s]+)(?:\s+([\s\S]*))?$/i);
+    if (!parts) {
+      return {
+        kind: "local-response",
+        responseText:
+          "Usage: `/mcp-prompt <server> <prompt> [name=value ...]`\n\n" +
+          "Example: `/mcp-prompt filesystem summarize path=/workspace/src`",
+      };
+    }
+
+    const serverName = parts[1];
+    const promptName = parts[2];
+    const promptArgs = parseKeyValueArgs(parts[3] ?? "");
+
+    try {
+      const promptResult = await this.mcpHub.getPrompt(serverName, promptName, promptArgs);
+      return {
+        kind: "local-response",
+        responseText: this.renderMcpPromptPreview(serverName, promptName, promptArgs, promptResult),
+      };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      return {
+        kind: "local-response",
+        responseText: `MCP prompt failed: ${detail}`,
+      };
+    }
+  }
+
+  private async resolveAllowlistSlashCommand(rawArgs: string): Promise<SkillTurnContext> {
+    const trimmed = rawArgs.trim();
+    if (!trimmed || /^list$/i.test(trimmed)) {
+      return {
+        kind: "local-response",
+        responseText: this.renderAllowlistReport(),
+      };
+    }
+
+    const match = trimmed.match(/^(add|remove)\s+([^\s]+)(?:\s+([^\s]+))?(?:\s+scope=([^\s]+))?$/i);
+    if (!match) {
+      return {
+        kind: "local-response",
+        responseText:
+          "Usage: `/allowlist`\n" +
+          "`/allowlist add <server> <tool:...|prompt:...|resource:...> [scope=main|subagents|subagent:<id>|all]`\n" +
+          "`/allowlist remove <server> <rule> [scope=...]`",
+      };
+    }
+
+    const action = normalizeSlashCommand(match[1]) as "add" | "remove";
+    const serverOrCombined = match[2];
+    const maybeRule = match[3];
+    const scope = normalizeAllowlistScope(match[4] ?? "all");
+
+    let serverName = "";
+    let rule = "";
+    if (maybeRule) {
+      serverName = serverOrCombined;
+      rule = maybeRule;
+    } else {
+      const parsed = parseServerToolReference(serverOrCombined);
+      if (!parsed) {
+        return {
+          kind: "local-response",
+          responseText:
+            `Could not parse "${serverOrCombined}". Use <server>/<tool> or <server> <rule>.`,
+        };
+      }
+      serverName = parsed.serverName;
+      rule = parsed.toolName;
+    }
+
+    if (!scope) {
+      return {
+        kind: "local-response",
+        responseText: `Unsupported scope "${match[4]}".`,
+      };
+    }
+
+    const server = this.mcpHub.getServer(serverName);
+    if (!server) {
+      return {
+        kind: "local-response",
+        responseText: `MCP server "${serverName}" is not configured.`,
+      };
+    }
+
+    const canonicalEntry = canonicalizeAllowlistEntry(rule, scope);
+    if (!canonicalEntry) {
+      return {
+        kind: "local-response",
+        responseText: `Could not parse allowlist rule "${rule}".`,
+      };
+    }
+
+    await this.mcpHub.toggleAllowlistEntry(serverName, canonicalEntry, action === "add");
+    return {
+      kind: "local-response",
+      responseText:
+        action === "add"
+          ? `Added \`${serverName} ${formatAllowlistEntry(canonicalEntry)}\` to the MCP allowlist.`
+          : `Removed \`${serverName} ${formatAllowlistEntry(canonicalEntry)}\` from the MCP allowlist.`,
+    };
+  }
+
+  private async resolveApproveSlashCommand(rawArgs: string): Promise<SkillTurnContext> {
+    const pending = this.getPendingApprovalCalls();
+    const trimmed = rawArgs.trim();
+    if (!trimmed || /^list$/i.test(trimmed)) {
+      return {
+        kind: "local-response",
+        responseText: this.renderPendingApprovalsReport(pending),
+      };
+    }
+
+    const match = trimmed.match(/^([^\s]+)\s+(allow-once|allow-always|deny)$/i);
+    if (!match) {
+      return {
+        kind: "local-response",
+        responseText:
+          `${this.renderPendingApprovalsReport(pending)}\n\n` +
+          "Usage: `/approve <id|#index> allow-once|allow-always|deny`",
+      };
+    }
+
+    const resolution = this.resolvePendingApprovalToken(match[1], pending);
+    if (!resolution.toolCall) {
+      return {
+        kind: "local-response",
+        responseText: resolution.error ?? "Pending approval not found.",
+      };
+    }
+
+    const action = normalizeSlashCommand(match[2]);
+    this.agentService.resolveApproval({
+      callId: resolution.toolCall.id,
+      approved: action !== "deny",
+      alwaysAllow: action === "allow-always",
+    });
+
+    const label = formatToolCallLabel(resolution.toolCall);
+    return {
+      kind: "local-response",
+      responseText:
+        action === "deny"
+          ? `Denied pending approval for \`${label}\`.`
+          : action === "allow-always"
+            ? `Approved \`${label}\` and added a scoped MCP allowlist rule when supported.`
+            : `Approved pending approval for \`${label}\`.`,
+    };
+  }
+
+  private async resolveSubagentsSlashCommand(rawArgs: string): Promise<SkillTurnContext> {
+    const trimmed = rawArgs.trim();
+    if (!trimmed) {
+      return {
+        kind: "local-response",
+        responseText: this.renderSubagentList(),
+      };
+    }
+
+    const commandMatch = trimmed.match(/^([^\s]+)(?:\s+([\s\S]*))?$/i);
+    if (!commandMatch) {
+      return {
+        kind: "local-response",
+        responseText: this.renderSubagentList(),
+      };
+    }
+
+    const subcommand = normalizeSlashCommand(commandMatch[1]);
+    const rest = (commandMatch[2] ?? "").trim();
+
+    switch (subcommand) {
+      case "list":
+        return {
+          kind: "local-response",
+          responseText: this.renderSubagentList(),
+        };
+      case "spawn":
+        return await this.spawnSubagentFromSlash(rest);
+      case "info":
+        return {
+          kind: "local-response",
+          responseText: this.renderSubagentInfo(rest),
+        };
+      case "log":
+      case "logs":
+        return {
+          kind: "local-response",
+          responseText: this.renderSubagentLog(rest),
+        };
+      case "kill":
+        return await this.killSubagentFromSlash(rest);
+      case "send":
+        return await this.sendSubagentMessageFromSlash(rest, "send");
+      case "steer":
+        return await this.sendSubagentMessageFromSlash(rest, "steer");
+      default:
+        return {
+          kind: "local-response",
+          responseText:
+            "Usage: `/subagents list|spawn|info|log|kill|send|steer ...`\n\n" +
+            "Example: `/subagents spawn researcher Inspect the latest MCP flow --model my-model`",
+        };
+    }
+  }
+
+  private async spawnSubagentFromSlash(rawArgs: string): Promise<SkillTurnContext> {
+    const modelMatch = rawArgs.match(/(?:^|\s)--model\s+("[^"]+"|'[^']+'|\S+)\s*$/i);
+    const modelName = modelMatch ? unwrapQuotedArg(modelMatch[1]) : undefined;
+    const withoutModel = modelMatch ? rawArgs.slice(0, modelMatch.index).trim() : rawArgs.trim();
+    const match = withoutModel.match(/^([^\s]+)\s+([\s\S]+)$/);
+    if (!match) {
+      return {
+        kind: "local-response",
+        responseText:
+          "Usage: `/subagents spawn <agentId> <task> [--model <model>]`\n\n" +
+          "Example: `/subagents spawn researcher Review the current MCP approval loop --model my-model`",
+      };
+    }
+
+    const agentId = match[1];
+    const task = match[2].trim();
+    const run = this.subagentService.createRun({
+      id: randomUUID(),
+      agentId,
+      task,
+      modelName,
+      parentContextSummary: this.buildSubagentParentContextSummary(),
+    });
+    this.driveSubagentRun(run.id);
+
+    return {
+      kind: "local-response",
+      responseText:
+        `Spawned subagent #${run.shortId} for "${run.agentId}".\n\n` +
+        `Task: ${task}\n` +
+        `Transcript: ${run.transcriptPath}`,
+    };
+  }
+
+  private renderSubagentList(): string {
+    const runs = this.subagentService.listRuns();
+    if (runs.length === 0) {
+      return [
+        "No subagents have been spawned yet.",
+        "",
+        "Try: `/subagents spawn researcher Summarize the active MCP architecture`",
+      ].join("\n");
+    }
+
+    const lines = [`Subagents: ${runs.length}`, ""];
+    runs.forEach((run, index) => {
+      const pendingApprovals = this.countPendingApprovalsForSubagent(run);
+      const statusLabel = pendingApprovals > 0
+        ? `${run.status}, approvals:${pendingApprovals}`
+        : run.status;
+      lines.push(
+        `- #${index + 1} ${run.shortId} [${statusLabel}] ${run.agentId}: ${truncateText(run.task, 96)}`,
+      );
+    });
+    lines.push("");
+    lines.push("Use `/subagents info <id|#>` or `/subagents log <id|#>` for more detail.");
+    return lines.join("\n");
+  }
+
+  private renderSubagentInfo(rawArgs: string): string {
+    const resolved = this.subagentService.resolveRunToken(rawArgs);
+    if (!resolved.run) {
+      return resolved.error ?? "Subagent not found.";
+    }
+
+    const run = resolved.run;
+    return [
+      `Subagent ${run.shortId}`,
+      "",
+      `Status: ${run.status}`,
+      `Agent: ${run.agentId}`,
+      `Model: ${run.modelName ?? "(default)"}`,
+      `Created: ${run.createdAt}`,
+      `Updated: ${run.updatedAt}`,
+      `Runtime: ${typeof run.runtimeMs === "number" ? `${run.runtimeMs} ms` : "-"}`,
+      `Messages: ${run.messages.length}`,
+      `Steering notes: ${run.steeringNotes.length}`,
+      `Pending approvals: ${this.countPendingApprovalsForSubagent(run)}`,
+      `Logs: ${run.logs.length}`,
+      `Transcript: ${run.transcriptPath}`,
+      "",
+      `Task: ${run.task}`,
+      run.resultText ? `\nLast result:\n${truncateText(run.resultText, 1200)}` : "",
+      run.errorText ? `\nLast error:\n${run.errorText}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  private renderSubagentLog(rawArgs: string): string {
+    const match = rawArgs.match(/^([^\s]+)(?:\s+(\d+))?(?:\s+([\s\S]+))?$/);
+    if (!match) {
+      return "Usage: `/subagents log <id|#> [limit]`";
+    }
+
+    const resolved = this.subagentService.resolveRunToken(match[1]);
+    if (!resolved.run) {
+      return resolved.error ?? "Subagent not found.";
+    }
+
+    const run = resolved.run;
+    const limit = Math.max(1, Math.min(100, Number(match[2] ?? "20")));
+    const entries = run.logs.slice(-limit);
+
+    return [
+      `Subagent log ${run.shortId} (${entries.length}/${run.logs.length})`,
+      "",
+      ...entries.map((entry) => `- [${entry.timestamp}] ${entry.kind}: ${entry.message}`),
+      "",
+      `Transcript: ${run.transcriptPath}`,
+    ].join("\n");
+  }
+
+  private async killSubagentFromSlash(rawArgs: string): Promise<SkillTurnContext> {
+    const trimmed = rawArgs.trim();
+    if (!trimmed) {
+      return {
+        kind: "local-response",
+        responseText: "Usage: `/subagents kill <id|#|all>`",
+      };
+    }
+
+    if (normalizeSlashCommand(trimmed) === "all") {
+      const runs = this.subagentService.listRuns().filter((run) => run.status === "running" || run.status === "queued");
+      runs.forEach((run) => {
+        this.subagentService.cancelRun(run, "Cancelled with /subagents kill all.");
+      });
+      return {
+        kind: "local-response",
+        responseText: runs.length > 0 ? `Cancelled ${runs.length} subagent run(s).` : "No running subagents to cancel.",
+      };
+    }
+
+    const resolved = this.subagentService.resolveRunToken(trimmed);
+    if (!resolved.run) {
+      return {
+        kind: "local-response",
+        responseText: resolved.error ?? "Subagent not found.",
+      };
+    }
+
+    this.subagentService.cancelRun(resolved.run, "Cancelled with /subagents kill.");
+    return {
+      kind: "local-response",
+      responseText: `Cancelled subagent ${resolved.run.shortId}.`,
+    };
+  }
+
+  private async sendSubagentMessageFromSlash(
+    rawArgs: string,
+    mode: "send" | "steer",
+  ): Promise<SkillTurnContext> {
+    const match = rawArgs.match(/^([^\s]+)\s+([\s\S]+)$/);
+    if (!match) {
+      return {
+        kind: "local-response",
+        responseText:
+          mode === "send"
+            ? "Usage: `/subagents send <id|#> <message>`"
+            : "Usage: `/subagents steer <id|#> <message>`",
+      };
+    }
+
+    const resolved = this.subagentService.resolveRunToken(match[1]);
+    if (!resolved.run) {
+      return {
+        kind: "local-response",
+        responseText: resolved.error ?? "Subagent not found.",
+      };
+    }
+
+    if (mode === "send") {
+      this.subagentService.queueUserMessage(resolved.run, match[2]);
+    } else {
+      this.subagentService.queueSteering(resolved.run, match[2]);
+    }
+    this.driveSubagentRun(resolved.run.id);
+
+    return {
+      kind: "local-response",
+      responseText:
+        mode === "send"
+          ? `Queued a follow-up message for subagent ${resolved.run.shortId}.`
+          : `Queued steering guidance for subagent ${resolved.run.shortId}.`,
+    };
+  }
+
+  private driveSubagentRun(runId: string): void {
+    const resolved = this.subagentService.resolveRunToken(runId);
+    if (!resolved.run) {
+      return;
+    }
+    const initialRun = resolved.run;
+    if (initialRun.processing || initialRun.status === "cancelled") {
+      return;
+    }
+
+    void (async () => {
+      restartable: while (true) {
+        const latest = this.subagentService.resolveRunToken(runId).run;
+        if (!latest || latest.status === "cancelled") {
+          return;
+        }
+        if (latest.processing) {
+          return;
+        }
+
+        const observedGeneration = latest.generation;
+        const abortController = this.subagentService.beginRun(latest);
+        const startedAt = Date.now();
+        const maxActions = Math.max(1, this.agentService.getSettings().maxAutoActions || 10);
+        const workingMessages: ChatMessage[] = latest.messages.map((message) => ({
+          role: message.role,
+          text: message.text,
+          images: message.images,
+        }));
+        let actionCount = 0;
+        let parseRepairCount = 0;
+        let finalAssistantText = "";
+
+        try {
+          while (true) {
+            let assistantText = "";
+            await this.streamAssistantModelResponse(
+              workingMessages,
+              (token) => {
+                assistantText += token;
+              },
+              {
+                signal: abortController.signal,
+                modelName: latest.modelName,
+                runtimeSystemPrompt: this.buildSubagentRuntimePrompt(latest),
+              },
+            );
+
+            const parsed = parseAssistantMcpActions(assistantText);
+            if (parsed.repairPrompt && parsed.actions.length === 0) {
+              if (
+                await this.queueMcpParserRepair({
+                  workingMessages,
+                  parsed,
+                  parseRepairCount,
+                  subagentRun: latest,
+                })
+              ) {
+                parseRepairCount += 1;
+                continue;
+              }
+            }
+
+            if (parsed.actions.length === 0) {
+              finalAssistantText =
+                parsed.displayText ||
+                (parsed.repairPrompt
+                  ? "The subagent hit an MCP formatting issue before any tool call could be executed."
+                  : assistantText.trim());
+              break;
+            }
+            parseRepairCount = 0;
+
+            const narration = parsed.displayText || `Subagent ${latest.shortId} is using MCP for the next step.`;
+            for (const action of parsed.actions) {
+              action.toolCall.subagentId = latest.id;
+              action.toolCall.subagentLabel = latest.agentId;
+            }
+
+            this.subagentService.appendLog(
+              latest,
+              "tool",
+              `Requested ${parsed.actions.length} MCP action(s).`,
+            );
+
+            const agentMessage: ChatMessageData = {
+              role: "model",
+              text: [
+                `Subagent ${latest.shortId} (${latest.agentId}) is using MCP for the next step.`,
+                parsed.displayText ? `\n${parsed.displayText}` : "",
+              ]
+                .join("\n")
+                .trim(),
+              toolCalls: parsed.actions.map((action) => action.toolCall),
+            };
+            this.chatHistory.push(agentMessage);
+            await this.persistAndBroadcastChatHistory();
+
+            const requestSummary = formatMcpRequestForModel(narration, parsed.actions);
+            workingMessages.push({
+              role: "model",
+              text: requestSummary,
+            });
+            latest.messages.push({
+              role: "model",
+              text: requestSummary,
+            });
+
+            const toolResultMessages: string[] = [];
+            for (const action of parsed.actions) {
+              actionCount += 1;
+              const result = await this.executeAgentMcpAction(action, abortController.signal, {
+                requester: "subagent",
+                subagentRun: latest,
+              });
+              toolResultMessages.push(formatMcpResultForModel(action, result));
+
+              const interruption = this.resolveSubagentInterruption(runId, observedGeneration, abortController);
+              if (interruption === "continue") {
+                continue restartable;
+              }
+              if (interruption === "return") {
+                return;
+              }
+
+              if (actionCount >= maxActions) {
+                finalAssistantText =
+                  "Stopped after reaching the configured MCP action limit. Review the MCP results above and continue if another step is needed.";
+                break;
+              }
+            }
+
+            if (finalAssistantText) {
+              break;
+            }
+
+            const continuationText = `${toolResultMessages.join("\n\n")}\n\nContinue helping the parent session.`;
+            workingMessages.push({
+              role: "user",
+              text: continuationText,
+            });
+            latest.messages.push({
+              role: "user",
+              text: continuationText,
+            });
+            this.subagentService.appendLog(
+              latest,
+              "tool",
+              `Consumed ${toolResultMessages.length} MCP result(s) and continued reasoning.`,
+            );
+
+            const interruption = this.resolveSubagentInterruption(runId, observedGeneration, abortController);
+            if (interruption === "continue") {
+              continue restartable;
+            }
+            if (interruption === "return") {
+              return;
+            }
+          }
+
+          const interruption = this.resolveSubagentInterruption(runId, observedGeneration, abortController);
+          if (interruption === "continue") {
+            continue;
+          }
+          if (interruption === "return") {
+            return;
+          }
+
+          const runtimeMs = Date.now() - startedAt;
+          this.subagentService.markCompleted(latest, finalAssistantText, runtimeMs);
+
+          if (
+            latest.resultText &&
+            latest.resultText.trim() !== "ANNOUNCE_SKIP" &&
+            latest.announcedGeneration !== latest.completedGeneration
+          ) {
+            this.chatHistory.push({
+              role: "model",
+              text: this.renderSubagentCompletion(latest),
+            });
+            await this.persistAndBroadcastChatHistory();
+            this.subagentService.markAnnounced(latest);
+          }
+
+          if (latest.generation !== observedGeneration) {
+            continue;
+          }
+          return;
+        } catch (error) {
+          const runtimeMs = Date.now() - startedAt;
+          const latestRun = this.subagentService.resolveRunToken(runId).run;
+          if (!latestRun) {
+            return;
+          }
+
+          const aborted = isAbortErrorLike(error);
+          const shouldRestart = latestRun.generation !== observedGeneration && latestRun.status !== "cancelled";
+          if (aborted && shouldRestart) {
+            this.subagentService.clearActiveRun(latestRun, abortController);
+            continue;
+          }
+          if (aborted && latestRun.status === "cancelled") {
+            this.subagentService.clearActiveRun(latestRun, abortController);
+            return;
+          }
+
+          const detail = error instanceof Error ? error.message : String(error);
+          this.subagentService.markFailed(latestRun, detail, runtimeMs);
+          this.chatHistory.push({
+            role: "model",
+            text: `Subagent ${latestRun.shortId} failed.\n\n${detail}`,
+          });
+          await this.persistAndBroadcastChatHistory();
+          return;
+        }
+      }
+    })();
+  }
+
+  private resolveSubagentInterruption(
+    runId: string,
+    observedGeneration: number,
+    abortController: AbortController,
+  ): "continue" | "return" | undefined {
+    if (!abortController.signal.aborted) {
+      return undefined;
+    }
+
+    const latestRun = this.subagentService.resolveRunToken(runId).run;
+    if (!latestRun) {
+      return "return";
+    }
+
+    if (latestRun.status === "cancelled") {
+      this.subagentService.clearActiveRun(latestRun, abortController);
+      return "return";
+    }
+
+    if (latestRun.generation !== observedGeneration) {
+      this.subagentService.clearActiveRun(latestRun, abortController);
+      return "continue";
+    }
+
+    return undefined;
+  }
+
+  private buildSubagentRuntimePrompt(run: SubagentRun): string {
+    const sections = [
+      "You are a background subagent working inside a VS Code assistant session.",
+      "Stay focused on the assigned task, reason carefully, and return a concise but high-signal result.",
+      "Do not ask the user for confirmation directly; the parent session will relay anything important.",
+      "You may use connected MCP servers when helpful.",
+      `Subagent id: ${run.shortId}`,
+      `Requested agent id: ${run.agentId}`,
+      `Assigned task: ${run.task}`,
+    ];
+
+    if (run.parentContextSummary) {
+      sections.push(`Parent context snapshot:\n${run.parentContextSummary}`);
+    }
+    if (run.steeringNotes.length > 0) {
+      sections.push(`Steering notes:\n- ${run.steeringNotes.join("\n- ")}`);
+    }
+    const mcpPrompt = this.buildMcpAgentPrompt();
+    if (mcpPrompt) {
+      sections.push(mcpPrompt);
+    }
+
+    return sections.join("\n\n");
+  }
+
+  private renderSubagentCompletion(run: SubagentRun): string {
+    const runtimeLabel = typeof run.runtimeMs === "number" ? `${run.runtimeMs} ms` : "unknown duration";
+    return [
+      `Subagent ${run.shortId} completed for "${run.agentId}" in ${runtimeLabel}.`,
+      "",
+      run.resultText ?? "(empty result)",
+      "",
+      `Transcript: ${run.transcriptPath}`,
+    ].join("\n");
+  }
+
+  private buildSubagentParentContextSummary(): string {
+    const recentMessages = this.chatHistory
+      .slice(-8)
+      .map((message, index) => `#${index + 1} ${message.role}\n${truncateText(serializeChatMessageForModel(message), 800)}`)
+      .join("\n\n");
+    if (!recentMessages) {
+      return "No prior chat history.";
+    }
+    return recentMessages;
+  }
+
+  private buildSubagentState(): SubagentRunData[] {
+    return this.subagentService.listRuns().map((run) => ({
+      id: run.id,
+      shortId: run.shortId,
+      agentId: run.agentId,
+      task: run.task,
+      modelName: run.modelName,
+      status: run.status,
+      createdAt: run.createdAt,
+      updatedAt: run.updatedAt,
+      startedAt: run.startedAt,
+      finishedAt: run.finishedAt,
+      transcriptPath: run.transcriptPath,
+      steeringNotes: [...run.steeringNotes],
+      resultText: run.resultText,
+      errorText: run.errorText,
+      runtimeMs: run.runtimeMs,
+      generation: run.generation,
+      completedGeneration: run.completedGeneration,
+      announcedGeneration: run.announcedGeneration,
+      processing: run.processing,
+      messageCount: run.messages.length,
+      pendingApprovalCount: this.countPendingApprovalsForSubagent(run),
+      logs: run.logs.map((entry) => ({
+        timestamp: entry.timestamp,
+        kind: entry.kind,
+        message: entry.message,
+      })),
+    }));
+  }
+
+  private getToolCallsForSubagent(runId: string): ToolCallData[] {
+    return this.chatHistory.flatMap((message) =>
+      (message.toolCalls ?? []).filter((toolCall) => toolCall.subagentId === runId),
+    );
+  }
+
+  private renderAllowlistReport(): string {
+    const rows = this.mcpHub
+      .getServers()
+      .flatMap((server) =>
+        this.mcpHub
+          .getAllowlistEntries(server.name)
+          .map((entry) => `${server.name} ${formatAllowlistEntry(entry)}`),
+      )
+      .sort((left, right) => left.localeCompare(right));
+
+    if (rows.length === 0) {
+      return [
+        "The MCP allowlist is currently empty.",
+        "",
+        "Use `/allowlist add <server> <tool:...|prompt:...|resource:...> [scope=...]` to add a rule.",
+      ].join("\n");
+    }
+
+    return [
+      `MCP allowlist: ${rows.length}`,
+      "",
+      ...rows.map((row) => `- ${row}`),
+    ].join("\n");
+  }
+
+  private countPendingApprovalsForSubagent(run: SubagentRun): number {
+    return this.getToolCallsForSubagent(run.id).filter((toolCall) => toolCall.status === "pending").length;
+  }
+
+  private getPendingApprovalCalls(): Array<{ toolCall: ToolCallData; label: string }> {
+    const pending: Array<{ toolCall: ToolCallData; label: string }> = [];
+    for (const message of this.chatHistory) {
+      for (const toolCall of message.toolCalls ?? []) {
+        if (toolCall.status !== "pending") {
+          continue;
+        }
+        pending.push({
+          toolCall,
+          label: formatToolCallLabel(toolCall),
+        });
+      }
+    }
+    return pending;
+  }
+
+  private renderPendingApprovalsReport(
+    pending = this.getPendingApprovalCalls(),
+  ): string {
+    if (pending.length === 0) {
+      return "There are no pending approvals right now.";
+    }
+
+    const lines = [
+      `Pending approvals: ${pending.length}`,
+      "",
+    ];
+    pending.forEach((entry, index) => {
+      lines.push(
+        `- #${index + 1} ${entry.toolCall.id.slice(0, 8)} ${entry.label} ${truncateText(JSON.stringify(entry.toolCall.parameters), 160)}`,
+      );
+    });
+    lines.push("");
+    lines.push("Approve with `/approve <id|#index> allow-once|allow-always|deny`.");
+    return lines.join("\n");
+  }
+
+  private resolvePendingApprovalToken(
+    token: string,
+    pending = this.getPendingApprovalCalls(),
+  ): { toolCall?: ToolCallData; error?: string } {
+    const normalized = token.trim();
+    if (!normalized) {
+      return { error: "A pending approval id or #index is required." };
+    }
+
+    if (normalized.startsWith("#")) {
+      const index = Number(normalized.slice(1));
+      if (!Number.isInteger(index) || index < 1) {
+        return { error: `Invalid approval index: ${normalized}` };
+      }
+      const entry = pending[index - 1];
+      if (!entry) {
+        return { error: `No pending approval matched ${normalized}.` };
+      }
+      return { toolCall: entry.toolCall };
+    }
+
+    const exact = pending.find((entry) => entry.toolCall.id === normalized);
+    if (exact) {
+      return { toolCall: exact.toolCall };
+    }
+
+    const prefixMatches = pending.filter((entry) => entry.toolCall.id.startsWith(normalized));
+    if (prefixMatches.length === 1) {
+      return { toolCall: prefixMatches[0].toolCall };
+    }
+    if (prefixMatches.length > 1) {
+      return { error: `Approval token "${normalized}" matched multiple pending calls.` };
+    }
+    return { error: `No pending approval matched "${normalized}".` };
+  }
+
+  private renderCommandsHelp(): string {
+    const lines = [
+      "Available slash commands",
+      "",
+      "Built-in",
+      "- `/help` or `/commands`: show this command list",
+      "- `/skills`: list discovered agent skills",
+      "- `/skill <id> <task>`: invoke a skill by id",
+      "- `/allowlist`: list MCP allowlist rules",
+      "- `/allowlist add|remove <server> <tool:...|prompt:...|resource:...> [scope=main|subagents|subagent:<id>|all]`: manage the MCP allowlist",
+      "- `/approve`: list pending approvals",
+      "- `/approve <id|#index> allow-once|allow-always|deny`: resolve a pending approval",
+      "- `/status`: show agent mode, MCP, and skills status",
+      "- `/context [summary|detail|json]`: inspect the current chat/context footprint",
+      "- `/mcp-prompt <server> <prompt> [name=value ...]`: preview a live MCP prompt",
+      "- `/export-session [path]`: export the current chat transcript to HTML",
+      "- `/subagents list|spawn|info|log|kill|send|steer`: manage background subagents",
+      "- `/kill`, `/send`, `/steer`: shortcuts for the matching `/subagents` actions",
+      "",
+    ];
+
+    const skillCommands = this.agentSkillService.getSlashCommands();
+    if (skillCommands.length > 0) {
+      lines.push("Skill commands");
+      for (const command of skillCommands) {
+        const suffix = command.kind === "tool-dispatch" ? " -> tool" : "";
+        lines.push(`- \`/${command.command}\`: ${command.description ?? "Reusable skill"}${suffix}`);
+      }
+      lines.push("");
+    }
+
+    const promptCommands = this.mcpHub
+      .getConnectedServers()
+      .flatMap((server) =>
+        server.prompts.map((prompt) => ({
+          serverName: server.name,
+          promptName: prompt.name,
+          description: prompt.description,
+        })),
+      );
+    if (promptCommands.length > 0) {
+      lines.push("MCP prompts");
+      for (const prompt of promptCommands) {
+        lines.push(
+          `- \`/mcp-prompt ${prompt.serverName} ${prompt.promptName}\`: ${prompt.description ?? "Preview prompt output"}`,
+        );
+      }
+      lines.push("");
+    }
+
+    lines.push("Tip: direct skill slash commands come from SKILL directories and keep the current VSCode plugin flow intact.");
+    return lines.join("\n");
+  }
+
+  private renderStatusReport(): string {
+    const agentSettings = this.agentService.getSettings();
+    const skillState = this.agentSkillService.getState();
+    const servers = this.mcpHub.getServers();
+    const connectedServers = servers.filter((server) => server.status === "connected");
+    const connectedTools = connectedServers.reduce((sum, server) => sum + server.tools.length, 0);
+    const connectedResources = connectedServers.reduce((sum, server) => sum + server.resources.length, 0);
+    const connectedPrompts = connectedServers.reduce((sum, server) => sum + server.prompts.length, 0);
+    const pendingApprovals = this.getPendingApprovalCalls();
+    const subagents = this.subagentService.listRuns();
+    const runningSubagents = subagents.filter((run) => run.status === "running" || run.status === "queued");
+
+    return [
+      `Status snapshot (${new Date().toISOString()})`,
+      "",
+      `Agent mode: ${agentSettings.mode}`,
+      `Auto-action limit: ${agentSettings.maxAutoActions}`,
+      `Chat messages: ${this.chatHistory.length}`,
+      `Skills: ${skillState.skills.filter((skill) => skill.effectiveEnabled).length}/${skillState.skills.length} ready`,
+      `MCP servers: ${connectedServers.length}/${servers.length} connected`,
+      `MCP capabilities: ${connectedTools} tools, ${connectedResources} resources, ${connectedPrompts} prompts`,
+      `Pending approvals: ${pendingApprovals.length}`,
+      `Subagents: ${runningSubagents.length}/${subagents.length} active`,
+      "",
+      "Connected MCP servers",
+      ...(connectedServers.length === 0
+        ? ["- none"]
+        : connectedServers.map(
+            (server) =>
+              `- ${server.name}: ${server.tools.length} tools, ${server.resources.length} resources, ${server.prompts.length} prompts`,
+          )),
+      "",
+      "Pending approvals",
+      ...(pendingApprovals.length === 0
+        ? ["- none"]
+        : pendingApprovals.map((entry, index) => `- #${index + 1} ${entry.label}`)),
+      "",
+      "Subagents",
+      ...(subagents.length === 0
+        ? ["- none"]
+        : subagents.slice(0, 8).map((run) => `- ${run.shortId} [${run.status}] ${run.agentId}`)),
+    ].join("\n");
+  }
+
+  private renderContextReport(rawArgs: string): string {
+    const mode = normalizeSlashCommand(rawArgs || "summary");
+    const messages = this.chatHistory.map((message, index) => {
+      const serialized = serializeChatMessageForModel(message);
+      return {
+        index,
+        role: message.role,
+        chars: serialized.length,
+        estimatedTokens: estimateTokens(serialized),
+        hasImages: Boolean(message.images?.length),
+        toolCalls: message.toolCalls?.length ?? 0,
+      };
+    });
+    const configuredSystemPrompt = vscode.workspace.getConfiguration("ociAi").get<string>("systemPrompt", "").trim();
+    const skillsManifest = this.agentSkillService.getState().skills
+      .filter((skill) => skill.effectiveEnabled && skill.modelInvocable)
+      .map((skill) => `${skill.id}: ${skill.description ?? skill.name}`)
+      .join("\n");
+    const mcpPrompt = this.buildMcpAgentPrompt();
+    const contextSummary = {
+      messages: {
+        count: messages.length,
+        estimatedTokens: messages.reduce((sum, message) => sum + message.estimatedTokens, 0),
+      },
+      configuredSystemPrompt: {
+        chars: configuredSystemPrompt.length,
+        estimatedTokens: estimateTokens(configuredSystemPrompt),
+      },
+      skillsManifest: {
+        chars: skillsManifest.length,
+        estimatedTokens: estimateTokens(skillsManifest),
+      },
+      mcpPrompt: {
+        chars: mcpPrompt.length,
+        estimatedTokens: estimateTokens(mcpPrompt),
+      },
+    };
+
+    if (mode === "json") {
+      return JSON.stringify(
+        {
+          summary: contextSummary,
+          messages,
+        },
+        null,
+        2,
+      );
+    }
+
+    const lines = [
+      "Context snapshot",
+      "",
+      `Messages: ${contextSummary.messages.count} (~${contextSummary.messages.estimatedTokens} tokens)`,
+      `Configured system prompt: ${contextSummary.configuredSystemPrompt.chars} chars (~${contextSummary.configuredSystemPrompt.estimatedTokens} tokens)`,
+      `Skills manifest: ${contextSummary.skillsManifest.chars} chars (~${contextSummary.skillsManifest.estimatedTokens} tokens)`,
+      `MCP agent prompt: ${contextSummary.mcpPrompt.chars} chars (~${contextSummary.mcpPrompt.estimatedTokens} tokens)`,
+    ];
+
+    if (mode === "detail") {
+      lines.push("");
+      lines.push("Messages");
+      for (const message of messages) {
+        lines.push(
+          `- #${message.index + 1} ${message.role}: ${message.chars} chars (~${message.estimatedTokens} tokens), toolCalls=${message.toolCalls}, images=${message.hasImages ? "yes" : "no"}`,
+        );
+      }
+    } else {
+      lines.push("");
+      lines.push("Run `/context detail` for per-message detail or `/context json` for structured output.");
+    }
+
+    return lines.join("\n");
+  }
+
+  private async exportCurrentSession(rawArgs: string): Promise<string> {
+    const requestedPath = rawArgs.trim();
+    const targetPath = requestedPath
+      ? path.resolve(requestedPath)
+      : this.buildDefaultSessionExportPath();
+    const directory = path.dirname(targetPath);
+    fs.mkdirSync(directory, { recursive: true });
+    fs.writeFileSync(targetPath, renderChatHistoryHtml(this.chatHistory), "utf8");
+    return `Exported the current session to:\n${targetPath}`;
+  }
+
+  private buildDefaultSessionExportPath(): string {
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const baseDirectory = workspaceRoot
+      ? path.join(workspaceRoot, ".oci-ai", "exports")
+      : path.join(os.tmpdir(), "oci-ai-exports");
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    return path.join(baseDirectory, `chat-session-${timestamp}.html`);
+  }
+
+  private renderMcpPromptPreview(
+    serverName: string,
+    promptName: string,
+    promptArgs: Record<string, string>,
+    promptResult: Awaited<ReturnType<McpHub["getPrompt"]>>,
+  ): string {
+    const lines = [
+      `MCP prompt: ${serverName}/${promptName}`,
+    ];
+    if (Object.keys(promptArgs).length > 0) {
+      lines.push(`Arguments: ${JSON.stringify(promptArgs)}`);
+    }
+    if (promptResult.description) {
+      lines.push(`Description: ${promptResult.description}`);
+    }
+    lines.push("");
+    if (promptResult.messages.length === 0) {
+      lines.push("No prompt messages returned.");
+      return lines.join("\n");
+    }
+    for (const message of promptResult.messages) {
+      lines.push(`[${message.role}]`);
+      for (const content of message.content) {
+        if (content.type === "text" && content.text) {
+          lines.push(content.text);
+        } else if (content.type === "resource" && content.uri) {
+          lines.push(`Resource: ${content.uri}`);
+          if (content.text) {
+            lines.push(content.text);
+          }
+        } else if (content.type === "image") {
+          lines.push("[Image content]");
+        }
+      }
+      lines.push("");
+    }
+    return lines.join("\n").trim();
+  }
+
+  private resolveConnectedMcpTool(toolSpecifier: string):
+    | { serverName: string; tool: ReturnType<McpHub["getConnectedTools"]>[number]["tool"] }
+    | undefined {
+    const spec = toolSpecifier.trim();
+    if (!spec) {
+      return undefined;
+    }
+
+    const separatorMatch = spec.match(/^([^/:]+)[/:]([\s\S]+)$/);
+    if (separatorMatch) {
+      const serverName = separatorMatch[1];
+      const toolName = separatorMatch[2];
+      return this.mcpHub
+        .getConnectedTools()
+        .find((entry) => entry.serverName === serverName && entry.tool.name === toolName);
+    }
+
+    const matches = this.mcpHub.getConnectedTools().filter((entry) => entry.tool.name === spec);
+    if (matches.length === 1) {
+      return matches[0];
+    }
+    return undefined;
+  }
+
+  private buildDispatchedToolArgs(
+    turnContext: Extract<SkillTurnContext, { kind: "tool-dispatch" }>,
+  ): Record<string, unknown> {
+    switch (turnContext.commandArgMode) {
+      case "raw":
+      default:
+        return {
+          command: turnContext.argumentText.trim(),
+          commandName: turnContext.slashCommandName,
+          skillName: turnContext.skillName,
+        };
+    }
+  }
+
+  private shouldUseAgentMcpLoop(): boolean {
+    const settings = this.agentService.getSettings();
+    return settings.mode === "agent" && this.mcpHub.getConnectedServers().length > 0;
+  }
+
+  private buildModelMessagesFromChatHistory(): ChatMessage[] {
+    return this.chatHistory.map((message) => ({
+      role: message.role,
+      text: serializeChatMessageForModel(message),
+      images: message.role === "user" ? message.images : undefined,
+    }));
+  }
+
+  private buildMcpAgentPrompt(): string {
+    const servers = this.mcpHub.getConnectedServers();
+    if (servers.length === 0) {
+      return "";
+    }
+
+    const lines = [
+      "You are in agent mode and can use connected MCP servers when helpful.",
+      "If an MCP action is needed, emit exactly one XML block and keep it valid.",
+      "Use one of these three formats:",
+      "<use_mcp_tool><server_name>server</server_name><tool_name>tool</tool_name><arguments>{\"key\":\"value\"}</arguments></use_mcp_tool>",
+      "<use_mcp_prompt><server_name>server</server_name><prompt_name>prompt</prompt_name><arguments>{\"key\":\"value\"}</arguments></use_mcp_prompt>",
+      "<access_mcp_resource><server_name>server</server_name><uri>resource-uri</uri></access_mcp_resource>",
+      "The <arguments> value must be valid JSON object text.",
+      "When no MCP action is needed, answer normally with no XML block.",
+      "After a tool, prompt, or resource result is returned, continue from that new context.",
+      "<available_mcp_servers>",
+    ];
+
+    for (const server of servers) {
+      lines.push(`  <server name="${escapeXmlAttribute(server.name)}">`);
+      if (server.tools.length === 0 && server.resources.length === 0 && server.prompts.length === 0) {
+        lines.push("    <capabilities>none discovered</capabilities>");
+      }
+      for (const tool of server.tools) {
+        lines.push(`    <tool name="${escapeXmlAttribute(tool.name)}">`);
+        if (tool.description) {
+          lines.push(`      <description>${escapeXmlText(tool.description)}</description>`);
+        }
+        if (tool.inputSchema) {
+          lines.push(`      <input_schema>${escapeXmlText(JSON.stringify(tool.inputSchema))}</input_schema>`);
+        }
+        lines.push("    </tool>");
+      }
+      for (const resource of server.resources) {
+        lines.push(`    <resource uri="${escapeXmlAttribute(resource.uri)}" name="${escapeXmlAttribute(resource.name)}">`);
+        if (resource.description) {
+          lines.push(`      <description>${escapeXmlText(resource.description)}</description>`);
+        }
+        lines.push("    </resource>");
+      }
+      for (const prompt of server.prompts) {
+        lines.push(`    <prompt name="${escapeXmlAttribute(prompt.name)}">`);
+        if (prompt.description) {
+          lines.push(`      <description>${escapeXmlText(prompt.description)}</description>`);
+        }
+        for (const argument of prompt.arguments ?? []) {
+          lines.push(
+            `      <argument name="${escapeXmlAttribute(argument.name)}" required="${argument.required ? "true" : "false"}">${escapeXmlText(argument.description ?? "")}</argument>`,
+          );
+        }
+        lines.push("    </prompt>");
+      }
+      lines.push("  </server>");
+    }
+
+    lines.push("</available_mcp_servers>");
+    return lines.join("\n");
+  }
+
+  private async runAgentMcpLoop(options: {
+    active: ActiveChatRequest;
+    modelName?: string;
+    runtimeSystemPrompt?: string;
+  }): Promise<void> {
+    const maxActions = Math.max(1, this.agentService.getSettings().maxAutoActions || 10);
+    const workingMessages = this.buildModelMessagesFromChatHistory();
+    let actionCount = 0;
+    let parseRepairCount = 0;
+
+    while (!options.active.cancelled) {
+      let assistantText = "";
+      await this.streamAssistantModelResponse(
+        workingMessages,
+        (token) => {
+          assistantText += token;
+        },
+        {
+          signal: options.active.abortController.signal,
+          modelName: options.modelName,
+          runtimeSystemPrompt: options.runtimeSystemPrompt,
+        },
+      );
+
+      if (options.active.cancelled) {
+        return;
+      }
+
+      const parsed = parseAssistantMcpActions(assistantText);
+      if (parsed.repairPrompt && parsed.actions.length === 0) {
+        if (
+          await this.queueMcpParserRepair({
+            workingMessages,
+            parsed,
+            parseRepairCount,
+          })
+        ) {
+          parseRepairCount += 1;
+          continue;
+        }
+      }
+
+      if (parsed.actions.length === 0) {
+        const finalText =
+          parsed.displayText ||
+          (parsed.repairPrompt
+            ? "I hit an MCP formatting issue before any tool call could be executed. Please try again."
+            : assistantText.trim());
+        if (finalText) {
+          this.chatHistory.push({ role: "model", text: finalText });
+          await this.persistAndBroadcastChatHistory();
+        }
+        return;
+      }
+      parseRepairCount = 0;
+
+      const agentMessage: ChatMessageData = {
+        role: "model",
+        text: parsed.displayText || "Using MCP to gather the next piece of context.",
+        toolCalls: parsed.actions.map((action) => action.toolCall),
+      };
+      this.chatHistory.push(agentMessage);
+      await this.persistAndBroadcastChatHistory();
+
+      workingMessages.push({
+        role: "model",
+        text: formatMcpRequestForModel(agentMessage.text, parsed.actions),
+      });
+
+      const toolResultMessages: string[] = [];
+      for (const action of parsed.actions) {
+        actionCount += 1;
+        const result = await this.executeAgentMcpAction(action, options.active.abortController.signal, { requester: "main" });
+        toolResultMessages.push(formatMcpResultForModel(action, result));
+
+        if (options.active.cancelled) {
+          return;
+        }
+
+        if (actionCount >= maxActions) {
+          const limitMessage =
+            "Stopped after reaching the configured MCP action limit. Review the tool results above and continue if you want another step.";
+          this.chatHistory.push({ role: "model", text: limitMessage });
+          await this.persistAndBroadcastChatHistory();
+          return;
+        }
+      }
+
+      workingMessages.push({
+        role: "user",
+        text: `${toolResultMessages.join("\n\n")}\n\nContinue helping the user.`,
+      });
+    }
+  }
+
+  private async queueMcpParserRepair(options: {
+    workingMessages: ChatMessage[];
+    parsed: ParsedAssistantMcpActions;
+    parseRepairCount: number;
+    subagentRun?: SubagentRun;
+  }): Promise<boolean> {
+    if (!options.parsed.repairPrompt || options.parseRepairCount >= MAX_MCP_PARSE_REPAIR_ATTEMPTS) {
+      return false;
+    }
+
+    options.workingMessages.push({
+      role: "user",
+      text: options.parsed.repairPrompt,
+    });
+
+    if (options.subagentRun) {
+      this.subagentService.appendLog(
+        options.subagentRun,
+        "tool",
+        "Requested MCP XML repair after a malformed tool block.",
+      );
+    }
+
+    return true;
+  }
+
+  private async executeAgentMcpAction(
+    action: AgentToolExecution,
+    signal?: AbortSignal,
+    context: McpExecutionContext = { requester: "main" },
+  ): Promise<ToolCallResult> {
+    const toolCall = action.toolCall;
+    const subagentLabel = context.subagentRun?.agentId;
+    if (subagentLabel) {
+      toolCall.subagentId = context.subagentRun?.id;
+      toolCall.subagentLabel = subagentLabel;
+    }
+    const alwaysApproved =
+      this.agentService.shouldAutoApprove(toolCall.toolName, toolCall.serverName) ||
+      (toolCall.serverName
+        ? this.mcpHub.isActionAutoApproved(
+            toolCall.serverName,
+            toAllowlistAction(action),
+            {
+              requester: context.requester,
+              subagentId: normalizeAllowlistSubagentToken(context.subagentRun?.agentId),
+            },
+          )
+        : false);
+
+    if (alwaysApproved) {
+      toolCall.status = "approved";
+      toolCall.updatedAt = new Date().toISOString();
+      if (context.subagentRun) {
+        this.subagentService.appendLog(
+          context.subagentRun,
+          "approval",
+          `Auto-approved ${formatToolCallLabel(toolCall)}.`,
+        );
+      }
+      await this.persistAndBroadcastChatHistory();
+    } else {
+      toolCall.status = "pending";
+      toolCall.updatedAt = new Date().toISOString();
+      if (context.subagentRun) {
+        this.subagentService.appendLog(
+          context.subagentRun,
+          "approval",
+          `Waiting for approval: ${formatToolCallLabel(toolCall)}.`,
+        );
+      }
+      await this.persistAndBroadcastChatHistory();
+
+      const approval = await this.agentService.requestApproval(toolCall.id, signal);
+      if (!approval.approved) {
+        toolCall.status = "denied";
+        toolCall.updatedAt = new Date().toISOString();
+        toolCall.result = {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: "Tool execution was denied by the user.",
+            },
+          ],
+        };
+        if (context.subagentRun) {
+          this.subagentService.appendLog(
+            context.subagentRun,
+            "approval",
+            `Denied ${formatToolCallLabel(toolCall)}.`,
+          );
+        }
+        await this.persistAndBroadcastChatHistory();
+        return toolCall.result;
+      }
+
+      if (approval.alwaysAllow && toolCall.serverName) {
+        await this.mcpHub.toggleAllowlistEntry(
+          toolCall.serverName,
+          buildAllowlistEntryForAction(action, context),
+          true,
+        );
+      }
+
+      toolCall.status = "approved";
+      toolCall.updatedAt = new Date().toISOString();
+      if (context.subagentRun) {
+        this.subagentService.appendLog(
+          context.subagentRun,
+          "approval",
+          approval.alwaysAllow
+            ? `Approved ${formatToolCallLabel(toolCall)} and persisted it to the allowlist.`
+            : `Approved ${formatToolCallLabel(toolCall)}.`,
+        );
+      }
+      await this.persistAndBroadcastChatHistory();
+    }
+
+    toolCall.status = "running";
+    toolCall.updatedAt = new Date().toISOString();
+    if (context.subagentRun) {
+      this.subagentService.appendLog(
+        context.subagentRun,
+        "tool",
+        `Running ${formatToolCallLabel(toolCall)} with ${truncateText(JSON.stringify(toolCall.parameters), 240)}.`,
+      );
+    }
+    await this.persistAndBroadcastChatHistory();
+
+    const execution = await this.executeAgentMcpActionWithRetry(action, signal, context);
+    const result = execution.result;
+    toolCall.attemptCount = execution.attemptCount;
+    toolCall.result = result;
+    toolCall.status = result.isError ? "error" : "completed";
+    toolCall.updatedAt = new Date().toISOString();
+    if (context.subagentRun) {
+      this.subagentService.appendLog(
+        context.subagentRun,
+        result.isError ? "error" : "tool",
+        `${formatToolCallLabel(toolCall)} -> ${truncateText(summarizeToolResult(result), 600)}`,
+      );
+    }
+    await this.persistAndBroadcastChatHistory();
+    return result;
+  }
+
+  private async executeAgentMcpActionWithRetry(
+    action: AgentToolExecution,
+    signal: AbortSignal | undefined,
+    context: McpExecutionContext,
+  ): Promise<{ result: ToolCallResult; attemptCount: number }> {
+    let attemptCount = 0;
+    let lastResult: ToolCallResult | undefined;
+
+    while (attemptCount < MAX_MCP_EXECUTION_ATTEMPTS) {
+      attemptCount += 1;
+      if (signal?.aborted) {
+        throw new Error("Request aborted.");
+      }
+
+      lastResult = await this.invokeAgentMcpAction(action);
+      if (!lastResult.isError || !shouldRetryMcpResult(action, lastResult) || attemptCount >= MAX_MCP_EXECUTION_ATTEMPTS) {
+        return {
+          result: lastResult,
+          attemptCount,
+        };
+      }
+
+      if (context.subagentRun) {
+        this.subagentService.appendLog(
+          context.subagentRun,
+          "tool",
+          `Retrying ${formatToolCallLabel(action.toolCall)} after a transient MCP failure.`,
+        );
+      }
+
+      if (action.serverName && shouldRestartMcpServerBeforeRetry(lastResult)) {
+        try {
+          await this.mcpHub.restartServer(action.serverName);
+        } catch {
+          // Fall back to a timed retry even if reconnect fails.
+        }
+      }
+
+      await delayWithAbort(MCP_RETRY_BACKOFF_MS * attemptCount, signal);
+    }
+
+    return {
+      result:
+        lastResult ?? {
+          isError: true,
+          content: [{ type: "text", text: "MCP execution failed before a result was returned." }],
+        },
+      attemptCount,
+    };
+  }
+
+  private async invokeAgentMcpAction(action: AgentToolExecution): Promise<ToolCallResult> {
+    try {
+      if (action.kind === "tool") {
+        return await this.mcpHub.callTool(action.serverName, action.toolName, action.args);
+      }
+      if (action.kind === "prompt") {
+        const promptResult = await this.mcpHub.getPrompt(action.serverName, action.promptName, action.args);
+        return {
+          content: promptResult.messages.flatMap((message) => {
+            const sections = [`[${message.role}]`];
+            for (const entry of message.content) {
+              if (entry.type === "text" && entry.text) {
+                sections.push(entry.text);
+              } else if (entry.type === "resource" && entry.uri) {
+                sections.push(`Resource: ${entry.uri}`);
+                if (entry.text) {
+                  sections.push(entry.text);
+                }
+              } else if (entry.type === "image") {
+                sections.push("[Image content]");
+              }
+            }
+            return [{ type: "text" as const, text: sections.join("\n") }];
+          }),
+        };
+      }
+      return await this.mcpHub.readResource(action.serverName, action.uri);
+    } catch (error) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: error instanceof Error ? error.message : String(error),
+          },
+        ],
+      };
+    }
+  }
+
   private persistChatHistory(): void {
     if (!this.workspaceState) return;
     // Keep persisted state lightweight by excluding large image payloads.
     const toSave = this.chatHistory.slice(-MAX_PERSISTED_MESSAGES).map((m) => ({
       role: m.role,
-      text: m.text
+      text: m.text,
+      toolCalls: m.toolCalls?.map((toolCall) => ({
+        ...toolCall,
+        result: toolCall.result
+          ? {
+              ...toolCall.result,
+              content: toolCall.result.content.map((item) =>
+                item.type === "image"
+                  ? {
+                      ...item,
+                      dataUrl: undefined,
+                    }
+                  : item,
+              ),
+            }
+          : undefined,
+      })),
     }));
     this.workspaceState.update(CHAT_HISTORY_KEY, toSave);
+  }
+
+  private async persistAndBroadcastChatHistory(): Promise<void> {
+    this.persistChatHistory();
+    await this.broadcastState();
   }
 
   private async recordSqlHistory(entry: {
@@ -1010,7 +2834,7 @@ export class Controller {
       (token) => {
         content += token;
       },
-      undefined,
+      {},
     );
 
     return {
@@ -1522,6 +3346,176 @@ export class Controller {
   public async stopOcaProxy(): Promise<void> {
     await this.ocaProxyManager.stopProxy();
   }
+
+  // --- MCP Methods ---
+
+  public getMcpServers(): McpServerState[] {
+    return this.mcpHub.getServers();
+  }
+
+  public async addMcpServer(request: AddMcpServerRequest): Promise<void> {
+    await this.mcpHub.addServer(request);
+  }
+
+  public async removeMcpServer(name: string): Promise<void> {
+    await this.mcpHub.removeServer(name);
+  }
+
+  public async toggleMcpServer(name: string, enabled: boolean): Promise<void> {
+    await this.mcpHub.toggleServer(name, enabled);
+  }
+
+  public async restartMcpServer(name: string): Promise<void> {
+    await this.mcpHub.restartServer(name);
+  }
+
+  public async toggleMcpToolAutoApprove(request: ToggleMcpToolAutoApproveRequest): Promise<void> {
+    await this.mcpHub.toggleToolAutoApprove(request.serverName, request.toolName, request.approved);
+  }
+
+  public async previewMcpPrompt(request: McpPromptPreviewRequest): Promise<McpPromptPreviewResponse> {
+    const serverName = String(request.serverName ?? "").trim();
+    const promptName = String(request.promptName ?? "").trim();
+    if (!serverName || !promptName) {
+      throw new Error("Both server name and prompt name are required.");
+    }
+
+    const args = normalizeStringMap(request.args);
+    const promptResult = await this.mcpHub.getPrompt(serverName, promptName, args);
+    return {
+      serverName,
+      promptName,
+      args,
+      description: promptResult.description,
+      messages: promptResult.messages,
+      previewText: this.renderMcpPromptPreview(serverName, promptName, args, promptResult),
+    };
+  }
+
+  public async previewMcpResource(request: McpResourcePreviewRequest): Promise<McpResourcePreviewResponse> {
+    const serverName = String(request.serverName ?? "").trim();
+    const uri = String(request.uri ?? "").trim();
+    if (!serverName || !uri) {
+      throw new Error("Both server name and resource URI are required.");
+    }
+
+    const result = await this.mcpHub.readResource(serverName, uri);
+    return {
+      serverName,
+      uri,
+      result,
+      previewText: summarizeToolResult(result),
+    };
+  }
+
+  public subscribeToMcpServers(
+    requestId: string,
+    handler: StreamingResponseHandler<{ servers: McpServerState[] }>
+  ): void {
+    this.mcpServerSubscribers.set(requestId, handler);
+    // Send initial state
+    handler({ servers: this.mcpHub.getServers() }).catch(() => {});
+  }
+
+  // --- Agent Methods ---
+
+  public getAgentSettings(): AgentSettings {
+    return this.agentService.getSettings();
+  }
+
+  public async saveAgentSettings(settings: AgentSettings): Promise<void> {
+    await this.agentService.saveSettings(settings);
+  }
+
+  public resolveToolApproval(response: ToolApprovalResponse): void {
+    this.agentService.resolveApproval(response);
+  }
+
+  // --- Agent Skill Methods ---
+
+  public getAgentSkills(): AgentSkillsState {
+    return this.agentSkillService.getState();
+  }
+
+  public subscribeToAgentSkills(
+    requestId: string,
+    handler: StreamingResponseHandler<AgentSkillsState>
+  ): void {
+    this.skillSubscribers.set(requestId, handler);
+    handler(this.agentSkillService.getState()).catch(() => {});
+  }
+
+  public async refreshAgentSkills(): Promise<void> {
+    this.agentSkillService.refresh();
+  }
+
+  public async toggleAgentSkill(skillId: string, enabled: boolean): Promise<void> {
+    await this.agentSkillService.toggleSkill(skillId, enabled);
+  }
+
+  public async sendSubagentMessage(request: SubagentMessageRequest): Promise<void> {
+    const resolved = this.subagentService.resolveRunToken(String(request.runId ?? ""));
+    if (!resolved.run) {
+      throw new Error(resolved.error ?? "Subagent not found.");
+    }
+    this.subagentService.queueUserMessage(resolved.run, String(request.message ?? ""));
+    this.driveSubagentRun(resolved.run.id);
+  }
+
+  public async steerSubagent(request: SubagentMessageRequest): Promise<void> {
+    const resolved = this.subagentService.resolveRunToken(String(request.runId ?? ""));
+    if (!resolved.run) {
+      throw new Error(resolved.error ?? "Subagent not found.");
+    }
+    this.subagentService.queueSteering(resolved.run, String(request.message ?? ""));
+    this.driveSubagentRun(resolved.run.id);
+  }
+
+  public async killSubagent(request: SubagentKillRequest): Promise<void> {
+    const normalized = String(request.runId ?? "").trim();
+    if (!normalized) {
+      throw new Error("A subagent id is required.");
+    }
+    if (normalizeSlashCommand(normalized) === "all") {
+      const runs = this.subagentService.listRuns().filter((run) => run.status === "running" || run.status === "queued");
+      runs.forEach((run) => {
+        this.subagentService.cancelRun(run, "Cancelled from the subagent inspector.");
+      });
+      return;
+    }
+    const resolved = this.subagentService.resolveRunToken(normalized);
+    if (!resolved.run) {
+      throw new Error(resolved.error ?? "Subagent not found.");
+    }
+    this.subagentService.cancelRun(resolved.run, "Cancelled from the subagent inspector.");
+  }
+
+  public async getSubagentTranscript(request: SubagentTranscriptRequest): Promise<SubagentTranscriptResponse> {
+    const resolved = this.subagentService.resolveRunToken(String(request.runId ?? ""));
+    if (!resolved.run) {
+      throw new Error(resolved.error ?? "Subagent not found.");
+    }
+
+    return {
+      runId: resolved.run.id,
+      transcriptPath: resolved.run.transcriptPath,
+      transcript: this.subagentService.getTranscript(resolved.run),
+      updatedAt: resolved.run.updatedAt,
+    };
+  }
+
+  public async runMcpSmokeTest(): Promise<McpSmokeTestResult> {
+    return this.mcpHub.runSmokeTest({
+      transportType: "streamableHttp",
+      timeout: 15,
+    });
+  }
+
+  public dispose(): void {
+    this.mcpHub.dispose();
+    this.agentService.dispose();
+    this.agentSkillService.dispose();
+  }
 }
 
 function normalizeOptionalRegion(region: unknown): string | undefined {
@@ -1579,6 +3573,717 @@ function normalizeImages(images: ChatImageData[] | undefined): ChatImageData[] {
   return cleaned;
 }
 
+function serializeChatMessageForModel(message: ChatMessageData): string {
+  const sections: string[] = [];
+  const trimmedText = message.text.trim();
+  if (trimmedText) {
+    sections.push(trimmedText);
+  }
+
+  if (message.toolCalls?.length) {
+    const toolLines: string[] = ["[MCP activity]"];
+    for (const toolCall of message.toolCalls) {
+      toolLines.push(`- ${formatToolCallLabel(toolCall)} (${toolCall.status})`);
+      if (Object.keys(toolCall.parameters).length > 0) {
+        toolLines.push(`  parameters: ${JSON.stringify(toolCall.parameters)}`);
+      }
+      if (toolCall.result) {
+        toolLines.push(`  result: ${summarizeToolResult(toolCall.result)}`);
+      }
+    }
+    sections.push(toolLines.join("\n"));
+  }
+
+  return sections.join("\n\n").trim();
+}
+
+function parseAssistantMcpActions(rawText: string): ParsedAssistantMcpActions {
+  const actions: AgentToolExecution[] = [];
+  const parserErrors: string[] = [];
+  const createdAt = new Date().toISOString();
+  const displaySegments: string[] = [];
+  const pattern =
+    /<(use_mcp_tool|use_mcp_prompt|access_mcp_resource|use_mcp_resource)>([\s\S]*?)(<\/\1>|(?=<(?:use_mcp_tool|use_mcp_prompt|access_mcp_resource|use_mcp_resource)>|$))/gi;
+  let cursor = 0;
+
+  for (const match of rawText.matchAll(pattern)) {
+    const blockStart = match.index ?? 0;
+    displaySegments.push(rawText.slice(cursor, blockStart));
+    cursor = blockStart + match[0].length;
+
+    const tagName = String(match[1] ?? "").trim().toLowerCase();
+    const body = String(match[2] ?? "");
+    const parsed = parseAssistantMcpActionBlock(tagName, body, createdAt);
+    if (parsed.action) {
+      actions.push(parsed.action);
+    } else if (parsed.error) {
+      parserErrors.push(parsed.error);
+    }
+  }
+
+  displaySegments.push(rawText.slice(cursor));
+  const displayText = displaySegments.join("").replace(/\n{3,}/g, "\n\n").trim();
+
+  return {
+    displayText,
+    actions,
+    repairPrompt: actions.length === 0 && parserErrors.length > 0 ? buildMcpRepairPrompt(parserErrors) : undefined,
+  };
+}
+
+function parseAssistantMcpActionBlock(
+  tagName: string,
+  body: string,
+  createdAt: string,
+): { action?: AgentToolExecution; error?: string } {
+  if (tagName === "use_mcp_tool") {
+    const serverName = extractXmlTag(body, ["server_name", "server", "serverName"]);
+    const toolName = extractXmlTag(body, ["tool_name", "tool", "toolName", "name"]);
+    const parsedArgs = parseMcpArguments(extractXmlTag(body, ["arguments", "args", "parameters"]) ?? "{}");
+
+    if (!serverName || !toolName) {
+      return { error: "A <use_mcp_tool> block must include both <server_name> and <tool_name>." };
+    }
+    if (!parsedArgs.ok) {
+      return { error: `Could not parse arguments for ${serverName}/${toolName}: ${parsedArgs.error}` };
+    }
+    const toolArgs = parsedArgs.value as Record<string, unknown>;
+
+    const toolCall: ToolCallData = {
+      id: randomUUID(),
+      toolName,
+      serverName,
+      createdAt,
+      updatedAt: createdAt,
+      actionKind: "tool",
+      actionTarget: toolName,
+      parameters: toolArgs,
+      status: "pending",
+    };
+
+    return {
+      action: {
+        kind: "tool",
+        toolCall,
+        serverName,
+        toolName,
+        args: toolArgs,
+      },
+    };
+  }
+
+  if (tagName === "use_mcp_prompt") {
+    const serverName = extractXmlTag(body, ["server_name", "server", "serverName"]);
+    const promptName = extractXmlTag(body, ["prompt_name", "prompt", "promptName", "name"]);
+    const parsedArgs = parseMcpArguments(extractXmlTag(body, ["arguments", "args", "parameters"]) ?? "{}", true);
+
+    if (!serverName || !promptName) {
+      return { error: "A <use_mcp_prompt> block must include both <server_name> and <prompt_name>." };
+    }
+    if (!parsedArgs.ok) {
+      return { error: `Could not parse arguments for prompt ${serverName}/${promptName}: ${parsedArgs.error}` };
+    }
+    const promptArgs = parsedArgs.value as Record<string, string>;
+
+    const toolCall: ToolCallData = {
+      id: randomUUID(),
+      toolName: "getPrompt",
+      serverName,
+      createdAt,
+      updatedAt: createdAt,
+      actionKind: "prompt",
+      actionTarget: promptName,
+      parameters: {
+        promptName,
+        arguments: promptArgs,
+      },
+      status: "pending",
+    };
+
+    return {
+      action: {
+        kind: "prompt",
+        toolCall,
+        serverName,
+        promptName,
+        args: promptArgs,
+      },
+    };
+  }
+
+  if (tagName === "access_mcp_resource" || tagName === "use_mcp_resource") {
+    const serverName = extractXmlTag(body, ["server_name", "server", "serverName"]);
+    const uri = extractXmlTag(body, ["uri", "resource_uri", "resourceUri"]);
+
+    if (!serverName || !uri) {
+      return { error: "An MCP resource block must include both <server_name> and <uri>." };
+    }
+
+    const toolCall: ToolCallData = {
+      id: randomUUID(),
+      toolName: "readResource",
+      serverName,
+      createdAt,
+      updatedAt: createdAt,
+      actionKind: "resource",
+      actionTarget: uri,
+      parameters: { uri },
+      status: "pending",
+    };
+
+    return {
+      action: {
+        kind: "resource",
+        toolCall,
+        serverName,
+        uri,
+      },
+    };
+  }
+
+  return { error: `Unsupported MCP action tag: ${tagName}` };
+}
+
+function extractXmlTag(body: string, tagNames: string | string[]): string | undefined {
+  const candidates = Array.isArray(tagNames) ? tagNames : [tagNames];
+  for (const tagName of candidates) {
+    const pattern = new RegExp(`<${tagName}>([\\s\\S]*?)<\\/${tagName}>`, "i");
+    const match = body.match(pattern);
+    const value = match?.[1]?.trim();
+    if (value) {
+      return decodeXmlEntities(value);
+    }
+  }
+  return undefined;
+}
+
+function parseMcpArguments(
+  rawValue: string,
+  stringifyValues = false,
+): { ok: true; value: Record<string, unknown> | Record<string, string> } | { ok: false; error: string } {
+  const normalized = normalizeMcpArgumentsPayload(rawValue);
+  if (!normalized) {
+    return { ok: true, value: {} };
+  }
+
+  for (const candidate of buildArgumentParseCandidates(normalized)) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return {
+          ok: true,
+          value: stringifyValues
+            ? Object.fromEntries(Object.entries(parsed).map(([key, value]) => [key, String(value ?? "")]))
+            : (parsed as Record<string, unknown>),
+        };
+      }
+    } catch {
+      // Fall through to the next parse strategy.
+    }
+  }
+
+  const keyValueArgs = parseKeyValueArgumentString(normalized);
+  if (keyValueArgs) {
+    return {
+      ok: true,
+      value: stringifyValues
+        ? Object.fromEntries(Object.entries(keyValueArgs).map(([key, value]) => [key, String(value ?? "")]))
+        : keyValueArgs,
+    };
+  }
+
+  return {
+    ok: false,
+    error: `unsupported argument payload: ${truncateText(normalized, 180)}`,
+  };
+}
+
+function normalizeMcpArgumentsPayload(rawValue: string): string {
+  let normalized = decodeXmlEntities(rawValue).trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const fencedMatch = normalized.match(/^```(?:json|javascript|js|ts|typescript)?\s*([\s\S]*?)```$/i);
+  if (fencedMatch) {
+    normalized = fencedMatch[1].trim();
+  }
+
+  return normalized;
+}
+
+function buildArgumentParseCandidates(normalized: string): string[] {
+  const candidates = new Set<string>();
+  candidates.add(normalized);
+
+  let repaired = normalized
+    .replace(/,\s*([}\]])/g, "$1")
+    .replace(/([{,]\s*)([A-Za-z0-9_\-$]+)\s*:/g, '$1"$2":');
+  repaired = repaired.replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, (_match, value: string) =>
+    JSON.stringify(value.replace(/\\'/g, "'")),
+  );
+  candidates.add(repaired);
+
+  return Array.from(candidates);
+}
+
+function parseKeyValueArgumentString(rawValue: string): Record<string, unknown> | undefined {
+  const matches = rawValue.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [];
+  if (matches.length === 0 || matches.some((token) => !token.includes("="))) {
+    return undefined;
+  }
+
+  const entries = matches
+    .map((token) => {
+      const separatorIndex = token.indexOf("=");
+      if (separatorIndex <= 0) {
+        return undefined;
+      }
+      const key = token.slice(0, separatorIndex).trim();
+      const raw = token.slice(separatorIndex + 1).trim().replace(/^['"]|['"]$/g, "");
+      return key ? [key, coerceArgumentScalar(raw)] : undefined;
+    })
+    .filter((entry): entry is [string, unknown] => Boolean(entry));
+
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function coerceArgumentScalar(rawValue: string): unknown {
+  const normalized = rawValue.trim();
+  if (!normalized) {
+    return "";
+  }
+  if (/^(true|false)$/i.test(normalized)) {
+    return /^true$/i.test(normalized);
+  }
+  if (/^null$/i.test(normalized)) {
+    return null;
+  }
+  if (/^-?\d+(?:\.\d+)?$/.test(normalized)) {
+    return Number(normalized);
+  }
+  return normalized;
+}
+
+function buildMcpRepairPrompt(errors: string[]): string {
+  const lines = [
+    "Your previous response attempted to use MCP XML, but the action block could not be parsed.",
+    "Reply again using either plain text only or corrected MCP XML only.",
+    "Valid forms:",
+    "- <use_mcp_tool><server_name>...</server_name><tool_name>...</tool_name><arguments>{...}</arguments></use_mcp_tool>",
+    "- <use_mcp_prompt><server_name>...</server_name><prompt_name>...</prompt_name><arguments>{...}</arguments></use_mcp_prompt>",
+    "- <access_mcp_resource><server_name>...</server_name><uri>...</uri></access_mcp_resource>",
+    "Parser notes:",
+    ...errors.slice(0, 3).map((error) => `- ${error}`),
+  ];
+  return lines.join("\n");
+}
+
+function decodeXmlEntities(value: string): string {
+  return value
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&amp;/gi, "&");
+}
+
+function formatMcpRequestForModel(narration: string, actions: AgentToolExecution[]): string {
+  const sections = [narration.trim() || "Requested MCP action."];
+  for (const action of actions) {
+    if (action.kind === "tool") {
+      sections.push(
+        `[Requested MCP tool]\nServer: ${action.serverName}\nTool: ${action.toolName}\nArguments: ${JSON.stringify(action.args)}`,
+      );
+    } else if (action.kind === "prompt") {
+      sections.push(
+        `[Requested MCP prompt]\nServer: ${action.serverName}\nPrompt: ${action.promptName}\nArguments: ${JSON.stringify(action.args)}`,
+      );
+    } else {
+      sections.push(`[Requested MCP resource]\nServer: ${action.serverName}\nURI: ${action.uri}`);
+    }
+  }
+  return sections.join("\n\n").trim();
+}
+
+function formatMcpResultForModel(action: AgentToolExecution, result: ToolCallResult): string {
+  const header =
+    action.kind === "tool"
+      ? `[MCP tool result]\nServer: ${action.serverName}\nTool: ${action.toolName}`
+      : action.kind === "prompt"
+        ? `[MCP prompt result]\nServer: ${action.serverName}\nPrompt: ${action.promptName}`
+      : `[MCP resource result]\nServer: ${action.serverName}\nURI: ${action.uri}`;
+
+  return `${header}\nStatus: ${result.isError ? "error" : "success"}\nResult:\n${summarizeToolResult(result)}`;
+}
+
+function summarizeToolResult(result: ToolCallResult): string {
+  const segments = result.content.map((item) => {
+    if (item.type === "text") {
+      return item.text ?? "";
+    }
+    if (item.type === "image") {
+      return `[image result${item.mimeType ? `: ${item.mimeType}` : ""}]`;
+    }
+    if (item.type === "resource") {
+      const resourceBits = [item.uri ? `uri=${item.uri}` : "", item.text ?? ""].filter(Boolean);
+      return resourceBits.join("\n");
+    }
+    return "";
+  });
+
+  const joined = segments.filter(Boolean).join("\n\n").trim();
+  if (!joined) {
+    return "(empty result)";
+  }
+  return joined.length > 4000 ? `${joined.slice(0, 3997)}...` : joined;
+}
+
+function shouldRetryMcpResult(action: AgentToolExecution, result: ToolCallResult): boolean {
+  if (!result.isError) {
+    return false;
+  }
+
+  const summary = summarizeToolResult(result).toLowerCase();
+  if (!summary || isClearlyTerminalMcpError(summary)) {
+    return false;
+  }
+
+  if (isConnectivityStyleMcpError(summary)) {
+    return true;
+  }
+
+  if (action.kind === "tool" || action.kind === "resource" || action.kind === "prompt") {
+    return /\b(429|5\d\d)\b/.test(summary) || /temporar|try again|rate limit|unavailable/.test(summary);
+  }
+
+  return false;
+}
+
+function shouldRestartMcpServerBeforeRetry(result: ToolCallResult): boolean {
+  if (!result.isError) {
+    return false;
+  }
+  return isConnectivityStyleMcpError(summarizeToolResult(result).toLowerCase());
+}
+
+function isConnectivityStyleMcpError(summary: string): boolean {
+  return /(timeout|timed out|etimedout|econnreset|connection reset|connection closed|socket hang up|network|temporarily unavailable|not connected|disconnected|transport|stream closed|broken pipe|eof)/.test(
+    summary,
+  );
+}
+
+function isClearlyTerminalMcpError(summary: string): boolean {
+  return /(not found|unknown tool|unknown prompt|unknown resource|invalid|missing required|permission denied|forbidden|unauthorized|denied by the user|parse error|schema)/.test(
+    summary,
+  );
+}
+
+async function delayWithAbort(durationMs: number, signal?: AbortSignal): Promise<void> {
+  if (durationMs <= 0) {
+    return;
+  }
+  if (signal?.aborted) {
+    throw new Error("Request aborted.");
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, durationMs);
+
+    const onAbort = () => {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", onAbort);
+      reject(new Error("Request aborted."));
+    };
+
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function normalizeSlashCommand(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function toAllowlistAction(action: AgentToolExecution): McpAllowlistAction {
+  if (action.kind === "tool") {
+    return {
+      kind: "tool",
+      name: action.toolName,
+    };
+  }
+  if (action.kind === "prompt") {
+    return {
+      kind: "prompt",
+      name: action.promptName,
+    };
+  }
+  return {
+    kind: "resource",
+    uri: action.uri,
+  };
+}
+
+function buildAllowlistEntryForAction(action: AgentToolExecution, context: McpExecutionContext): string {
+  const scope =
+    context.requester === "main"
+      ? "main"
+      : context.subagentRun?.agentId
+        ? (`subagent:${normalizeAllowlistSubagentToken(context.subagentRun.agentId)}` as const)
+        : "subagents";
+
+  const rule =
+    action.kind === "tool"
+      ? action.toolName
+      : action.kind === "prompt"
+        ? `prompt:${action.promptName}`
+        : `resource:${action.uri}`;
+
+  return canonicalizeAllowlistEntry(rule, scope) ?? rule;
+}
+
+function formatToolCallLabel(toolCall: ToolCallData): string {
+  const baseLabel = (() => {
+    if (!toolCall.serverName) {
+      return toolCall.toolName;
+    }
+
+    if (toolCall.actionKind === "prompt") {
+      return `${toolCall.serverName}/prompt:${toolCall.actionTarget ?? toolCall.toolName}`;
+    }
+    if (toolCall.actionKind === "resource") {
+      return `${toolCall.serverName}/resource:${toolCall.actionTarget ?? toolCall.toolName}`;
+    }
+    if (toolCall.actionKind === "tool") {
+      return `${toolCall.serverName}/tool:${toolCall.actionTarget ?? toolCall.toolName}`;
+    }
+    return `${toolCall.serverName}/${toolCall.toolName}`;
+  })();
+
+  return toolCall.subagentLabel ? `${baseLabel} [subagent:${toolCall.subagentLabel}]` : baseLabel;
+}
+
+type AllowlistScope = "all" | "main" | "subagents" | `subagent:${string}`;
+
+function normalizeAllowlistScope(rawValue: string): AllowlistScope | undefined {
+  const normalized = normalizeSlashCommand(rawValue || "all");
+  if (!normalized || normalized === "all") {
+    return "all";
+  }
+  if (normalized === "main" || normalized === "subagents") {
+    return normalized;
+  }
+  if (normalized.startsWith("subagent:")) {
+    const token = normalizeAllowlistSubagentToken(normalized.slice("subagent:".length));
+    return token ? `subagent:${token}` : undefined;
+  }
+  return undefined;
+}
+
+function canonicalizeAllowlistEntry(rule: string, scope: AllowlistScope): string | undefined {
+  const trimmed = rule.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  let canonicalRule = trimmed;
+  if (trimmed === "*") {
+    canonicalRule = "tool:*";
+  } else if (trimmed.startsWith("tool:")) {
+    canonicalRule = `tool:${trimmed.slice(5).trim() || "*"}`;
+  } else if (trimmed.startsWith("prompt:")) {
+    canonicalRule = `prompt:${trimmed.slice(7).trim() || "*"}`;
+  } else if (trimmed.startsWith("resource:")) {
+    canonicalRule = `resource:${trimmed.slice(9).trim() || "*"}`;
+  }
+
+  if (scope === "all") {
+    return canonicalRule;
+  }
+  return `@${scope}|${canonicalRule}`;
+}
+
+function formatAllowlistEntry(entry: string): string {
+  const parsed = parseScopedAllowlistEntry(entry);
+  if (!parsed) {
+    return entry.trim();
+  }
+  const formattedRule = formatAllowlistRule(parsed.rule);
+  return parsed.scope === "all" ? formattedRule : `${formattedRule} [${parsed.scope}]`;
+}
+
+function parseServerToolReference(value: string): { serverName: string; toolName: string } | undefined {
+  const normalized = value.trim();
+  if (!normalized) {
+    return undefined;
+  }
+  const slashIndex = normalized.indexOf("/");
+  if (slashIndex > 0 && slashIndex < normalized.length - 1) {
+    return {
+      serverName: normalized.slice(0, slashIndex).trim(),
+      toolName: normalized.slice(slashIndex + 1).trim(),
+    };
+  }
+  const segments = normalized.split(/\s+/).filter(Boolean);
+  if (segments.length === 2) {
+    return {
+      serverName: segments[0],
+      toolName: segments[1],
+    };
+  }
+  return undefined;
+}
+
+function parseKeyValueArgs(rawValue: string): Record<string, string> {
+  const matches = rawValue.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [];
+  const entries = matches
+    .map((token) => {
+      const separatorIndex = token.indexOf("=");
+      if (separatorIndex <= 0) {
+        return undefined;
+      }
+      const key = token.slice(0, separatorIndex).trim();
+      const value = token.slice(separatorIndex + 1).trim().replace(/^['"]|['"]$/g, "");
+      return key ? [key, value] : undefined;
+    })
+    .filter((entry): entry is [string, string] => Boolean(entry));
+  return Object.fromEntries(entries);
+}
+
+function normalizeStringMap(rawValue: Record<string, unknown> | undefined): Record<string, string> {
+  if (!rawValue || typeof rawValue !== "object" || Array.isArray(rawValue)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(rawValue)
+      .map(([key, value]) => [String(key).trim(), typeof value === "string" ? value.trim() : String(value ?? "").trim()])
+      .filter(([key, value]) => Boolean(key) && value.length > 0),
+  );
+}
+
+function estimateTokens(text: string): number {
+  const normalized = text.trim();
+  if (!normalized) {
+    return 0;
+  }
+  return Math.max(1, Math.ceil(normalized.length / 4));
+}
+
+function truncateText(value: string, maxLength: number): string {
+  const normalized = value.trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+function unwrapQuotedArg(value: string): string {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function isAbortErrorLike(error: unknown): boolean {
+  if (error instanceof Error) {
+    return error.name === "AbortError" || error.message.toLowerCase().includes("cancelled");
+  }
+  const raw = String(error ?? "").toLowerCase();
+  return raw.includes("abort") || raw.includes("cancelled");
+}
+
+function renderChatHistoryHtml(messages: ChatMessageData[]): string {
+  const rows = messages
+    .map((message) => {
+      const toolCalls = (message.toolCalls ?? [])
+        .map((toolCall) => {
+          const result = toolCall.result
+            ? `<div class="tool-result">${escapeHtml(summarizeToolResult(toolCall.result))}</div>`
+            : "";
+          return `
+            <div class="tool-call">
+              <div class="tool-title">${escapeHtml(formatToolCallLabel(toolCall))}</div>
+              <div class="tool-meta">Status: ${escapeHtml(toolCall.status)}</div>
+              <pre>${escapeHtml(JSON.stringify(toolCall.parameters, null, 2))}</pre>
+              ${result}
+            </div>
+          `;
+        })
+        .join("");
+
+      return `
+        <section class="message ${message.role}">
+          <div class="role">${escapeHtml(message.role === "user" ? "You" : "Assistant")}</div>
+          <div class="content">${escapeHtml(message.text)}</div>
+          ${toolCalls ? `<div class="tool-list">${toolCalls}</div>` : ""}
+        </section>
+      `;
+    })
+    .join("\n");
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>OCI AI Chat Session</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: #111827; color: #e5e7eb; }
+      main { max-width: 960px; margin: 0 auto; padding: 32px 20px 40px; }
+      h1 { font-size: 20px; margin: 0 0 8px; }
+      .meta { color: #9ca3af; font-size: 13px; margin-bottom: 24px; }
+      .message { border: 1px solid #374151; border-radius: 12px; padding: 16px; margin-bottom: 14px; background: #1f2937; }
+      .message.user { background: #172554; }
+      .role { font-size: 12px; text-transform: uppercase; letter-spacing: 0.12em; color: #93c5fd; margin-bottom: 10px; }
+      .content { white-space: pre-wrap; line-height: 1.6; }
+      .tool-list { margin-top: 12px; display: grid; gap: 10px; }
+      .tool-call { border: 1px solid #4b5563; border-radius: 10px; padding: 12px; background: rgba(15, 23, 42, 0.5); }
+      .tool-title { font-weight: 600; margin-bottom: 6px; }
+      .tool-meta { font-size: 12px; color: #cbd5e1; margin-bottom: 6px; }
+      .tool-result { white-space: pre-wrap; margin-top: 8px; color: #d1fae5; }
+      pre { margin: 0; white-space: pre-wrap; font-size: 12px; color: #cbd5e1; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>OCI AI Chat Session</h1>
+      <div class="meta">Exported at ${escapeHtml(new Date().toISOString())}</div>
+      ${rows || "<p>No messages in this session.</p>"}
+    </main>
+  </body>
+</html>`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function escapeXmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function escapeXmlText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 function normalizeObjectStoragePrefix(value: unknown): string {
   const prefix = String(value ?? "").trim().replace(/^\/+/, "");
   if (!prefix) {
@@ -1618,6 +4323,24 @@ function splitModelNames(rawValue: string): string[] {
     .split(",")
     .map((model) => model.trim())
     .filter((model) => model.length > 0);
+}
+
+function dedupeModelNames(models: string[]): string[] {
+  const deduped: string[] = [];
+  const seen = new Set<string>();
+  for (const model of models) {
+    const trimmed = model.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    deduped.push(trimmed);
+  }
+  return deduped;
 }
 
 function buildSqlAssistantPrompt(input: {
@@ -1679,4 +4402,55 @@ function expandHomePath(input: string): string {
     return path.join(os.homedir(), input.slice(2));
   }
   return input;
+}
+
+function normalizeAllowlistSubagentToken(value: string | undefined): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function parseScopedAllowlistEntry(entry: string): { scope: AllowlistScope; rule: string } | undefined {
+  const normalized = entry.trim();
+  if (!normalized) {
+    return undefined;
+  }
+  if (!normalized.startsWith("@")) {
+    return {
+      scope: "all",
+      rule: normalized,
+    };
+  }
+
+  const separatorIndex = normalized.indexOf("|");
+  if (separatorIndex <= 1 || separatorIndex >= normalized.length - 1) {
+    return undefined;
+  }
+
+  const scope = normalizeAllowlistScope(normalized.slice(1, separatorIndex));
+  if (!scope) {
+    return undefined;
+  }
+  const rule = normalized.slice(separatorIndex + 1).trim();
+  return rule
+    ? {
+        scope,
+        rule,
+      }
+    : undefined;
+}
+
+function formatAllowlistRule(rule: string): string {
+  const normalized = rule.trim();
+  if (!normalized || normalized === "*") {
+    return "tool:*";
+  }
+  if (normalized.startsWith("tool:")) {
+    return `tool:${normalized.slice(5).trim() || "*"}`;
+  }
+  if (normalized.startsWith("prompt:")) {
+    return `prompt:${normalized.slice(7).trim() || "*"}`;
+  }
+  if (normalized.startsWith("resource:")) {
+    return `resource:${normalized.slice(9).trim() || "*"}`;
+  }
+  return `tool:${normalized}`;
 }

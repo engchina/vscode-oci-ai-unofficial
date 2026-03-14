@@ -28,15 +28,21 @@ type GenerationOverrides = {
   topP?: number;
 };
 
+type ChatStreamOptions = {
+  signal?: AbortSignal;
+  modelNameOverride?: string;
+  runtimeSystemPrompt?: string;
+};
+
 export class GenAiService {
   constructor(private readonly factory: OciClientFactory) { }
 
   public async chatStream(
     messages: ChatMessage[],
     onToken: (token: string) => void,
-    signal?: AbortSignal,
-    modelNameOverride?: string
+    options: ChatStreamOptions = {}
   ): Promise<void> {
+    const { signal, modelNameOverride, runtimeSystemPrompt } = options;
     if (signal?.aborted) {
       throw createAbortError();
     }
@@ -66,7 +72,10 @@ export class GenAiService {
       client.regionId = region;
     }
 
-    const systemPrompt = cfg.get<string>("systemPrompt", "").trim();
+    const configuredSystemPrompt = cfg.get<string>("systemPrompt", "").trim();
+    const systemPrompt = [configuredSystemPrompt, runtimeSystemPrompt?.trim()]
+      .filter((section) => section && section.length > 0)
+      .join("\n\n");
     const generationOverrides = readGenerationOverrides(cfg);
 
     let cleanedHistory = messages

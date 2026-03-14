@@ -17,6 +17,8 @@ export interface ChatMessageData {
   text: string
   /** Optional image attachments (currently user messages). */
   images?: ChatImageData[]
+  /** Optional tool calls (model messages in agent mode). */
+  toolCalls?: ToolCallData[]
 }
 
 export interface ProfileConfig {
@@ -68,11 +70,67 @@ export interface AppState {
   tenancyOcid: string
   genAiRegion: string
   genAiLlmModelId: string
+  assistantModelNames: string
   genAiEmbeddingModelId: string
   chatMessages: ChatMessageData[]
+  subagents: SubagentRunData[]
   isStreaming: boolean
   configWarning: string
   sqlWorkbench: SqlWorkbenchState
+}
+
+export type SubagentRunStatus = "queued" | "running" | "completed" | "failed" | "cancelled"
+export type SubagentLogKind = "lifecycle" | "user" | "assistant" | "steer" | "tool" | "approval" | "error"
+
+export interface SubagentLogEntryData {
+  timestamp: string
+  kind: SubagentLogKind
+  message: string
+}
+
+export interface SubagentRunData {
+  id: string
+  shortId: string
+  agentId: string
+  task: string
+  modelName?: string
+  status: SubagentRunStatus
+  createdAt: string
+  updatedAt: string
+  startedAt?: string
+  finishedAt?: string
+  transcriptPath: string
+  steeringNotes: string[]
+  resultText?: string
+  errorText?: string
+  runtimeMs?: number
+  generation: number
+  completedGeneration?: number
+  announcedGeneration?: number
+  processing: boolean
+  messageCount: number
+  pendingApprovalCount: number
+  logs: SubagentLogEntryData[]
+}
+
+export interface SubagentMessageRequest {
+  runId: string
+  message: string
+}
+
+export interface SubagentKillRequest {
+  runId: string
+}
+
+export interface SubagentTranscriptRequest {
+  runId: string
+}
+
+export interface SubagentTranscriptResponse {
+  runId: string
+  transcriptPath: string
+  transcript: string
+  updatedAt?: string
 }
 
 export interface SaveSettingsRequest {
@@ -791,6 +849,7 @@ export interface OcaProxyStatus {
   localBaseUrl: string
   model: string
   reasoningEffort: string
+  exposeToAssistant: boolean
   apiKey: string
   availableModels: string[]
   baseUrl: string
@@ -804,8 +863,248 @@ export interface OcaProxySaveConfigRequest {
   model: string
   reasoningEffort: string
   proxyPort: number
+  exposeToAssistant: boolean
 }
 
 export interface OcaGenerateApiKeyResponse {
   apiKey: string
+}
+
+// --- MCP Types ---
+
+export type McpTransportType = "stdio" | "sse" | "streamableHttp"
+
+export interface McpServerConfig {
+  transportType: McpTransportType
+  command?: string
+  args?: string[]
+  cwd?: string
+  env?: Record<string, string>
+  url?: string
+  headers?: Record<string, string>
+  disabled?: boolean
+  timeout?: number
+  autoApprove?: string[]
+}
+
+export interface McpToolInfo {
+  name: string
+  description?: string
+  inputSchema?: Record<string, unknown>
+}
+
+export interface McpResourceInfo {
+  uri: string
+  name: string
+  description?: string
+  mimeType?: string
+}
+
+export interface McpPromptInfo {
+  name: string
+  description?: string
+  arguments?: Array<{
+    name: string
+    description?: string
+    required?: boolean
+  }>
+}
+
+export type McpServerStatus = "disconnected" | "connecting" | "connected" | "error"
+
+export interface McpServerState {
+  name: string
+  config: McpServerConfig
+  status: McpServerStatus
+  error?: string
+  tools: McpToolInfo[]
+  resources: McpResourceInfo[]
+  prompts: McpPromptInfo[]
+}
+
+export interface AddMcpServerRequest {
+  name: string
+  config: McpServerConfig
+}
+
+export interface ToggleMcpToolAutoApproveRequest {
+  serverName: string
+  toolName: string
+  approved: boolean
+}
+
+// --- Agent Types ---
+
+export type AgentMode = "chat" | "agent"
+
+export type AgentSkillSource = "bundled" | "workspace" | "user" | "extra"
+
+export interface AgentSkillConfigEntry {
+  enabled?: boolean
+  env?: Record<string, string>
+  config?: Record<string, unknown>
+}
+
+export interface AgentSkillsConfig {
+  entries?: Record<string, AgentSkillConfigEntry>
+  load?: {
+    extraDirs?: string[]
+    watch?: boolean
+    watchDebounceMs?: number
+    includeBundled?: boolean
+    includeWorkspace?: boolean
+    includeUser?: boolean
+  }
+}
+
+export interface AgentSkillSummary {
+  id: string
+  name: string
+  description?: string
+  source: AgentSkillSource
+  directory: string
+  filePath: string
+  homepage?: string
+  instructionsPreview?: string
+  configuredEnabled?: boolean
+  enabled: boolean
+  effectiveEnabled: boolean
+  userInvocable: boolean
+  modelInvocable: boolean
+  slashCommandName?: string
+  commandDispatch?: "tool"
+  commandArgMode?: "raw"
+  commandTool?: string
+  gatingReasons: string[]
+}
+
+export interface AgentSkillsState {
+  skills: AgentSkillSummary[]
+  watched: boolean
+  sources: {
+    bundledDir?: string
+    workspaceDirs: string[]
+    userDirs: string[]
+    extraDirs: string[]
+  }
+}
+
+export interface AgentAutoApprovalSettings {
+  readFiles: boolean
+  writeFiles: boolean
+  executeCommands: boolean
+  webSearch: boolean
+  mcpTools: boolean
+}
+
+export interface AgentEnabledTools {
+  readFile: boolean
+  writeFile: boolean
+  executeCommand: boolean
+  webSearch: boolean
+  browserAction: boolean
+}
+
+export interface AgentSettings {
+  mode: AgentMode
+  autoApproval: AgentAutoApprovalSettings
+  maxAutoActions: number
+  enabledTools: AgentEnabledTools
+}
+
+export interface ToolCallData {
+  id: string
+  toolName: string
+  serverName?: string
+  createdAt?: string
+  updatedAt?: string
+  actionKind?: "tool" | "prompt" | "resource"
+  actionTarget?: string
+  subagentId?: string
+  subagentLabel?: string
+  attemptCount?: number
+  parameters: Record<string, unknown>
+  status: "pending" | "approved" | "denied" | "running" | "completed" | "error"
+  result?: ToolCallResult
+}
+
+export interface ToolCallResult {
+  content: ToolCallContent[]
+  isError?: boolean
+}
+
+export interface ToolCallContent {
+  type: "text" | "image" | "resource"
+  text?: string
+  dataUrl?: string
+  uri?: string
+  mimeType?: string
+}
+
+export interface McpPromptMessageData {
+  role: "user" | "assistant"
+  content: ToolCallContent[]
+}
+
+export interface ToolApprovalRequest {
+  callId: string
+  toolName: string
+  serverName?: string
+  parameters: Record<string, unknown>
+}
+
+export interface ToolApprovalResponse {
+  callId: string
+  approved: boolean
+  alwaysAllow?: boolean
+}
+
+export interface McpSmokeTestStep {
+  label: string
+  detail?: string
+  status: "info" | "success" | "error"
+}
+
+export interface McpSmokeTestResult {
+  ok: boolean
+  startedAt: string
+  durationMs: number
+  transportType: McpTransportType
+  capabilities: {
+    tools: number
+    resources: number
+    prompts: number
+  }
+  toolResultSummary?: string
+  resourceResultSummary?: string
+  promptResultSummary?: string
+  error?: string
+  steps: McpSmokeTestStep[]
+}
+
+export interface McpPromptPreviewRequest {
+  serverName: string
+  promptName: string
+  args?: Record<string, string>
+}
+
+export interface McpPromptPreviewResponse {
+  serverName: string
+  promptName: string
+  args: Record<string, string>
+  description?: string
+  messages: McpPromptMessageData[]
+  previewText: string
+}
+
+export interface McpResourcePreviewRequest {
+  serverName: string
+  uri: string
+}
+
+export interface McpResourcePreviewResponse {
+  serverName: string
+  uri: string
+  result: ToolCallResult
+  previewText: string
 }

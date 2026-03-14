@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
-import { AudioLines, Bot, Database, History, Layers, MessageSquareText, Network, Server, Settings2, Shield, SquareTerminal } from "lucide-react"
+import { AudioLines, Bot, Database, History, Layers, MessageSquareText, Network, Plug, Server, Settings2, Shield, Sparkles, SquareTerminal } from "lucide-react"
 import AdbView from "./components/adb/AdbView"
 import ChatView from "./components/chat/ChatView"
 import ComputeView from "./components/compute/ComputeView"
@@ -9,8 +9,11 @@ import ObjectStorageView from "./components/objectstorage/ObjectStorageView"
 import SpeechView from "./components/speech/SpeechView"
 import BastionView from "./components/bastion/BastionView"
 import CreateBastionSessionView from "./components/bastion/CreateBastionSessionView"
+import McpServersView from "./components/mcp/McpServersView"
 import SettingsView, { SETTINGS_TABS, type SettingsTab } from "./components/settings/SettingsView"
 import SqlWorkbenchView from "./components/sql/SqlWorkbenchView"
+import SubagentInspector from "./components/subagents/SubagentInspector"
+import SubagentsView from "./components/subagents/SubagentsView"
 import Card from "./components/ui/Card"
 import StatusBadge from "./components/ui/StatusBadge"
 import VcnView from "./components/vcn/VcnView"
@@ -66,6 +69,20 @@ const VIEW_DEFINITIONS: Record<WorkbenchView, ViewDefinition> = {
     description: "Review prior assistant responses and clear the current thread.",
     primary: "assistant",
     icon: <History size={15} />,
+  },
+  mcpServers: {
+    id: "mcpServers",
+    label: "MCP Servers",
+    description: "Preview MCP registry view for configured servers and discovered capability state.",
+    primary: "assistant",
+    icon: <Plug size={15} />,
+  },
+  subagents: {
+    id: "subagents",
+    label: "Subagents",
+    description: "Inspect background runs, approvals, and tool activity in a dedicated panel.",
+    primary: "assistant",
+    icon: <Sparkles size={15} />,
   },
   vcn: {
     id: "vcn",
@@ -173,7 +190,7 @@ const PRIMARY_GROUPS: Record<Exclude<PrimarySection, "home">, WorkbenchSecondary
   assistant: [
     {
       title: "Assistant",
-      items: [toSecondaryItem("chat"), toSecondaryItem("history")],
+      items: [toSecondaryItem("chat"), toSecondaryItem("history"), toSecondaryItem("mcpServers"), toSecondaryItem("subagents")],
     },
   ],
   resources: [
@@ -209,6 +226,7 @@ const HOME_GROUPS: WorkbenchSecondaryGroup[] = [
 
 const HOME_ACTIONS = [
   "chat",
+  "subagents",
   "vcn",
   "compute",
   "bastion",
@@ -252,11 +270,13 @@ function AppContent() {
     isStreaming,
     configWarning,
     sqlWorkbench,
+    subagents,
   } = useExtensionState()
   const [navQuery, setNavQuery] = useState("")
   const [recentViews, setRecentViews] = useState<WorkbenchView[]>(["chat", "adb", "settings"])
   const [lastViewByPrimary, setLastViewByPrimary] = useState<Record<PrimarySection, WorkbenchView>>(DEFAULT_VIEW_BY_PRIMARY)
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>("api-config")
+  const [selectedSubagentId, setSelectedSubagentId] = useState<string | null>(null)
 
   const hasProfiles = Array.isArray(profilesConfig) && profilesConfig.length > 0
   const activeView = currentView
@@ -276,6 +296,20 @@ function AppContent() {
     }
     setRecentViews((previous) => [activeNavigationView, ...previous.filter((view) => view !== activeNavigationView)].slice(0, 6))
   }, [activeNavigationView, didHydrateState])
+
+  useEffect(() => {
+    if (subagents.length === 0) {
+      setSelectedSubagentId(null)
+      return
+    }
+    setSelectedSubagentId((current) => {
+      if (current && subagents.some((run) => run.id === current)) {
+        return current
+      }
+      const preferred = subagents.find((run) => run.status === "running" || run.status === "queued") ?? subagents[0]
+      return preferred.id
+    })
+  }, [subagents])
 
   const secondaryGroups = useMemo(
     () => getSecondaryGroups(activePrimary, navQuery),
@@ -364,6 +398,7 @@ function AppContent() {
           <div className="flex items-center gap-4">
             <span>View: {VIEW_DEFINITIONS[activeView].label}</span>
             <span>Messages: {chatMessages.length}</span>
+            <span>Subagents: {subagents.length}</span>
             <span>SQL favorites: {sqlWorkbench.favorites.length}</span>
           </div>
           <div className="flex items-center gap-4">
@@ -371,6 +406,18 @@ function AppContent() {
             <span>{hasProfiles ? "OCI ready" : "Setup required"}</span>
           </div>
         </div>
+      }
+      aside={
+        activeView === "chat" ? (
+          <SubagentInspector
+            runs={subagents}
+            chatMessages={chatMessages}
+            selectedRunId={selectedSubagentId}
+            onSelectRun={setSelectedSubagentId}
+            compact
+            onOpenFullView={() => navigateToView("subagents")}
+          />
+        ) : undefined
       }
     >
       {renderActiveView({
@@ -390,6 +437,8 @@ function AppContent() {
         onReturnToChat: () => navigateToView("chat"),
         messages: chatMessages,
         activeSettingsTab,
+        selectedSubagentId,
+        onSelectSubagent: setSelectedSubagentId,
       })}
     </WorkbenchShell>
   )
@@ -412,6 +461,8 @@ function renderActiveView({
   onReturnToChat,
   messages,
   activeSettingsTab,
+  selectedSubagentId,
+  onSelectSubagent,
 }: {
   activeView: WorkbenchView
   hasProfiles: boolean
@@ -429,6 +480,8 @@ function renderActiveView({
   onReturnToChat: () => void
   messages: Array<{ role: "user" | "model"; text: string }>
   activeSettingsTab: SettingsTab
+  selectedSubagentId: string | null
+  onSelectSubagent: (runId: string) => void
 }) {
   switch (activeView) {
     case "home":
@@ -452,6 +505,10 @@ function renderActiveView({
       )
     case "history":
       return <HistoryView messages={messages} onBack={onReturnToChat} onClear={onClearHistory} />
+    case "mcpServers":
+      return <McpServersView />
+    case "subagents":
+      return <SubagentsView selectedRunId={selectedSubagentId} onSelectRun={onSelectSubagent} />
     case "vcn":
       return <VcnView />
     case "compute":

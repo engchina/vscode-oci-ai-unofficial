@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react"
-import { ChatServiceClient, StateServiceClient, UiServiceClient } from "../services/grpc-client"
+import { ChatServiceClient, StateServiceClient, SubagentServiceClient, UiServiceClient } from "../services/grpc-client"
 import type {
   AppState,
   ChatImageData,
@@ -14,6 +14,8 @@ export type ViewType =
   | "home"
   | "chat"
   | "history"
+  | "subagents"
+  | "mcpServers"
   | "settings"
   | "vcn"
   | "compute"
@@ -26,6 +28,13 @@ export type ViewType =
   | "dbSystems"
   | "sqlWorkbench"
   | "bastion"
+
+export interface ChatDraftInjection {
+  id: string
+  text: string
+  mode?: "append" | "replace"
+  sourceLabel?: string
+}
 
 export interface ExtensionStateContextType {
   // Hydration
@@ -46,8 +55,10 @@ export interface ExtensionStateContextType {
   tenancyOcid: string
   genAiRegion: string
   genAiLlmModelId: string
+  assistantModelNames: string
   genAiEmbeddingModelId: string
   chatMessages: ChatMessageData[]
+  subagents: import("../services/types").SubagentRunData[]
   isStreaming: boolean
   configWarning: string
   sqlWorkbench: SqlWorkbenchState
@@ -72,10 +83,16 @@ export interface ExtensionStateContextType {
   newChat: () => void
   editAndResend: (messageIndex: number, newText: string) => void
   regenerate: (messageIndex: number) => void
+  sendSubagentMessage: (runId: string, message: string) => Promise<void>
+  steerSubagent: (runId: string, message: string) => Promise<void>
+  killSubagent: (runId: string) => Promise<void>
 
   // Code context injection from editor
   pendingCodeContext: CodeContextPayload | null
   clearPendingCodeContext: () => void
+  pendingChatDraft: ChatDraftInjection | null
+  injectChatDraft: (draft: Omit<ChatDraftInjection, "id">) => void
+  clearPendingChatDraft: () => void
 }
 
 const ExtensionStateContext = createContext<ExtensionStateContextType | undefined>(undefined)
@@ -103,8 +120,10 @@ export function ExtensionStateContextProvider({ children }: { children: ReactNod
     tenancyOcid: "",
     genAiRegion: "",
     genAiLlmModelId: "",
+    assistantModelNames: "",
     genAiEmbeddingModelId: "",
     chatMessages: [],
+    subagents: [],
     isStreaming: false,
     configWarning: "",
     sqlWorkbench: {
@@ -115,7 +134,22 @@ export function ExtensionStateContextProvider({ children }: { children: ReactNod
 
   const cancelStreamRef = useRef<(() => void) | null>(null)
   const [pendingCodeContext, setPendingCodeContext] = useState<CodeContextPayload | null>(null)
+  const [pendingChatDraft, setPendingChatDraft] = useState<ChatDraftInjection | null>(null)
   const clearPendingCodeContext = useCallback(() => setPendingCodeContext(null), [])
+  const clearPendingChatDraft = useCallback(() => setPendingChatDraft(null), [])
+  const injectChatDraft = useCallback((draft: Omit<ChatDraftInjection, "id">) => {
+    const text = draft.text?.trim()
+    if (!text) {
+      return
+    }
+    setPendingChatDraft({
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      text,
+      mode: draft.mode ?? "append",
+      sourceLabel: draft.sourceLabel?.trim() || undefined,
+    })
+    setCurrentView("chat")
+  }, [])
 
   // Navigation
   const navigateToView = useCallback((view: ViewType) => setCurrentView(view), [])
@@ -338,6 +372,23 @@ export function ExtensionStateContextProvider({ children }: { children: ReactNod
     )
   }, [isStreaming, state.chatMessages])
 
+  const sendSubagentMessage = useCallback(async (runId: string, message: string) => {
+    const trimmed = message.trim()
+    if (!trimmed) return
+    await SubagentServiceClient.sendMessage({ runId, message: trimmed })
+  }, [])
+
+  const steerSubagent = useCallback(async (runId: string, message: string) => {
+    const trimmed = message.trim()
+    if (!trimmed) return
+    await SubagentServiceClient.steer({ runId, message: trimmed })
+  }, [])
+
+  const killSubagent = useCallback(async (runId: string) => {
+    if (!runId.trim()) return
+    await SubagentServiceClient.kill({ runId })
+  }, [])
+
   const contextValue: ExtensionStateContextType = {
     didHydrateState,
     ...state,
@@ -355,8 +406,14 @@ export function ExtensionStateContextProvider({ children }: { children: ReactNod
     newChat,
     editAndResend,
     regenerate,
+    sendSubagentMessage,
+    steerSubagent,
+    killSubagent,
     pendingCodeContext,
     clearPendingCodeContext,
+    pendingChatDraft,
+    injectChatDraft,
+    clearPendingChatDraft,
   }
 
   return <ExtensionStateContext.Provider value={contextValue}>{children}</ExtensionStateContext.Provider>

@@ -21,7 +21,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Controller manages state and service interactions
   const controller = new Controller(
-    authManager, ociService, genAiService, adbSqlService, context.workspaceState, ocaProxyManager
+    authManager,
+    ociService,
+    genAiService,
+    adbSqlService,
+    context.workspaceState,
+    ocaProxyManager,
+    context.extensionPath,
   );
 
   // Sidebar webview providers (React app)
@@ -29,11 +35,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Broadcast proxy status changes to webview
   ocaProxyManager.onStatusChange(() => {
+    void controller.broadcastState();
     void mainWebviewProvider.refresh();
   });
 
   context.subscriptions.push(
     new vscode.Disposable(() => {
+      controller.dispose();
       void adbSqlService.dispose();
       ocaProxyManager.dispose();
     }),

@@ -11,6 +11,7 @@ import {
 } from "react"
 import TextareaAutosize from "react-textarea-autosize"
 import type { ChatImageData, CodeContextPayload, SendMessageRequest } from "../../services/types"
+import type { ChatDraftInjection } from "../../context/ExtensionStateContext"
 import { WorkbenchCompactActionCluster, WorkbenchIconActionButton } from "../workbench/WorkbenchActionButtons"
 
 interface ChatTextAreaProps {
@@ -21,6 +22,8 @@ interface ChatTextAreaProps {
   modelNames?: string
   pendingContext?: CodeContextPayload | null
   onContextConsumed?: () => void
+  pendingDraft?: ChatDraftInjection | null
+  onDraftConsumed?: () => void
 }
 
 const MAX_IMAGES = 10
@@ -38,13 +41,16 @@ export default function ChatTextArea({
   placeholder,
   modelNames,
   pendingContext,
-  onContextConsumed
+  onContextConsumed,
+  pendingDraft,
+  onDraftConsumed,
 }: ChatTextAreaProps) {
   const [value, setValue] = useState("")
   const [images, setImages] = useState<PendingImageAttachment[]>([])
   const [selectedModelName, setSelectedModelName] = useState("")
   const [validationError, setValidationError] = useState<string>("")
   const [queuedAutoSend, setQueuedAutoSend] = useState<string | null>(null)
+  const [draftNotice, setDraftNotice] = useState<string>("")
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const modelOptions = useMemo(() => splitModelNames(modelNames), [modelNames])
@@ -64,7 +70,7 @@ export default function ChatTextArea({
     if (pendingContext.prompt) {
       // Auto-send without user interaction (e.g. Code Review, Generate Docs).
       const fullMessage = `${fence}\n\n${pendingContext.prompt}`
-      if (!disabled) {
+      if (!disabled && (selectedModelName || modelOptions.length === 0)) {
         onSend({ text: fullMessage, modelName: selectedModelName || undefined })
       } else {
         // Avoid losing auto-send tasks while another response is streaming.
@@ -81,13 +87,33 @@ export default function ChatTextArea({
         }
       }, 50)
     }
-  }, [pendingContext, onContextConsumed, onSend, disabled])
+  }, [pendingContext, onContextConsumed, onSend, disabled, modelOptions.length, selectedModelName])
 
   useEffect(() => {
     if (disabled || !queuedAutoSend) return
+    if (modelOptions.length > 0 && !selectedModelName) return
     onSend({ text: queuedAutoSend, modelName: selectedModelName || undefined })
     setQueuedAutoSend(null)
-  }, [disabled, queuedAutoSend, onSend, selectedModelName])
+  }, [disabled, modelOptions.length, queuedAutoSend, onSend, selectedModelName])
+
+  useEffect(() => {
+    if (!pendingDraft) return
+    setValue((current) => mergeDraftText(current, pendingDraft.text, pendingDraft.mode ?? "append"))
+    setDraftNotice(pendingDraft.sourceLabel ? `${pendingDraft.sourceLabel} inserted into chat draft.` : "Context inserted into chat draft.")
+    onDraftConsumed?.()
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus()
+        textareaRef.current.setSelectionRange(textareaRef.current.value.length, textareaRef.current.value.length)
+      }
+    }, 50)
+  }, [pendingDraft, onDraftConsumed])
+
+  useEffect(() => {
+    if (!draftNotice) return
+    const timer = window.setTimeout(() => setDraftNotice(""), 4000)
+    return () => window.clearTimeout(timer)
+  }, [draftNotice])
 
   const handleSend = useCallback(() => {
     const trimmed = value.trim()
@@ -299,13 +325,17 @@ export default function ChatTextArea({
           </WorkbenchCompactActionCluster>
         </div>
 
+        {draftNotice && (
+          <p className="mt-2 px-1 text-xxs text-description">{draftNotice}</p>
+        )}
+
         {validationError && (
           <p className="mt-2 px-1 text-xxs text-warning">{validationError}</p>
         )}
 
         <div className="mt-2 flex min-h-6 items-center justify-between gap-2 px-1">
-          <p className="truncate text-xxs text-description" title="Enter to send, Shift+Enter for newline. Paste image with Ctrl+V or attach up to 10 images per message.">
-            Enter to send, Shift+Enter for newline. Paste image with Ctrl+V or attach up to {MAX_IMAGES} images.
+          <p className="truncate text-xxs text-description" title="Enter to send, Shift+Enter for newline. Use /help for slash commands, /skills for skill discovery, or /skill <id> <task> for reusable prompts. Paste image with Ctrl+V or attach up to 10 images per message.">
+            Enter to send, Shift+Enter for newline. Use /help, /skills, or /skill &lt;id&gt; &lt;task&gt; when helpful.
           </p>
 
           {modelOptions.length > 0 && (
@@ -345,6 +375,22 @@ function splitModelNames(raw: string | undefined): string[] {
     deduped.push(trimmed)
   }
   return deduped
+}
+
+function mergeDraftText(current: string, incoming: string, mode: "append" | "replace"): string {
+  const next = incoming.trim()
+  if (!next) {
+    return current
+  }
+  if (mode === "replace") {
+    return next
+  }
+
+  const existing = current.trim()
+  if (!existing) {
+    return next
+  }
+  return `${current.replace(/\s+$/, "")}\n\n${next}`
 }
 
 async function buildPendingImageAttachment(file: File, idx: number): Promise<PendingImageAttachment> {

@@ -23,9 +23,11 @@ export default function ChatView({ isHidden = false, onNewChat, onHistory }: Cha
     streamingText,
     sendMessage,
     stopStreaming,
-    genAiLlmModelId,
+    assistantModelNames,
     pendingCodeContext,
     clearPendingCodeContext,
+    pendingChatDraft,
+    clearPendingChatDraft,
     configWarning,
     editAndResend,
     regenerate,
@@ -115,9 +117,12 @@ export default function ChatView({ isHidden = false, onNewChat, onHistory }: Cha
         onSend={sendMessage}
         onCancel={stopStreaming}
         disabled={isStreaming}
-        modelNames={genAiLlmModelId}
+        modelNames={assistantModelNames}
         pendingContext={pendingCodeContext}
         onContextConsumed={clearPendingCodeContext}
+        pendingDraft={pendingChatDraft}
+        onDraftConsumed={clearPendingChatDraft}
+        placeholder="Type a task, `/help`, `/skills`, `/skill <id> <task>`, or `/subagents ...`"
       />
     </div>
   )
@@ -131,7 +136,7 @@ function WelcomeSection() {
       </div>
 
       <h2 className="mb-1 text-[16px] font-semibold text-[var(--vscode-foreground)]">What can I do for you?</h2>
-      <p className="mb-8 text-center text-[13px] text-description">Ask about OCI resources, AI models, or coding tasks.</p>
+      <p className="mb-8 text-center text-[13px] text-description">Ask about OCI resources, AI models, coding tasks, or invoke reusable skills.</p>
 
       <div className="w-full max-w-xl rounded border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4">
         <div className="mb-3 flex items-center justify-between">

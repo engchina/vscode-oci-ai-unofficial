@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { OcaTokenManager, OCA_CONFIG, type OcaOAuthFlowHandle, startOAuthFlow } from "./ocaAuth";
+import { OcaTokenManager, OCA_CONFIG, createOcaHeaders, type OcaOAuthFlowHandle, startOAuthFlow } from "./ocaAuth";
 import { OcaProxyServer, extractModels, generateApiKey } from "./ocaProxyServer";
 
 const API_KEY_SECRET_KEY = "ociAi.ocaProxy.apiKey";
@@ -10,6 +10,25 @@ const DEFAULT_AUTH_CALLBACK_PORT = FIXED_PROXY_PORT;
 const DEFAULT_MODEL = "oca/gpt-5.4";
 const DEFAULT_REASONING_EFFORT = "none";
 const VALID_REASONING_EFFORTS = new Set(["none", "low", "medium", "high"]);
+const MAX_IMAGES_PER_MESSAGE = 10;
+
+type OcaChatImage = {
+  dataUrl: string;
+  mimeType: string;
+  name?: string;
+};
+
+type OcaChatMessage = {
+  role: "user" | "model";
+  text: string;
+  images?: OcaChatImage[];
+};
+
+type OcaChatStreamOptions = {
+  signal?: AbortSignal;
+  modelNameOverride?: string;
+  runtimeSystemPrompt?: string;
+};
 
 export interface OcaProxyStatus {
   isAuthenticated: boolean;
@@ -21,6 +40,7 @@ export interface OcaProxyStatus {
   localBaseUrl: string;
   model: string;
   reasoningEffort: string;
+  exposeToAssistant: boolean;
   apiKey: string;
   availableModels: string[];
   baseUrl: string;
@@ -30,6 +50,7 @@ export interface OcaProxySaveConfig {
   model: string;
   reasoningEffort: string;
   proxyPort: number;
+  exposeToAssistant: boolean;
 }
 
 export class OcaProxyManager {
@@ -200,21 +221,143 @@ export class OcaProxyManager {
     return vscode.workspace.getConfiguration(CONFIG_PREFIX).get<string>("ocaProxy.reasoningEffort", DEFAULT_REASONING_EFFORT);
   }
 
+  shouldExposeToAssistant(): boolean {
+    return vscode.workspace.getConfiguration(CONFIG_PREFIX).get<boolean>("ocaProxy.exposeToAssistant", false);
+  }
+
   isProxyEnabled(): boolean {
     return vscode.workspace.getConfiguration(CONFIG_PREFIX).get<boolean>("ocaProxy.enabled", false);
+  }
+
+  getAssistantModels(): string[] {
+    if (!this.shouldExposeToAssistant() || !this.isAuthenticated()) {
+      return [];
+    }
+    const model = this.getModel().trim();
+    return model ? [model] : [];
+  }
+
+  isConfiguredAssistantModel(modelName: string | undefined): boolean {
+    const selectedModel = modelName?.trim();
+    const configuredModel = this.getModel().trim();
+    return matchesConfiguredModel(selectedModel, configuredModel);
+  }
+
+  handlesAssistantModel(modelName: string | undefined): boolean {
+    return (
+      this.isConfiguredAssistantModel(modelName) &&
+      this.shouldExposeToAssistant() &&
+      this.isAuthenticated() &&
+      !this.authInProgress
+    );
+  }
+
+  getUnavailableAssistantModelReason(modelName: string | undefined): string | undefined {
+    if (!this.isConfiguredAssistantModel(modelName)) {
+      return undefined;
+    }
+    if (!this.shouldExposeToAssistant()) {
+      return "The selected OCA assistant model is hidden. Enable 'Show this model in Assistant' in OCA Proxy settings or choose another model.";
+    }
+    if (this.authInProgress) {
+      return "Complete Oracle Code Assist sign-in before using the selected OCA assistant model.";
+    }
+    if (!this.isAuthenticated()) {
+      return "Sign in to Oracle Code Assist before using the selected OCA assistant model.";
+    }
+    return undefined;
   }
 
   async saveConfig(cfg: OcaProxySaveConfig): Promise<void> {
     const proxyPort = normalizeProxyPort(cfg.proxyPort);
     const model = normalizeModel(cfg.model);
     const reasoningEffort = normalizeReasoningEffort(cfg.reasoningEffort);
+    const exposeToAssistant = Boolean(cfg.exposeToAssistant);
     const config = vscode.workspace.getConfiguration(CONFIG_PREFIX);
     await config.update("ocaProxy.port", proxyPort, vscode.ConfigurationTarget.Global);
     await config.update("ocaProxy.model", model, vscode.ConfigurationTarget.Global);
     await config.update("ocaProxy.reasoningEffort", reasoningEffort, vscode.ConfigurationTarget.Global);
+    await config.update("ocaProxy.exposeToAssistant", exposeToAssistant, vscode.ConfigurationTarget.Global);
     // Model and reasoning effort are read dynamically per-request — no restart needed.
     // Proxy port is fixed for compatibility with host access in remote environments.
     this.broadcast();
+  }
+
+  async chatStream(
+    messages: OcaChatMessage[],
+    onToken: (token: string) => void,
+    options: OcaChatStreamOptions = {}
+  ): Promise<void> {
+    const { signal, modelNameOverride, runtimeSystemPrompt } = options;
+    if (signal?.aborted) {
+      throw createAbortError();
+    }
+    if (this.authInProgress) {
+      throw new Error("Complete Oracle Code Assist sign-in before using the OCA assistant model.");
+    }
+    if (!this.isAuthenticated()) {
+      throw new Error("Sign in to Oracle Code Assist before using the OCA assistant model.");
+    }
+
+    const configuredModel = this.getModel().trim();
+    if (!matchesConfiguredModel(modelNameOverride, configuredModel) || !this.shouldExposeToAssistant()) {
+      throw new Error("The selected assistant model is not available from OCA Proxy.");
+    }
+
+    const cfg = vscode.workspace.getConfiguration(CONFIG_PREFIX);
+    const configuredSystemPrompt = cfg.get<string>("systemPrompt", "").trim();
+    const systemPrompt = [configuredSystemPrompt, runtimeSystemPrompt?.trim()]
+      .filter((section) => section && section.length > 0)
+      .join("\n\n");
+    const requestBody = buildOcaChatRequestBody(configuredModel, this.getReasoningEffort(), messages, systemPrompt);
+
+    const token = await this.getProxyAccessToken();
+    const streamRes = await fetch(`${OCA_CONFIG.base_url}/chat/completions`, {
+      method: "POST",
+      headers: {
+        ...createOcaHeaders(token),
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify(requestBody),
+      signal,
+    });
+
+    if (!streamRes.ok) {
+      throw new Error(await resolveOcaErrorMessage(streamRes));
+    }
+
+    if (streamRes.body) {
+      const emittedCount = await readStream(streamRes.body, onToken, signal);
+      if (emittedCount > 0) {
+        return;
+      }
+    }
+
+    if (signal?.aborted) {
+      throw createAbortError();
+    }
+
+    const nonStreamRes = await fetch(`${OCA_CONFIG.base_url}/chat/completions`, {
+      method: "POST",
+      headers: {
+        ...createOcaHeaders(token),
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ ...requestBody, stream: false }),
+      signal,
+    });
+
+    if (!nonStreamRes.ok) {
+      throw new Error(await resolveOcaErrorMessage(nonStreamRes));
+    }
+
+    const responseText = extractOcaChatText(await nonStreamRes.json());
+    if (responseText) {
+      onToken(responseText);
+      return;
+    }
+
+    onToken("Oracle Code Assist returned an empty response.");
   }
 
   async getOrCreateApiKey(): Promise<string> {
@@ -311,6 +454,7 @@ export class OcaProxyManager {
       localBaseUrl,
       model: this.getModel(),
       reasoningEffort: this.getReasoningEffort(),
+      exposeToAssistant: this.shouldExposeToAssistant(),
       apiKey,
       availableModels: [...this.availableModels],
       baseUrl,
@@ -498,4 +642,280 @@ function dedupeModels(models: string[]): string[] {
 
 function stripTrailingSlash(value: string): string {
   return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
+function matchesConfiguredModel(selectedModel: string | undefined, configuredModel: string): boolean {
+  const selected = selectedModel?.trim();
+  return !!selected && selected.toLowerCase() === configuredModel.trim().toLowerCase();
+}
+
+function buildOcaChatRequestBody(
+  model: string,
+  reasoningEffort: string,
+  messages: OcaChatMessage[],
+  systemPrompt: string,
+): Record<string, unknown> {
+  const requestBody: Record<string, unknown> = {
+    model,
+    stream: true,
+    messages: buildOcaChatMessages(messages, systemPrompt),
+  };
+
+  if (reasoningEffort && reasoningEffort !== "none") {
+    requestBody.reasoning_effort = reasoningEffort;
+  }
+
+  return requestBody;
+}
+
+function buildOcaChatMessages(messages: OcaChatMessage[], systemPrompt: string): Array<Record<string, unknown>> {
+  const result: Array<Record<string, unknown>> = [];
+  if (systemPrompt) {
+    result.push({ role: "system", content: systemPrompt });
+  }
+
+  for (const message of messages) {
+    const role = message.role === "model" ? "assistant" : "user";
+    const text = message.text.trim();
+    const images = normalizeImages(message.images);
+    if (!text && images.length === 0) {
+      continue;
+    }
+
+    if (role === "user" && images.length > 0) {
+      const content: Array<Record<string, unknown>> = [];
+      if (text) {
+        content.push({ type: "text", text });
+      }
+      for (const image of images) {
+        content.push({
+          type: "image_url",
+          image_url: { url: image.dataUrl },
+        });
+      }
+      result.push({ role, content });
+      continue;
+    }
+
+    result.push({ role, content: text || "" });
+  }
+
+  return result;
+}
+
+function normalizeImages(images: OcaChatImage[] | undefined): OcaChatImage[] {
+  if (!Array.isArray(images)) {
+    return [];
+  }
+
+  const normalized: OcaChatImage[] = [];
+  for (const image of images) {
+    if (!image || typeof image.dataUrl !== "string" || typeof image.mimeType !== "string") {
+      continue;
+    }
+    const dataUrl = image.dataUrl.trim();
+    if (!isImageDataUrl(dataUrl)) {
+      continue;
+    }
+    normalized.push({
+      dataUrl,
+      mimeType: image.mimeType.trim(),
+      name: typeof image.name === "string" ? image.name.trim() : undefined,
+    });
+    if (normalized.length >= MAX_IMAGES_PER_MESSAGE) {
+      break;
+    }
+  }
+
+  return normalized;
+}
+
+function isImageDataUrl(value: string | undefined): value is string {
+  if (typeof value !== "string") {
+    return false;
+  }
+  return /^data:image\//i.test(value);
+}
+
+function createAbortError(): Error {
+  const error = new Error("Request cancelled");
+  error.name = "AbortError";
+  return error;
+}
+
+async function resolveOcaErrorMessage(response: Response): Promise<string> {
+  const fallback = `Oracle Code Assist returned HTTP ${response.status}.`;
+  try {
+    const text = (await response.text()).trim();
+    if (!text) {
+      return fallback;
+    }
+    try {
+      const parsed = JSON.parse(text) as Record<string, any>;
+      const parsedMessage =
+        parsed?.error?.message ??
+        parsed?.message ??
+        parsed?.detail;
+      if (typeof parsedMessage === "string" && parsedMessage.trim()) {
+        return parsedMessage.trim();
+      }
+    } catch {
+      // Fall back to the raw response text.
+    }
+    return text;
+  } catch {
+    return fallback;
+  }
+}
+
+function extractOcaChatText(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+
+  const choices = (payload as Record<string, any>).choices;
+  if (!Array.isArray(choices)) {
+    return undefined;
+  }
+
+  const parts: string[] = [];
+  for (const choice of choices) {
+    if (typeof choice?.message?.content === "string" && choice.message.content.trim()) {
+      parts.push(choice.message.content.trim());
+      continue;
+    }
+    if (Array.isArray(choice?.message?.content)) {
+      for (const item of choice.message.content) {
+        if (typeof item?.text === "string" && item.text.trim()) {
+          parts.push(item.text.trim());
+        }
+      }
+      continue;
+    }
+    if (typeof choice?.text === "string" && choice.text.trim()) {
+      parts.push(choice.text.trim());
+    }
+  }
+
+  const joined = parts.join("").trim();
+  return joined || undefined;
+}
+
+async function readStream(
+  stream: ReadableStream<Uint8Array>,
+  onToken: (token: string) => void,
+  signal?: AbortSignal
+): Promise<number> {
+  if (signal?.aborted) {
+    throw createAbortError();
+  }
+
+  const reader = stream.getReader();
+  const onAbort = () => {
+    void reader.cancel();
+  };
+  signal?.addEventListener("abort", onAbort, { once: true });
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let doneFromServer = false;
+  let emittedCount = 0;
+
+  try {
+    while (true) {
+      if (signal?.aborted) {
+        throw createAbortError();
+      }
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        const result = processSseLine(line, onToken);
+        emittedCount += result.emittedCount;
+        doneFromServer = result.done || doneFromServer;
+        if (doneFromServer) {
+          return emittedCount;
+        }
+      }
+    }
+
+    buffer += decoder.decode();
+    if (buffer) {
+      const lines = buffer.split("\n");
+      for (const line of lines) {
+        const result = processSseLine(line, onToken);
+        emittedCount += result.emittedCount;
+        doneFromServer = result.done || doneFromServer;
+        if (doneFromServer) {
+          return emittedCount;
+        }
+      }
+    }
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
+    reader.releaseLock();
+  }
+
+  return emittedCount;
+}
+
+function processSseLine(
+  line: string,
+  onToken: (token: string) => void
+): { done: boolean; emittedCount: number } {
+  const normalized = line.trimEnd();
+  if (!normalized.startsWith("data:")) {
+    return { done: false, emittedCount: 0 };
+  }
+
+  const data = normalized.slice(5).trim();
+  if (!data) {
+    return { done: false, emittedCount: 0 };
+  }
+  if (data === "[DONE]") {
+    return { done: true, emittedCount: 0 };
+  }
+
+  try {
+    const chunk = JSON.parse(data);
+    const token = sanitizeToken(extractChunkToken(chunk));
+    if (token) {
+      onToken(token);
+      return { done: false, emittedCount: 1 };
+    }
+  } catch {
+    // Ignore malformed chunks.
+  }
+
+  return { done: false, emittedCount: 0 };
+}
+
+function extractChunkToken(chunk: any): string {
+  const choice = chunk?.choices?.[0];
+  const fromChoices =
+    choice?.delta?.content ??
+    choice?.delta?.text ??
+    choice?.text ??
+    choice?.message?.content?.[0]?.text ??
+    choice?.message?.content?.[0]?.message;
+  if (typeof fromChoices === "string") {
+    return fromChoices;
+  }
+
+  if (typeof chunk?.text === "string") {
+    return chunk.text;
+  }
+
+  return "";
+}
+
+function sanitizeToken(token: string): string {
+  return token
+    .replace(/\\?u258b/gi, "")
+    .replace(/▋/g, "")
+    .replace(/\u258b/gi, "");
 }

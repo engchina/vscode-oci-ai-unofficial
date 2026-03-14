@@ -18,6 +18,7 @@ import type { OcaProxyStatus } from "../../services/types"
 import Card from "../ui/Card"
 import InlineNotice from "../ui/InlineNotice"
 import StatusBadge from "../ui/StatusBadge"
+import Toggle from "../ui/Toggle"
 import {
   WorkbenchActionButton,
   WorkbenchCompactActionCluster,
@@ -55,6 +56,7 @@ export default function OcaProxyTab() {
   const [localModel, setLocalModel] = useState("")
   const [localReasoningEffort, setLocalReasoningEffort] = useState("none")
   const [localPortInput, setLocalPortInput] = useState(FIXED_PROXY_PORT)
+  const [localExposeToAssistant, setLocalExposeToAssistant] = useState(false)
 
   const copiedTimerRef = useRef<number | null>(null)
   const authPollRef = useRef<number | null>(null)
@@ -64,6 +66,7 @@ export default function OcaProxyTab() {
     setLocalModel(s.model)
     setLocalReasoningEffort(s.reasoningEffort)
     setLocalPortInput(String(s.proxyPort))
+    setLocalExposeToAssistant(s.exposeToAssistant)
     setModels(s.availableModels)
   }, [])
 
@@ -207,6 +210,7 @@ export default function OcaProxyTab() {
         model: localModel,
         reasoningEffort: localReasoningEffort,
         proxyPort,
+        exposeToAssistant: localExposeToAssistant,
       })
       await loadStatus()
     } catch (err) {
@@ -214,7 +218,7 @@ export default function OcaProxyTab() {
     } finally {
       setSavingConfig(false)
     }
-  }, [localModel, localPortInput, localReasoningEffort, loadStatus])
+  }, [localExposeToAssistant, localModel, localPortInput, localReasoningEffort, loadStatus])
 
   const handleToggleProxy = useCallback(async () => {
     setTogglingProxy(true)
@@ -265,7 +269,8 @@ export default function OcaProxyTab() {
 
   const configDirty =
     localModel !== status.model ||
-    localReasoningEffort !== status.reasoningEffort
+    localReasoningEffort !== status.reasoningEffort ||
+    localExposeToAssistant !== status.exposeToAssistant
   const portError =
     parseProxyPortInput(localPortInput) === null
       ? `Proxy port is fixed at ${FIXED_PROXY_PORT}.`
@@ -361,6 +366,13 @@ export default function OcaProxyTab() {
         <p className="text-[11px] text-description">
           Configure the single model exposed by this proxy and the default reasoning effort used for requests.
         </p>
+        <Toggle
+          checked={localExposeToAssistant}
+          onChange={setLocalExposeToAssistant}
+          disabled={savingConfig}
+          label="Show this model in Assistant"
+          description="When enabled, the Assistant model picker includes the configured OCA Proxy model. Default is off."
+        />
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between">
             <label className="text-xs text-description font-medium">Model</label>

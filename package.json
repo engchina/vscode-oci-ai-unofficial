@@ -2,7 +2,7 @@
   "name": "oci-ai-unofficial",
   "displayName": "oci-ai-unofficial",
   "description": "A comprehensive extension for Oracle Cloud Infrastructure (OCI) in VS Code, supporting AI services and diversified cloud management workflows.",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "publisher": "local",
   "icon": "icon.png",
   "engines": {
@@ -245,6 +245,112 @@
           "default": 1,
           "description": "Nucleus sampling parameter for chat generation (0-1)"
         },
+        "ociAi.mcpServers": {
+          "type": "object",
+          "default": {},
+          "description": "Preview MCP (Model Context Protocol) server registry. Each key is a server name.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "transportType": {
+                "type": "string",
+                "enum": [
+                  "stdio",
+                  "sse",
+                  "streamableHttp"
+                ],
+                "description": "Transport mechanism"
+              },
+              "command": {
+                "type": "string",
+                "description": "Command for stdio transport"
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Arguments for stdio transport"
+              },
+              "cwd": {
+                "type": "string",
+                "description": "Working directory for stdio transport"
+              },
+              "url": {
+                "type": "string",
+                "description": "URL for SSE/HTTP transport"
+              },
+              "disabled": {
+                "type": "boolean",
+                "default": false
+              },
+              "timeout": {
+                "type": "number",
+                "default": 30,
+                "description": "Request timeout in seconds"
+              },
+              "autoApprove": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Tool names to auto-approve"
+              }
+            }
+          }
+        },
+        "ociAi.agentMode": {
+          "type": "string",
+          "enum": [
+            "chat",
+            "agent"
+          ],
+          "default": "chat",
+          "description": "Assistant operation mode: chat (text only) or agent (with tool use)"
+        },
+        "ociAi.agentAutoApproval": {
+          "type": "object",
+          "default": {
+            "readFiles": true,
+            "writeFiles": false,
+            "executeCommands": false,
+            "webSearch": true,
+            "mcpTools": false
+          },
+          "description": "Auto-approval settings for agent tools by category"
+        },
+        "ociAi.agentMaxAutoActions": {
+          "type": "number",
+          "default": 10,
+          "description": "Maximum consecutive auto-approved actions (1-100)"
+        },
+        "ociAi.agentEnabledTools": {
+          "type": "object",
+          "default": {
+            "readFile": true,
+            "writeFile": true,
+            "executeCommand": true,
+            "webSearch": true,
+            "browserAction": false
+          },
+          "description": "Which built-in agent tools are enabled"
+        },
+        "ociAi.agentSkills": {
+          "type": "object",
+          "default": {
+            "entries": {},
+            "load": {
+              "extraDirs": [],
+              "watch": true,
+              "watchDebounceMs": 300,
+              "includeBundled": true,
+              "includeWorkspace": true,
+              "includeUser": true
+            }
+          },
+          "description": "OpenClaw-style agent skill discovery and per-skill overrides.",
+          "additionalProperties": true
+        },
         "ociAi.ocaProxy.port": {
           "type": "number",
           "default": 8669,
@@ -257,9 +363,19 @@
         },
         "ociAi.ocaProxy.reasoningEffort": {
           "type": "string",
-          "enum": ["none", "low", "medium", "high"],
+          "enum": [
+            "none",
+            "low",
+            "medium",
+            "high"
+          ],
           "default": "none",
           "description": "Reasoning effort level for OCA proxy requests"
+        },
+        "ociAi.ocaProxy.exposeToAssistant": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether to include the configured OCA Proxy model in the Assistant model picker"
         },
         "ociAi.ocaProxy.enabled": {
           "type": "boolean",
@@ -462,6 +578,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "adm-zip": "^0.5.16",
     "oci-aispeech": "^2.126.1",
     "oci-bastion": "^2.125.2",

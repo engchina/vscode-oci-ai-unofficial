@@ -14,6 +14,8 @@ export interface ChatMessageData {
   text: string;
   /** Optional image attachments (currently user messages). */
   images?: ChatImageData[];
+  /** Optional tool calls (model messages in agent mode). */
+  toolCalls?: import("./mcp-types").ToolCallData[];
 }
 
 export interface ProfileConfig {
@@ -66,12 +68,68 @@ export interface AppState {
   tenancyOcid: string;
   genAiRegion: string;
   genAiLlmModelId: string;
+  assistantModelNames: string;
   genAiEmbeddingModelId: string;
   chatMessages: ChatMessageData[];
+  subagents: SubagentRunData[];
   isStreaming: boolean;
   /** Non-empty when required configuration is missing */
   configWarning: string;
   sqlWorkbench: SqlWorkbenchState;
+}
+
+export type SubagentRunStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
+export type SubagentLogKind = "lifecycle" | "user" | "assistant" | "steer" | "tool" | "approval" | "error";
+
+export interface SubagentLogEntryData {
+  timestamp: string;
+  kind: SubagentLogKind;
+  message: string;
+}
+
+export interface SubagentRunData {
+  id: string;
+  shortId: string;
+  agentId: string;
+  task: string;
+  modelName?: string;
+  status: SubagentRunStatus;
+  createdAt: string;
+  updatedAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  transcriptPath: string;
+  steeringNotes: string[];
+  resultText?: string;
+  errorText?: string;
+  runtimeMs?: number;
+  generation: number;
+  completedGeneration?: number;
+  announcedGeneration?: number;
+  processing: boolean;
+  messageCount: number;
+  pendingApprovalCount: number;
+  logs: SubagentLogEntryData[];
+}
+
+export interface SubagentMessageRequest {
+  runId: string;
+  message: string;
+}
+
+export interface SubagentKillRequest {
+  runId: string;
+}
+
+export interface SubagentTranscriptRequest {
+  runId: string;
+}
+
+export interface SubagentTranscriptResponse {
+  runId: string;
+  transcriptPath: string;
+  transcript: string;
+  updatedAt?: string;
 }
 
 /** Settings payload for saving */
@@ -607,6 +665,12 @@ export interface ListSpeechTranscriptionTasksResponse {
  *   - sendMessage(SendMessageRequest) → stream StreamTokenResponse
  *   - clearHistory() → {}
  *
+ * SubagentService:
+ *   - sendMessage(SubagentMessageRequest) → {}
+ *   - steer(SubagentMessageRequest) → {}
+ *   - kill(SubagentKillRequest) → {}
+ *   - getTranscript(SubagentTranscriptRequest) → SubagentTranscriptResponse
+ *
  * UiService:
  *   - subscribeToSettingsButtonClicked() → stream {}
  *   - subscribeToChatButtonClicked() → stream {}
@@ -634,6 +698,7 @@ export interface OcaProxyStatus {
   localBaseUrl: string;
   model: string;
   reasoningEffort: string;
+  exposeToAssistant: boolean;
   apiKey: string;
   availableModels: string[];
   baseUrl: string;
@@ -647,6 +712,7 @@ export interface OcaProxySaveConfigRequest {
   model: string;
   reasoningEffort: string;
   proxyPort: number;
+  exposeToAssistant: boolean;
 }
 
 export interface OcaGenerateApiKeyResponse {

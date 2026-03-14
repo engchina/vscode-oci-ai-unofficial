@@ -77,6 +77,15 @@ import type {
   DeleteSpeechTranscriptionJobRequest,
   ListSpeechTranscriptionTasksRequest,
   ListSpeechTranscriptionTasksResponse,
+  SubagentMessageRequest,
+  SubagentKillRequest,
+  SubagentTranscriptRequest,
+  SubagentTranscriptResponse,
+  McpSmokeTestResult,
+  McpPromptPreviewRequest,
+  McpPromptPreviewResponse,
+  McpResourcePreviewRequest,
+  McpResourcePreviewResponse,
 } from "./types"
 import { type Callbacks, ProtoBusClient } from "./grpc-client-base"
 
@@ -405,6 +414,110 @@ export class ResourceServiceClient extends ProtoBusClient {
 
   static runBastionSshCommand(request: RunBastionSshCommandRequest): Promise<RunBastionSshCommandResponse> {
     return this.makeUnaryRequest<RunBastionSshCommandResponse>("runBastionSshCommand", request)
+  }
+}
+
+export class McpServiceClient extends ProtoBusClient {
+  static override serviceName = "McpService"
+
+  static listServers(): Promise<{ servers: import("./types").McpServerState[] }> {
+    return this.makeUnaryRequest<{ servers: import("./types").McpServerState[] }>("listServers", {})
+  }
+
+  static addServer(request: import("./types").AddMcpServerRequest): Promise<void> {
+    return this.makeUnaryRequest<void>("addServer", request)
+  }
+
+  static removeServer(name: string): Promise<void> {
+    return this.makeUnaryRequest<void>("removeServer", { name })
+  }
+
+  static toggleServer(name: string, enabled: boolean): Promise<void> {
+    return this.makeUnaryRequest<void>("toggleServer", { name, enabled })
+  }
+
+  static restartServer(name: string): Promise<void> {
+    return this.makeUnaryRequest<void>("restartServer", { name })
+  }
+
+  static toggleToolAutoApprove(request: import("./types").ToggleMcpToolAutoApproveRequest): Promise<void> {
+    return this.makeUnaryRequest<void>("toggleToolAutoApprove", request)
+  }
+
+  static previewPrompt(request: McpPromptPreviewRequest): Promise<McpPromptPreviewResponse> {
+    return this.makeUnaryRequest<McpPromptPreviewResponse>("previewPrompt", request)
+  }
+
+  static previewResource(request: McpResourcePreviewRequest): Promise<McpResourcePreviewResponse> {
+    return this.makeUnaryRequest<McpResourcePreviewResponse>("previewResource", request)
+  }
+
+  static runSmokeTest(): Promise<McpSmokeTestResult> {
+    return this.makeUnaryRequest<McpSmokeTestResult>("runSmokeTest", {})
+  }
+
+  static subscribeToServers(callbacks: Callbacks<{ servers: import("./types").McpServerState[] }>): () => void {
+    return this.makeStreamingRequest<{ servers: import("./types").McpServerState[] }>("subscribeToServers", {}, callbacks)
+  }
+}
+
+export class AgentServiceClient extends ProtoBusClient {
+  static override serviceName = "AgentService"
+
+  static getSettings(): Promise<import("./types").AgentSettings> {
+    return this.makeUnaryRequest<import("./types").AgentSettings>("getSettings", {})
+  }
+
+  static saveSettings(settings: import("./types").AgentSettings): Promise<void> {
+    return this.makeUnaryRequest<void>("saveSettings", settings)
+  }
+
+  static approveToolCall(callId: string, alwaysAllow = false): Promise<void> {
+    return this.makeUnaryRequest<void>("approveToolCall", { callId, approved: true, alwaysAllow })
+  }
+
+  static denyToolCall(callId: string): Promise<void> {
+    return this.makeUnaryRequest<void>("denyToolCall", { callId, approved: false })
+  }
+}
+
+export class SkillServiceClient extends ProtoBusClient {
+  static override serviceName = "SkillService"
+
+  static listSkills(): Promise<import("./types").AgentSkillsState> {
+    return this.makeUnaryRequest<import("./types").AgentSkillsState>("listSkills", {})
+  }
+
+  static refreshSkills(): Promise<void> {
+    return this.makeUnaryRequest<void>("refreshSkills", {})
+  }
+
+  static toggleSkill(skillId: string, enabled: boolean): Promise<void> {
+    return this.makeUnaryRequest<void>("toggleSkill", { skillId, enabled })
+  }
+
+  static subscribeToSkills(callbacks: Callbacks<import("./types").AgentSkillsState>): () => void {
+    return this.makeStreamingRequest<import("./types").AgentSkillsState>("subscribeToSkills", {}, callbacks)
+  }
+}
+
+export class SubagentServiceClient extends ProtoBusClient {
+  static override serviceName = "SubagentService"
+
+  static sendMessage(request: SubagentMessageRequest): Promise<void> {
+    return this.makeUnaryRequest<void>("sendMessage", request)
+  }
+
+  static steer(request: SubagentMessageRequest): Promise<void> {
+    return this.makeUnaryRequest<void>("steer", request)
+  }
+
+  static kill(request: SubagentKillRequest): Promise<void> {
+    return this.makeUnaryRequest<void>("kill", request)
+  }
+
+  static getTranscript(request: SubagentTranscriptRequest): Promise<SubagentTranscriptResponse> {
+    return this.makeUnaryRequest<SubagentTranscriptResponse>("getTranscript", request)
   }
 }
 

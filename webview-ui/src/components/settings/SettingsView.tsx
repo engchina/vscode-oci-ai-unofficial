@@ -1,5 +1,5 @@
 import { clsx } from "clsx"
-import { Bot, ChevronDown, Info, Loader2, LoaderCircle, Plus, Save, Server, Settings2, Terminal, Trash2, Users } from "lucide-react"
+import { Bot, ChevronDown, Info, Loader2, LoaderCircle, Plug, Plus, Save, Server, Settings2, Terminal, Trash2, Users, Wand2 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction } from "react"
 import { StateServiceClient } from "../../services/grpc-client"
 import type { SettingsState } from "../../services/types"
@@ -24,6 +24,8 @@ import {
   createDeleteResourceGuardrail,
   type WorkbenchGuardrailState,
 } from "../workbench/guardrail"
+import McpServersTab from "./McpServersTab"
+import AgentSkillsTab from "./AgentSkillsTab"
 import OcaProxyTab from "./OcaProxyTab"
 
 
@@ -33,7 +35,7 @@ interface SettingsViewProps {
   showDone?: boolean
 }
 
-export type SettingsTab = "api-config" | "profiles" | "genai" | "terminal" | "oca-proxy" | "about"
+export type SettingsTab = "api-config" | "profiles" | "genai" | "terminal" | "mcp-servers" | "agent-skills" | "oca-proxy" | "about"
 type UpdateFieldFn = <K extends keyof SettingsState>(field: K, value: SettingsState[K]) => void
 
 export const SETTINGS_TABS: Array<{ id: SettingsTab; label: string; description: string; icon: React.ReactNode }> = [
@@ -41,6 +43,8 @@ export const SETTINGS_TABS: Array<{ id: SettingsTab; label: string; description:
   { id: "profiles", label: "Compartments", description: "Map feature scopes and saved OCI compartments.", icon: <Users size={16} /> },
   { id: "terminal", label: "Terminal", description: "Tune shell execution and SSH defaults.", icon: <Terminal size={16} /> },
   { id: "genai", label: "Generative AI", description: "Configure GenAI regions, models, and prompt behavior.", icon: <Bot size={16} /> },
+  { id: "mcp-servers", label: "MCP Servers", description: "Cline-style MCP registry and preview server management.", icon: <Plug size={16} /> },
+  { id: "agent-skills", label: "Agent Skills", description: "OpenClaw-style skill discovery plus agent permissions.", icon: <Wand2 size={16} /> },
   { id: "oca-proxy", label: "OCA Proxy", description: "Local OpenAI-compatible API backed by Oracle Code Assist.", icon: <Server size={16} /> },
   { id: "about", label: "About", description: "View extension package metadata.", icon: <Info size={16} /> },
 ]
@@ -307,6 +311,8 @@ export default function SettingsView({ activeTab: controlledActiveTab, onDone, s
                   saving={saving}
                 />
               )}
+              {activeTab === "mcp-servers" && <McpServersTab />}
+              {activeTab === "agent-skills" && <AgentSkillsTab />}
               {activeTab === "oca-proxy" && <OcaProxyTab />}
               {activeTab === "about" && <AboutTab settings={settings} />}
             </div>

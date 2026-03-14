@@ -1,13 +1,14 @@
 import { Bot, Check, User, X } from "lucide-react"
 import { useCallback, useRef, useState } from "react"
 import TextareaAutosize from "react-textarea-autosize"
-import type { ChatImageData, ChatMessageData } from "../../services/types"
+import type { ChatImageData, ChatMessageData, ToolCallData } from "../../services/types"
 import {
   WorkbenchActionButton,
   WorkbenchCompactActionCluster,
 } from "../workbench/WorkbenchActionButtons"
 import MessageActions from "./MessageActions"
 import MessageContent from "./MessageContent"
+import ToolCallBlock from "./ToolCallBlock"
 
 interface ChatRowProps {
   message: ChatMessageData
@@ -120,7 +121,17 @@ export default function ChatRow({ message, messageIndex, isLastOfRole, onEdit, o
             )}
           </div>
         ) : (
-          <MessageContent content={message.text} />
+          <div className="flex flex-col gap-2">
+            <MessageContent content={message.text} />
+            {/* Tool call blocks */}
+            {message.toolCalls && message.toolCalls.length > 0 && (
+              <div className="flex flex-col gap-2 mt-1">
+                {message.toolCalls.map((tc) => (
+                  <ToolCallBlock key={tc.id} toolCall={tc} />
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
 

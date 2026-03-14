@@ -373,6 +373,98 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
     },
     runBastionSshCommand: async (c, msg) => c.runBastionSshCommand(msg),
   },
+  McpService: {
+    listServers: async (c) => ({ servers: c.getMcpServers() }),
+    addServer: async (c, msg) => {
+      await c.addMcpServer(msg);
+      showStatusMessage("MCP server added.");
+      return {};
+    },
+    removeServer: async (c, msg) => {
+      await c.removeMcpServer(String(msg.name ?? ""));
+      showStatusMessage("MCP server removed.");
+      return {};
+    },
+    toggleServer: async (c, msg) => {
+      await c.toggleMcpServer(String(msg.name ?? ""), Boolean(msg.enabled));
+      return {};
+    },
+    restartServer: async (c, msg) => {
+      await c.restartMcpServer(String(msg.name ?? ""));
+      showStatusMessage("MCP server restarted.");
+      return {};
+    },
+    toggleToolAutoApprove: async (c, msg) => {
+      await c.toggleMcpToolAutoApprove(msg);
+      return {};
+    },
+    previewPrompt: async (c, msg) => c.previewMcpPrompt({
+      serverName: String(msg.serverName ?? ""),
+      promptName: String(msg.promptName ?? ""),
+      args: msg.args as Record<string, string> | undefined,
+    }),
+    previewResource: async (c, msg) => c.previewMcpResource({
+      serverName: String(msg.serverName ?? ""),
+      uri: String(msg.uri ?? ""),
+    }),
+    runSmokeTest: async (c) => c.runMcpSmokeTest(),
+  },
+  AgentService: {
+    getSettings: async (c) => c.getAgentSettings(),
+    saveSettings: async (c, msg) => {
+      await c.saveAgentSettings(msg);
+      showStatusMessage("Agent settings saved.");
+      return {};
+    },
+    approveToolCall: async (c, msg) => {
+      c.resolveToolApproval({ callId: String(msg.callId ?? ""), approved: true, alwaysAllow: Boolean(msg.alwaysAllow) });
+      return {};
+    },
+    denyToolCall: async (c, msg) => {
+      c.resolveToolApproval({ callId: String(msg.callId ?? ""), approved: false });
+      return {};
+    },
+  },
+  SkillService: {
+    listSkills: async (c) => c.getAgentSkills(),
+    refreshSkills: async (c) => {
+      await c.refreshAgentSkills();
+      showStatusMessage("Agent skills refreshed.");
+      return {};
+    },
+    toggleSkill: async (c, msg) => {
+      await c.toggleAgentSkill(String(msg.skillId ?? ""), Boolean(msg.enabled));
+      return {};
+    },
+  },
+  SubagentService: {
+    sendMessage: async (c, msg) => {
+      await c.sendSubagentMessage({
+        runId: String(msg.runId ?? ""),
+        message: String(msg.message ?? ""),
+      });
+      showStatusMessage("Subagent message queued.");
+      return {};
+    },
+    steer: async (c, msg) => {
+      await c.steerSubagent({
+        runId: String(msg.runId ?? ""),
+        message: String(msg.message ?? ""),
+      });
+      showStatusMessage("Subagent steering queued.");
+      return {};
+    },
+    kill: async (c, msg) => {
+      await c.killSubagent({
+        runId: String(msg.runId ?? ""),
+      });
+      showStatusMessage("Subagent cancelled.");
+      return {};
+    },
+    getTranscript: async (c, msg) => c.getSubagentTranscript({
+      runId: String(msg.runId ?? ""),
+    }),
+  },
   OcaProxyService: {
     getOcaProxyStatus: async (c) => c.getOcaProxyStatus(),
     startOcaAuth: async (c) => {
@@ -417,6 +509,16 @@ const streamingHandlers: Record<string, Record<string, StreamHandler>> = {
         stream as StreamingResponseHandler<StreamTokenResponse>,
         requestId
       );
+    },
+  },
+  McpService: {
+    subscribeToServers: async (c, _msg, stream, requestId) => {
+      c.subscribeToMcpServers(requestId, stream);
+    },
+  },
+  SkillService: {
+    subscribeToSkills: async (c, _msg, stream, requestId) => {
+      c.subscribeToAgentSkills(requestId, stream);
     },
   },
   UiService: {
