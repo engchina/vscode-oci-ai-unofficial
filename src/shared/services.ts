@@ -610,4 +610,41 @@ export interface ListSpeechTranscriptionTasksResponse {
  * UiService:
  *   - subscribeToSettingsButtonClicked() → stream {}
  *   - subscribeToChatButtonClicked() → stream {}
+ *
+ * OcaProxyService:
+ *   - getOcaProxyStatus() → OcaProxyStatus
+ *   - startOcaAuth() → {}
+ *   - logoutOca() → {}
+ *   - fetchOcaModels() → OcaFetchModelsResponse
+ *   - saveOcaProxyConfig(OcaProxySaveConfigRequest) → {}
+ *   - generateOcaApiKey() → OcaGenerateApiKeyResponse
+ *   - startOcaProxy() → {}
+ *   - stopOcaProxy() → {}
  */
+
+// --- OCA Proxy Types ---
+
+export interface OcaProxyStatus {
+  isAuthenticated: boolean;
+  proxyRunning: boolean;
+  proxyPort: number;
+  model: string;
+  reasoningEffort: string;
+  apiKey: string;
+  availableModels: string[];
+  baseUrl: string;
+}
+
+export interface OcaFetchModelsResponse {
+  models: string[];
+}
+
+export interface OcaProxySaveConfigRequest {
+  model: string;
+  reasoningEffort: string;
+  proxyPort: number;
+}
+
+export interface OcaGenerateApiKeyResponse {
+  apiKey: string;
+}

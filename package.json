@@ -245,6 +245,27 @@
           "default": 1,
           "description": "Nucleus sampling parameter for chat generation (0-1)"
         },
+        "ociAi.ocaProxy.port": {
+          "type": "number",
+          "default": 8669,
+          "description": "Port for the local OCA Proxy server (OpenAI-compatible API)"
+        },
+        "ociAi.ocaProxy.model": {
+          "type": "string",
+          "default": "oca/gpt-5.4",
+          "description": "Default OCA model to use for proxy requests"
+        },
+        "ociAi.ocaProxy.reasoningEffort": {
+          "type": "string",
+          "enum": ["none", "low", "medium", "high"],
+          "default": "none",
+          "description": "Reasoning effort level for OCA proxy requests"
+        },
+        "ociAi.ocaProxy.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the OCA Proxy server is enabled (auto-starts on extension load when true)"
+        },
         "ociAi.savedCompartments": {
           "type": "array",
           "default": [],

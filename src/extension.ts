@@ -6,6 +6,7 @@ import { OciClientFactory } from "./oci/clientFactory";
 import { AdbSqlService } from "./oci/adbSqlService";
 import { GenAiService } from "./oci/genAiService";
 import { OciService } from "./oci/ociService";
+import { OcaProxyManager } from "./oca-proxy/ocaProxyManager";
 import { OciWebviewProvider } from "./webview/OciWebviewProvider";
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -15,15 +16,26 @@ export function activate(context: vscode.ExtensionContext): void {
   const genAiService = new GenAiService(factory);
   const adbSqlService = new AdbSqlService(factory, context.globalStorageUri.fsPath);
 
+  // OCA Proxy manager
+  const ocaProxyManager = new OcaProxyManager(context);
+
   // Controller manages state and service interactions
-  const controller = new Controller(authManager, ociService, genAiService, adbSqlService, context.workspaceState);
+  const controller = new Controller(
+    authManager, ociService, genAiService, adbSqlService, context.workspaceState, ocaProxyManager
+  );
 
   // Sidebar webview providers (React app)
   const mainWebviewProvider = new OciWebviewProvider(context, controller, "main");
 
+  // Broadcast proxy status changes to webview
+  ocaProxyManager.onStatusChange(() => {
+    void mainWebviewProvider.refresh();
+  });
+
   context.subscriptions.push(
     new vscode.Disposable(() => {
       void adbSqlService.dispose();
+      ocaProxyManager.dispose();
     }),
     vscode.window.registerWebviewViewProvider(
       OciWebviewProvider.MAIN_VIEW_ID,
@@ -42,6 +54,9 @@ export function activate(context: vscode.ExtensionContext): void {
     refreshAdb: () => mainWebviewProvider.refresh(),
     refreshProfileDescription: () => mainWebviewProvider.refreshProfileDescription(),
   });
+
+  // Initialize OCA Proxy Manager (async, non-blocking)
+  void ocaProxyManager.initialize();
 
   // Ensure Generative AI Chat is open by default on every activation/reload
   vscode.commands.executeCommand("ociAi.mainView.focus");

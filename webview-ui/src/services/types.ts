@@ -778,3 +778,30 @@ export interface ListSpeechTranscriptionTasksRequest {
 export interface ListSpeechTranscriptionTasksResponse {
   tasks: SpeechTranscriptionTaskResource[]
 }
+
+// --- OCA Proxy Types ---
+
+export interface OcaProxyStatus {
+  isAuthenticated: boolean
+  proxyRunning: boolean
+  proxyPort: number
+  model: string
+  reasoningEffort: string
+  apiKey: string
+  availableModels: string[]
+  baseUrl: string
+}
+
+export interface OcaFetchModelsResponse {
+  models: string[]
+}
+
+export interface OcaProxySaveConfigRequest {
+  model: string
+  reasoningEffort: string
+  proxyPort: number
+}
+
+export interface OcaGenerateApiKeyResponse {
+  apiKey: string
+}

@@ -6,6 +6,7 @@ import { AuthManager, type ApiKeySecrets } from "../auth/authManager";
 import { GenAiService, type ChatMessage } from "../oci/genAiService";
 import { AdbSqlService } from "../oci/adbSqlService";
 import { OciService } from "../oci/ociService";
+import { OcaProxyManager } from "../oca-proxy/ocaProxyManager";
 import type {
   ConnectComputeSshRequest,
   ConnectComputeSshResponse,
@@ -50,6 +51,10 @@ import type {
   GetSpeechTranscriptionJobResponse,
   ListSpeechTranscriptionJobsResponse,
   ListSpeechTranscriptionTasksResponse,
+  OcaProxyStatus,
+  OcaFetchModelsResponse,
+  OcaProxySaveConfigRequest,
+  OcaGenerateApiKeyResponse,
 } from "../shared/services";
 import type { ExtensionMessage } from "../shared/messages";
 
@@ -101,14 +106,17 @@ export class Controller {
   private chatButtonSubscribers: Map<string, StreamingResponseHandler<unknown>> = new Map();
   private codeContextSubscribers: Map<string, StreamingResponseHandler<CodeContextPayload>> = new Map();
   private activeChatRequests: Map<string, ActiveChatRequest> = new Map();
+  readonly ocaProxyManager: OcaProxyManager;
 
   constructor(
     private readonly authManager: AuthManager,
     private readonly ociService: OciService,
     private readonly genAiService: GenAiService,
     private readonly adbSqlService: AdbSqlService,
-    private readonly workspaceState?: vscode.Memento,
+    private readonly workspaceState: vscode.Memento,
+    ocaProxyManager: OcaProxyManager,
   ) {
+    this.ocaProxyManager = ocaProxyManager;
     // Restore persisted chat history
     if (workspaceState) {
       const persisted = workspaceState.get<ChatMessage[]>(CHAT_HISTORY_KEY, []);
@@ -1477,6 +1485,42 @@ export class Controller {
     };
     await vscode.tasks.executeTask(task);
     return { launched: true };
+  }
+
+  // --- OCA Proxy ---
+
+  public async getOcaProxyStatus(): Promise<OcaProxyStatus> {
+    return this.ocaProxyManager.getStatus();
+  }
+
+  public async startOcaAuth(): Promise<void> {
+    await this.ocaProxyManager.startAuth();
+  }
+
+  public async logoutOca(): Promise<void> {
+    await this.ocaProxyManager.logout();
+  }
+
+  public async fetchOcaModels(): Promise<OcaFetchModelsResponse> {
+    const models = await this.ocaProxyManager.fetchModels();
+    return { models };
+  }
+
+  public async saveOcaProxyConfig(request: OcaProxySaveConfigRequest): Promise<void> {
+    await this.ocaProxyManager.saveConfig(request);
+  }
+
+  public async generateOcaApiKey(): Promise<OcaGenerateApiKeyResponse> {
+    const apiKey = await this.ocaProxyManager.generateNewApiKey();
+    return { apiKey };
+  }
+
+  public async startOcaProxy(): Promise<void> {
+    await this.ocaProxyManager.startProxy();
+  }
+
+  public async stopOcaProxy(): Promise<void> {
+    await this.ocaProxyManager.stopProxy();
   }
 }
 

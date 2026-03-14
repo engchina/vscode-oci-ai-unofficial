@@ -8,6 +8,10 @@ import type {
   DeleteProfileRequest,
   DownloadAdbWalletRequest,
   DownloadAdbWalletResponse,
+  OcaProxyStatus,
+  OcaFetchModelsResponse,
+  OcaProxySaveConfigRequest,
+  OcaGenerateApiKeyResponse,
   ExplainSqlPlanRequest,
   ExplainSqlPlanResponse,
   ExecuteAdbSqlRequest,
@@ -401,5 +405,41 @@ export class ResourceServiceClient extends ProtoBusClient {
 
   static runBastionSshCommand(request: RunBastionSshCommandRequest): Promise<RunBastionSshCommandResponse> {
     return this.makeUnaryRequest<RunBastionSshCommandResponse>("runBastionSshCommand", request)
+  }
+}
+
+export class OcaProxyServiceClient extends ProtoBusClient {
+  static override serviceName = "OcaProxyService"
+
+  static getOcaProxyStatus(): Promise<OcaProxyStatus> {
+    return this.makeUnaryRequest<OcaProxyStatus>("getOcaProxyStatus", {})
+  }
+
+  static startOcaAuth(): Promise<void> {
+    return this.makeUnaryRequest<void>("startOcaAuth", {})
+  }
+
+  static logoutOca(): Promise<void> {
+    return this.makeUnaryRequest<void>("logoutOca", {})
+  }
+
+  static fetchOcaModels(): Promise<OcaFetchModelsResponse> {
+    return this.makeUnaryRequest<OcaFetchModelsResponse>("fetchOcaModels", {})
+  }
+
+  static saveOcaProxyConfig(request: OcaProxySaveConfigRequest): Promise<void> {
+    return this.makeUnaryRequest<void>("saveOcaProxyConfig", request)
+  }
+
+  static generateOcaApiKey(): Promise<OcaGenerateApiKeyResponse> {
+    return this.makeUnaryRequest<OcaGenerateApiKeyResponse>("generateOcaApiKey", {})
+  }
+
+  static startOcaProxy(): Promise<void> {
+    return this.makeUnaryRequest<void>("startOcaProxy", {})
+  }
+
+  static stopOcaProxy(): Promise<void> {
+    return this.makeUnaryRequest<void>("stopOcaProxy", {})
   }
 }

@@ -373,6 +373,34 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
     },
     runBastionSshCommand: async (c, msg) => c.runBastionSshCommand(msg),
   },
+  OcaProxyService: {
+    getOcaProxyStatus: async (c) => c.getOcaProxyStatus(),
+    startOcaAuth: async (c) => {
+      await c.startOcaAuth();
+      return {};
+    },
+    logoutOca: async (c) => {
+      await c.logoutOca();
+      return {};
+    },
+    fetchOcaModels: async (c) => c.fetchOcaModels(),
+    saveOcaProxyConfig: async (c, msg) => {
+      await c.saveOcaProxyConfig(msg);
+      vscode.window.showInformationMessage("Settings saved.");
+      return {};
+    },
+    generateOcaApiKey: async (c) => c.generateOcaApiKey(),
+    startOcaProxy: async (c) => {
+      await c.startOcaProxy();
+      showStatusMessage("OCA Proxy started.");
+      return {};
+    },
+    stopOcaProxy: async (c) => {
+      await c.stopOcaProxy();
+      showStatusMessage("OCA Proxy stopped.");
+      return {};
+    },
+  },
 };
 
 const streamingHandlers: Record<string, Record<string, StreamHandler>> = {
@@ -403,6 +431,7 @@ const streamingHandlers: Record<string, Record<string, StreamHandler>> = {
     },
   },
 };
+
 
 function getUnaryHandler(service: string, method: string): UnaryHandler {
   const serviceHandlers = unaryHandlers[service];
