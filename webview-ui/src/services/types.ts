@@ -787,6 +787,8 @@ export interface OcaProxyStatus {
   authError: string | null
   proxyRunning: boolean
   proxyPort: number
+  authCallbackPort: number
+  localBaseUrl: string
   model: string
   reasoningEffort: string
   apiKey: string

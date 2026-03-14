@@ -248,7 +248,7 @@
         "ociAi.ocaProxy.port": {
           "type": "number",
           "default": 8669,
-          "description": "Port for the local OCA Proxy server (OpenAI-compatible API)"
+          "description": "Fixed port for the local OCA Proxy server (OpenAI-compatible API). The proxy currently runs only on port 8669."
         },
         "ociAi.ocaProxy.model": {
           "type": "string",

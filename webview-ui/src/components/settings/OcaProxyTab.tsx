@@ -31,8 +31,14 @@ const REASONING_EFFORT_OPTIONS = [
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
 ]
+const FIXED_PROXY_PORT = "8669"
 const AUTH_POLL_INTERVAL_MS = 3000
 const AUTH_POLL_MAX_ATTEMPTS = 100
+
+function parseProxyPortInput(value: string): number | null {
+  const trimmed = value.trim()
+  return trimmed === FIXED_PROXY_PORT ? Number(FIXED_PROXY_PORT) : null
+}
 
 export default function OcaProxyTab() {
   const [status, setStatus] = useState<OcaProxyStatus | null>(null)
@@ -48,7 +54,7 @@ export default function OcaProxyTab() {
   // Local editable config state
   const [localModel, setLocalModel] = useState("")
   const [localReasoningEffort, setLocalReasoningEffort] = useState("none")
-  const [localPort, setLocalPort] = useState(8669)
+  const [localPortInput, setLocalPortInput] = useState(FIXED_PROXY_PORT)
 
   const copiedTimerRef = useRef<number | null>(null)
   const authPollRef = useRef<number | null>(null)
@@ -57,7 +63,7 @@ export default function OcaProxyTab() {
     setStatus(s)
     setLocalModel(s.model)
     setLocalReasoningEffort(s.reasoningEffort)
-    setLocalPort(s.proxyPort)
+    setLocalPortInput(String(s.proxyPort))
     setModels(s.availableModels)
   }, [])
 
@@ -135,6 +141,9 @@ export default function OcaProxyTab() {
           applyStatus(s)
           if (s.authError) {
             setError(s.authError)
+            stopAuthPolling()
+            setLoadingAuth(false)
+            return
           }
           if (s.isAuthenticated || !s.authInProgress) {
             stopAuthPolling()
@@ -185,13 +194,19 @@ export default function OcaProxyTab() {
   }, [localModel])
 
   const handleSaveConfig = useCallback(async () => {
+    const proxyPort = parseProxyPortInput(localPortInput)
+    if (proxyPort === null) {
+      setError(`Proxy port is fixed at ${FIXED_PROXY_PORT}.`)
+      return
+    }
+
     setSavingConfig(true)
     setError(null)
     try {
       await OcaProxyServiceClient.saveOcaProxyConfig({
         model: localModel,
         reasoningEffort: localReasoningEffort,
-        proxyPort: localPort,
+        proxyPort,
       })
       await loadStatus()
     } catch (err) {
@@ -199,7 +214,7 @@ export default function OcaProxyTab() {
     } finally {
       setSavingConfig(false)
     }
-  }, [localModel, localReasoningEffort, localPort, loadStatus])
+  }, [localModel, localPortInput, localReasoningEffort, loadStatus])
 
   const handleToggleProxy = useCallback(async () => {
     setTogglingProxy(true)
@@ -250,10 +265,24 @@ export default function OcaProxyTab() {
 
   const configDirty =
     localModel !== status.model ||
-    localReasoningEffort !== status.reasoningEffort ||
-    localPort !== status.proxyPort
+    localReasoningEffort !== status.reasoningEffort
+  const portError =
+    parseProxyPortInput(localPortInput) === null
+      ? `Proxy port is fixed at ${FIXED_PROXY_PORT}.`
+      : null
 
-  const baseUrl = status.baseUrl || `http://localhost:${status.proxyPort}`
+  const hostBaseUrl = status.baseUrl || status.localBaseUrl || `http://127.0.0.1:${status.proxyPort}`
+  const localBaseUrl = status.localBaseUrl || `http://127.0.0.1:${status.proxyPort}`
+  const forwardedBaseUrl = hostBaseUrl !== localBaseUrl ? hostBaseUrl : null
+  const authBusy = loadingAuth || status.authInProgress
+  const canSaveConfig = !savingConfig && configDirty && !!localModel.trim() && portError === null
+  const startBlockedByUnsavedConfig = !status.proxyRunning && configDirty
+  const proxyActionDisabled =
+    togglingProxy ||
+    savingConfig ||
+    status.authInProgress ||
+    (!status.isAuthenticated && !status.proxyRunning) ||
+    startBlockedByUnsavedConfig
 
   return (
     <div className="flex flex-col gap-4">
@@ -288,24 +317,33 @@ export default function OcaProxyTab() {
               <LogOut size={12} className="mr-1" />
               Sign Out
             </WorkbenchActionButton>
+          ) : authBusy ? (
+            <WorkbenchActionButton
+              variant="secondary"
+              onClick={() => void handleLogout()}
+            >
+              <Square size={12} className="mr-1" />
+              Cancel Sign-In
+            </WorkbenchActionButton>
           ) : (
             <WorkbenchActionButton
               variant="primary"
               onClick={() => void handleSignIn()}
-              disabled={loadingAuth || status.authInProgress}
+              disabled={authBusy}
             >
-              {loadingAuth ? (
+              {authBusy ? (
                 <Loader2 size={12} className="mr-1 animate-spin" />
               ) : (
                 <LogIn size={12} className="mr-1" />
               )}
-              {loadingAuth ? "Waiting..." : "Sign in with Oracle Code Assist"}
+              {authBusy ? "Waiting..." : "Sign in with Oracle Code Assist"}
             </WorkbenchActionButton>
           )}
         </div>
-        {(loadingAuth || status.authInProgress) && (
+        {authBusy && (
           <p className="text-[11px] text-description">
-            A browser window has opened. Complete sign-in there, then return here.
+            A browser window has opened. Waiting for the Oracle SSO callback on{" "}
+            <span className="font-mono text-foreground">http://localhost:{status.authCallbackPort}/callback</span>.
           </p>
         )}
         {!status.isAuthenticated && (
@@ -313,10 +351,16 @@ export default function OcaProxyTab() {
             Oracle Employees: sign in with your Oracle SSO credentials.
           </p>
         )}
+        <p className="text-[10px] text-description">
+          Oracle SSO uses localhost:{status.authCallbackPort}/callback. The local proxy is also fixed to port {FIXED_PROXY_PORT}, and it will pause during sign-in if needed.
+        </p>
       </Card>
 
       {/* Model & Reasoning Effort */}
       <Card title="Model Configuration">
+        <p className="text-[11px] text-description">
+          Configure the single model exposed by this proxy and the default reasoning effort used for requests.
+        </p>
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between">
             <label className="text-xs text-description font-medium">Model</label>
@@ -355,6 +399,9 @@ export default function OcaProxyTab() {
           {models.length === 0 && status.isAuthenticated && (
             <p className="text-[10px] text-description">Click Refresh to load available models from OCA.</p>
           )}
+          <p className="text-[10px] text-description">
+            Clients using this proxy must send this configured model. Other model IDs are not supported by the proxy.
+          </p>
         </div>
 
         <div className="flex flex-col gap-1">
@@ -379,23 +426,43 @@ export default function OcaProxyTab() {
         <div className="flex flex-col gap-1">
           <label className="text-xs text-description font-medium">Proxy Port</label>
           <input
-            type="number"
-            min={1024}
-            max={65535}
-            value={localPort}
-            onChange={(e) => setLocalPort(Math.max(1024, Math.min(65535, parseInt(e.target.value, 10) || 8669)))}
-            disabled={status.proxyRunning}
+            type="text"
+            value={localPortInput}
+            readOnly
+            disabled
             className="w-32 rounded-md border border-input-border bg-input-background px-2 py-1.5 text-xs outline-none focus:border-border disabled:opacity-50"
           />
-          {status.proxyRunning && (
-            <p className="text-[10px] text-description">Stop the proxy to change the port.</p>
-          )}
+          <p className="text-[10px] text-description">
+            Fixed at {FIXED_PROXY_PORT} for compatibility with host access.
+          </p>
         </div>
 
+        <div className="flex items-center justify-between gap-3 border-t border-[var(--vscode-panel-border)] pt-2">
+          <p className="text-[10px] text-description">
+            {configDirty
+              ? "You have unsaved proxy settings."
+              : "Saved settings will be used the next time you start the proxy."}
+          </p>
+          <WorkbenchActionButton
+            onClick={() => void handleSaveConfig()}
+            disabled={!canSaveConfig}
+            className="px-4"
+          >
+            {savingConfig ? (
+              <Loader2 size={14} className="mr-1.5 animate-spin" />
+            ) : (
+              <Save size={14} className="mr-1.5" />
+            )}
+            {savingConfig ? "Saving..." : "Save Settings"}
+          </WorkbenchActionButton>
+        </div>
       </Card>
 
       {/* Proxy Server */}
       <Card title="Proxy Server">
+        <p className="text-[11px] text-description">
+          Start the local OpenAI-compatible endpoint after the configuration above has been saved.
+        </p>
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <StatusBadge
@@ -403,13 +470,13 @@ export default function OcaProxyTab() {
               tone={status.proxyRunning ? "success" : "neutral"}
             />
             {status.proxyRunning && (
-              <span className="text-[11px] text-description font-mono">{baseUrl}</span>
+              <span className="text-[11px] text-description font-mono">{hostBaseUrl}</span>
             )}
           </div>
           <WorkbenchActionButton
             variant={status.proxyRunning ? "secondary" : "primary"}
             onClick={() => void handleToggleProxy()}
-            disabled={togglingProxy || status.authInProgress || (!status.isAuthenticated && !status.proxyRunning)}
+            disabled={proxyActionDisabled}
           >
             {togglingProxy ? (
               <Loader2 size={12} className="mr-1 animate-spin" />
@@ -424,14 +491,35 @@ export default function OcaProxyTab() {
           </WorkbenchActionButton>
         </div>
 
+        {startBlockedByUnsavedConfig && (
+          <p className="text-[10px] text-description">
+            Save the configuration above before starting the proxy.
+          </p>
+        )}
+
+        {status.proxyRunning && forwardedBaseUrl && (
+          <div className="flex flex-col gap-1 rounded-md border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_94%,white_6%)] p-2">
+            <p className="text-[11px] font-medium text-foreground">Host Access</p>
+            <p className="text-[10px] text-description">
+              Use this forwarded URL from Windows or macOS when the extension host is remote.
+            </p>
+            <p className="font-mono text-[10px] text-foreground">
+              {hostBaseUrl}
+            </p>
+            <p className="text-[10px] text-description">
+              Remote bind: <span className="font-mono">{localBaseUrl}</span>
+            </p>
+          </div>
+        )}
+
         {status.proxyRunning && (
           <div className="flex flex-col gap-1 rounded-md bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,black_8%)] p-2">
             <p className="text-[11px] font-medium text-foreground">API Endpoints</p>
             <p className="font-mono text-[10px] text-description">
-              GET {baseUrl}/v1/models
+              GET {hostBaseUrl}/v1/models
             </p>
             <p className="font-mono text-[10px] text-description">
-              POST {baseUrl}/v1/chat/completions
+              POST {hostBaseUrl}/v1/chat/completions
             </p>
           </div>
         )}
@@ -472,33 +560,22 @@ export default function OcaProxyTab() {
         </p>
       </Card>
 
-      {/* Save Settings */}
-      <WorkbenchInlineActionCluster>
-        <WorkbenchActionButton
-          onClick={() => void handleSaveConfig()}
-          disabled={savingConfig || !configDirty || !localModel.trim()}
-          className="self-start px-4"
-        >
-          {savingConfig ? (
-            <Loader2 size={14} className="mr-1.5 animate-spin" />
-          ) : (
-            <Save size={14} className="mr-1.5" />
-          )}
-          {savingConfig ? "Saving..." : "Save Settings"}
-        </WorkbenchActionButton>
-      </WorkbenchInlineActionCluster>
-
       {/* Usage */}
       {status.proxyRunning && (
         <Card title="Usage Example">
           <p className="text-[11px] text-description">Configure any OpenAI-compatible client:</p>
           <div className="rounded-md bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,black_8%)] p-2">
             <pre className="overflow-x-auto text-[10px] text-description font-mono whitespace-pre-wrap break-all">
-{`base_url = "${baseUrl}/v1"
+{`base_url = "${hostBaseUrl}/v1"
 api_key  = "${status.apiKey || "your-api-key"}"
 model    = "${status.model || "oca/gpt-5.4"}"`}
             </pre>
           </div>
+          {forwardedBaseUrl && (
+            <p className="text-[10px] text-description">
+              This URL is forwarded from <span className="font-mono">{localBaseUrl}</span> because the extension is running remotely.
+            </p>
+          )}
         </Card>
       )}
     </div>
