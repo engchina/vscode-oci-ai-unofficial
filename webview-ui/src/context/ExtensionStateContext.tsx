@@ -41,6 +41,7 @@ export interface ExtensionStateContextType {
   didHydrateState: boolean
 
   activeProfile: string
+  agentMode: AppState["agentMode"]
   region: string
   compartmentId: string
   computeCompartmentIds: string[]
@@ -106,6 +107,7 @@ export function ExtensionStateContextProvider({ children }: { children: ReactNod
 
   const [state, setState] = useState<AppState>({
     activeProfile: "DEFAULT",
+    agentMode: "chat",
     region: "",
     compartmentId: "",
     computeCompartmentIds: [],

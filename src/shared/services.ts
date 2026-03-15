@@ -54,6 +54,7 @@ export interface SqlWorkbenchState {
 /** Full application state pushed to webview */
 export interface AppState {
   activeProfile: string;
+  agentMode: import("./mcp-types").AgentMode;
   region: string;
   compartmentId: string; // legacy support
   computeCompartmentIds: string[];
@@ -135,6 +136,7 @@ export interface SubagentTranscriptResponse {
 /** Settings payload for saving */
 export interface SaveSettingsRequest {
   activeProfile: string;
+  agentMode: import("./mcp-types").AgentMode;
   /** Profile whose per-profile secrets/region are currently being edited. */
   editingProfile?: string;
   region: string;
@@ -163,6 +165,8 @@ export interface SaveSettingsRequest {
   chatMaxTokens: number;
   chatTemperature: number;
   chatTopP: number;
+  mcpFetchAutoPaginationMaxHops: number;
+  mcpFetchAutoPaginationMaxTotalChars: number;
 
   // UI behavior
   suppressNotification?: boolean;

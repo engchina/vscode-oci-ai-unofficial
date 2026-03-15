@@ -3,6 +3,7 @@ import { ChevronDown, LoaderCircle, Lock, Plus, Save, Trash2, Users } from "luci
 import { useCallback, useEffect, useRef, useState } from "react"
 import { StateServiceClient } from "../../services/grpc-client"
 import type { SettingsState, SavedCompartment } from "../../services/types"
+import { runtimeSettingDefaults } from "../../generated/runtimeSettings"
 import GuardrailDialog from "../common/GuardrailDialog"
 import Card from "../ui/Card"
 import {
@@ -20,6 +21,7 @@ import {
 
 const EMPTY_SETTINGS: SettingsState = {
     activeProfile: "DEFAULT",
+    agentMode: "chat",
     region: "",
     compartmentId: "",
     computeCompartmentIds: [],
@@ -37,10 +39,12 @@ const EMPTY_SETTINGS: SettingsState = {
     privateKey: "",
     privateKeyPassphrase: "",
     systemPrompt: "",
-    shellIntegrationTimeoutSec: 4,
-    chatMaxTokens: 16000,
-    chatTemperature: 0,
-    chatTopP: 1,
+    shellIntegrationTimeoutSec: runtimeSettingDefaults.shellIntegrationTimeoutSec,
+    chatMaxTokens: runtimeSettingDefaults.chatMaxTokens,
+    chatTemperature: runtimeSettingDefaults.chatTemperature,
+    chatTopP: runtimeSettingDefaults.chatTopP,
+    mcpFetchAutoPaginationMaxHops: runtimeSettingDefaults.mcpFetchAutoPaginationMaxHops,
+    mcpFetchAutoPaginationMaxTotalChars: runtimeSettingDefaults.mcpFetchAutoPaginationMaxTotalChars,
     authMode: "api-key",
     savedCompartments: [],
     vcnCompartmentIds: [],

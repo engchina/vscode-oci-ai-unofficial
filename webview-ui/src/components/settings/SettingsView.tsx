@@ -1,8 +1,9 @@
 import { clsx } from "clsx"
 import { Bot, ChevronDown, Info, Loader2, LoaderCircle, Plug, Plus, Save, Server, Settings2, Terminal, Trash2, Users, Wand2 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction } from "react"
-import { StateServiceClient } from "../../services/grpc-client"
-import type { SettingsState } from "../../services/types"
+import { AgentServiceClient, StateServiceClient } from "../../services/grpc-client"
+import type { AgentSettings, SettingsState } from "../../services/types"
+import { runtimeSettingDefaults, runtimeSettingSpecs, runtimeSettingsUiSchema, type RuntimeSettingKey } from "../../generated/runtimeSettings"
 import GuardrailDialog from "../common/GuardrailDialog"
 import ProfilesCompartmentsView from "../profiles/ProfilesCompartmentsView"
 import { DEFAULT_SSH_USERNAME, clampPort, loadSshConfig, saveSshConfig, type HostPreference, type SshConfig } from "../../sshConfig"
@@ -10,7 +11,6 @@ import Card from "../ui/Card"
 import Input from "../ui/Input"
 import InlineNotice from "../ui/InlineNotice"
 import StatusBadge from "../ui/StatusBadge"
-import Textarea from "../ui/Textarea"
 import Toggle from "../ui/Toggle"
 import {
   WorkbenchActionButton,
@@ -27,6 +27,33 @@ import {
 import McpServersTab from "./McpServersTab"
 import AgentSkillsTab from "./AgentSkillsTab"
 import OcaProxyTab from "./OcaProxyTab"
+import {
+  renderSettingsSchemaCards,
+  renderSettingsSchemaFields,
+  renderSettingsSchemaIcon,
+  type SettingsSchemaCard,
+  type SettingsSchemaFieldSpec,
+  type SettingsSchemaFieldUpdater,
+} from "./settingsSchemaRenderer"
+
+const DEFAULT_AGENT_SETTINGS: AgentSettings = {
+  mode: "chat",
+  autoApproval: {
+    readFiles: true,
+    writeFiles: false,
+    executeCommands: false,
+    webSearch: true,
+    mcpTools: false,
+  },
+  maxAutoActions: 10,
+  enabledTools: {
+    readFile: true,
+    writeFile: true,
+    executeCommand: true,
+    webSearch: true,
+    browserAction: false,
+  },
+}
 
 
 interface SettingsViewProps {
@@ -35,15 +62,138 @@ interface SettingsViewProps {
   showDone?: boolean
 }
 
-export type SettingsTab = "api-config" | "profiles" | "genai" | "terminal" | "mcp-servers" | "agent-skills" | "oca-proxy" | "about"
+export type SettingsTab = "api-config" | "profiles" | "genai" | "runtime" | "terminal" | "mcp-servers" | "agent-skills" | "oca-proxy" | "about"
 type UpdateFieldFn = <K extends keyof SettingsState>(field: K, value: SettingsState[K]) => void
+type RuntimeUpdateFieldFn = SettingsSchemaFieldUpdater<SettingsState, RuntimeSettingKey>
+type GenAiTextFieldKey = "genAiRegion" | "genAiLlmModelId" | "genAiEmbeddingModelId" | "systemPrompt"
+type GenAiTextUpdateFieldFn = SettingsSchemaFieldUpdater<SettingsState, GenAiTextFieldKey>
+type ApiConfigSchemaValues = Pick<
+  SettingsState,
+  "region" | "tenancyOcid" | "userOcid" | "fingerprint" | "privateKey" | "privateKeyPassphrase"
+> & {
+  uploadKeyFile: string
+}
+type ApiConfigFieldKey =
+  | "region"
+  | "tenancyOcid"
+  | "userOcid"
+  | "fingerprint"
+  | "uploadKeyFile"
+  | "privateKey"
+  | "privateKeyPassphrase"
+type ApiConfigUpdateFieldFn = SettingsSchemaFieldUpdater<ApiConfigSchemaValues, ApiConfigFieldKey>
+
+const GENAI_TEXT_FIELD_SPECS = {
+  genAiRegion: {
+    kind: "string",
+    defaultValue: "",
+    uiLabel: "Region",
+    uiPlaceholder: "us-chicago-1",
+    uiHelpText: "Optional OCI Generative AI region override.",
+  },
+  genAiLlmModelId: {
+    kind: "string",
+    defaultValue: "",
+    uiLabel: "LLM Model Name",
+    uiPlaceholder: "meta.llama-3.1-70b-instruct,cohere.command-r-plus",
+    uiHelpText: "Comma-separated. Chat dropdown shows all models; SQL Assistant always uses the first.",
+  },
+  genAiEmbeddingModelId: {
+    kind: "string",
+    defaultValue: "",
+    uiLabel: "Embedding Model Name",
+    uiPlaceholder: "cohere.embed-english-v3.0",
+    uiHelpText: "Optional embedding model used for OCI Generative AI embedding requests.",
+  },
+  systemPrompt: {
+    kind: "textarea",
+    defaultValue: "",
+    uiLabel: "System Prompt",
+    uiPlaceholder: "You are a helpful OCI cloud assistant. Answer concisely and accurately.",
+    uiHelpText: "This text is prepended to every chat session as initial instructions for the model. Leave empty to use the model's default behavior.",
+    textareaRows: 6,
+  },
+} satisfies Record<GenAiTextFieldKey, SettingsSchemaFieldSpec>
+
+const GENAI_TEXT_FIELD_CARDS = [
+  {
+    id: "ociGenerativeAi",
+    title: "OCI Generative AI",
+    fields: ["genAiRegion", "genAiLlmModelId", "genAiEmbeddingModelId"],
+  },
+  {
+    id: "systemPrompt",
+    title: "System Prompt",
+    fields: ["systemPrompt"],
+  },
+] satisfies ReadonlyArray<SettingsSchemaCard<GenAiTextFieldKey>>
+
+const API_CONFIG_FIELD_SPECS = {
+  region: {
+    kind: "string",
+    defaultValue: "",
+    uiLabel: "Regions",
+    uiPlaceholder: "us-phoenix-1,us-chicago-1",
+    uiHelpText: "Region is saved per profile. Use commas for multiple regions.",
+  },
+  tenancyOcid: {
+    kind: "string",
+    defaultValue: "",
+    uiLabel: "Tenancy OCID",
+    uiPlaceholder: "ocid1.tenancy...",
+  },
+  userOcid: {
+    kind: "string",
+    defaultValue: "",
+    uiLabel: "User OCID",
+    uiPlaceholder: "ocid1.user...",
+  },
+  fingerprint: {
+    kind: "string",
+    defaultValue: "",
+    uiLabel: "Fingerprint",
+    uiPlaceholder: "aa:bb:cc:...",
+  },
+  uploadKeyFile: {
+    kind: "fileUpload",
+    defaultValue: null,
+    uiLabel: "Upload Key File",
+    uiHelpText: "Upload a PEM, KEY, or TXT file to populate the private key field automatically.",
+    uiFileAccept: ".pem,.key,.txt",
+  },
+  privateKey: {
+    kind: "textarea",
+    defaultValue: "",
+    uiLabel: "Private Key",
+    uiPlaceholder: "-----BEGIN PRIVATE KEY-----",
+    uiHelpText: "Paste the PEM-formatted private key for this OCI profile, or upload a key file above.",
+    textareaRows: 10,
+  },
+  privateKeyPassphrase: {
+    kind: "string",
+    defaultValue: "",
+    uiInputType: "password",
+    uiLabel: "Private Key Passphrase",
+  },
+} satisfies Record<ApiConfigFieldKey, SettingsSchemaFieldSpec>
+
+const API_CONFIG_FIELDS = [
+  "region",
+  "tenancyOcid",
+  "userOcid",
+  "fingerprint",
+  "uploadKeyFile",
+  "privateKey",
+  "privateKeyPassphrase",
+] satisfies ReadonlyArray<ApiConfigFieldKey>
 
 export const SETTINGS_TABS: Array<{ id: SettingsTab; label: string; description: string; icon: React.ReactNode }> = [
   { id: "api-config", label: "Profiles", description: "Manage OCI profiles and API key credentials.", icon: <Settings2 size={16} /> },
   { id: "profiles", label: "Compartments", description: "Map feature scopes and saved OCI compartments.", icon: <Users size={16} /> },
+  { id: "runtime", label: runtimeSettingsUiSchema.tab.label, description: runtimeSettingsUiSchema.tab.description, icon: renderSettingsSchemaIcon(runtimeSettingsUiSchema.tab.icon, 16) },
   { id: "terminal", label: "Terminal", description: "Tune shell execution and SSH defaults.", icon: <Terminal size={16} /> },
   { id: "genai", label: "Generative AI", description: "Configure GenAI regions, models, and prompt behavior.", icon: <Bot size={16} /> },
-  { id: "mcp-servers", label: "MCP Servers", description: "Cline-style MCP registry and preview server management.", icon: <Plug size={16} /> },
+  { id: "mcp-servers", label: "MCP Servers", description: "MCP server registry and preview management.", icon: <Plug size={16} /> },
   { id: "agent-skills", label: "Agent Skills", description: "OpenClaw-style skill discovery plus agent permissions.", icon: <Wand2 size={16} /> },
   { id: "oca-proxy", label: "OCA Proxy", description: "Local OpenAI-compatible API backed by Oracle Code Assist.", icon: <Server size={16} /> },
   { id: "about", label: "About", description: "View extension package metadata.", icon: <Info size={16} /> },
@@ -51,6 +201,7 @@ export const SETTINGS_TABS: Array<{ id: SettingsTab; label: string; description:
 
 const EMPTY_SETTINGS: SettingsState = {
   activeProfile: "DEFAULT",
+  agentMode: "chat",
   region: "",
   compartmentId: "",
   computeCompartmentIds: [],
@@ -71,10 +222,12 @@ const EMPTY_SETTINGS: SettingsState = {
   systemPrompt: "",
 
 
-  shellIntegrationTimeoutSec: 4,
-  chatMaxTokens: 16000,
-  chatTemperature: 0,
-  chatTopP: 1,
+  shellIntegrationTimeoutSec: runtimeSettingDefaults.shellIntegrationTimeoutSec,
+  chatMaxTokens: runtimeSettingDefaults.chatMaxTokens,
+  chatTemperature: runtimeSettingDefaults.chatTemperature,
+  chatTopP: runtimeSettingDefaults.chatTopP,
+  mcpFetchAutoPaginationMaxHops: runtimeSettingDefaults.mcpFetchAutoPaginationMaxHops,
+  mcpFetchAutoPaginationMaxTotalChars: runtimeSettingDefaults.mcpFetchAutoPaginationMaxTotalChars,
 
   authMode: "api-key",
   savedCompartments: [],
@@ -94,6 +247,7 @@ function getMissingApiKeyFields(s: Pick<SettingsState, "tenancyOcid" | "userOcid
 
 export default function SettingsView({ activeTab: controlledActiveTab, onDone, showDone = true }: SettingsViewProps) {
   const [settings, setSettings] = useState<SettingsState>(EMPTY_SETTINGS)
+  const [agentSettings, setAgentSettings] = useState<AgentSettings>(DEFAULT_AGENT_SETTINGS)
   const [sshConfig, setSshConfig] = useState<SshConfig>(loadSshConfig)
   const [saving, setSaving] = useState(false)
   const [loaded, setLoaded] = useState(false)
@@ -147,11 +301,18 @@ export default function SettingsView({ activeTab: controlledActiveTab, onDone, s
   const refreshSettings = useCallback(async () => {
     const fetchId = ++fetchIdRef.current
     try {
-      const state = await StateServiceClient.getSettings()
+      const [state, nextAgentSettings] = await Promise.all([
+        StateServiceClient.getSettings(),
+        AgentServiceClient.getSettings().catch(() => DEFAULT_AGENT_SETTINGS),
+      ])
       const nextEditingProfile = resolveEditingProfile(state, editingProfileRef.current)
-      const hydratedState = await applyEditingProfileSecrets(state, nextEditingProfile)
+      const hydratedState = await applyEditingProfileSecrets(
+        { ...state, agentMode: nextAgentSettings.mode },
+        nextEditingProfile,
+      )
       if (fetchId === fetchIdRef.current) {
         setSettings(hydratedState)
+        setAgentSettings(nextAgentSettings)
         updateEditingProfile(nextEditingProfile)
         setLoaded(true)
       }
@@ -201,16 +362,20 @@ export default function SettingsView({ activeTab: controlledActiveTab, onDone, s
   const handleSave = useCallback(async () => {
     setSaving(true)
     try {
-      await StateServiceClient.saveSettings({
-        ...settings,
-        editingProfile: resolveEditingProfile(settings, editingProfileRef.current),
-      })
+      await Promise.all([
+        StateServiceClient.saveSettings({
+          ...settings,
+          agentMode: agentSettings.mode,
+          editingProfile: resolveEditingProfile(settings, editingProfileRef.current),
+        }),
+        AgentServiceClient.saveSettings(agentSettings),
+      ])
     } catch (error) {
       console.error("Failed to save settings:", error)
     } finally {
       setSaving(false)
     }
-  }, [resolveEditingProfile, settings])
+  }, [agentSettings, resolveEditingProfile, settings])
 
   const handleGuardedAction = useCallback(async () => {
     if (!guardrail) {
@@ -296,6 +461,16 @@ export default function SettingsView({ activeTab: controlledActiveTab, onDone, s
               {activeTab === "genai" && (
                 <GenAiTab
                   settings={settings}
+                  updateField={updateField}
+                  handleSave={handleSave}
+                  saving={saving}
+                />
+              )}
+              {activeTab === "runtime" && (
+                <RuntimeTab
+                  settings={settings}
+                  agentSettings={agentSettings}
+                  updateAgentSettings={setAgentSettings}
                   updateField={updateField}
                   handleSave={handleSave}
                   saving={saving}
@@ -470,6 +645,23 @@ function ApiConfigTab({
     }))
   }
 
+  const apiConfigSchemaValues: ApiConfigSchemaValues = {
+    region: settings.region,
+    tenancyOcid: settings.tenancyOcid,
+    userOcid: settings.userOcid,
+    fingerprint: settings.fingerprint,
+    uploadKeyFile: "",
+    privateKey: settings.privateKey,
+    privateKeyPassphrase: settings.privateKeyPassphrase,
+  }
+  const handleApiConfigKeyFileSelect = async (file: File | undefined) => {
+    if (!file) {
+      return
+    }
+    const content = await file.text()
+    updateField("privateKey", content)
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <h3 className="flex items-center gap-1.5 text-md font-semibold">
@@ -571,58 +763,17 @@ function ApiConfigTab({
         <p className="-mt-1 text-xs text-description">
           Fill all four required fields below. Requests will fail until SecretStorage has a complete API key for this profile.
         </p>
-        <Input
-          id="region"
-          label="Regions"
-          placeholder="us-phoenix-1,us-chicago-1"
-          value={settings.region}
-          onChange={(e) => updateField("region", e.target.value)}
-        />
-        <p className="-mt-1 text-[10px] text-description">Region is saved per profile. Use commas for multiple regions.</p>
-        <Input
-          id="tenancyOcid"
-          label="Tenancy OCID"
-          placeholder="ocid1.tenancy..."
-          value={settings.tenancyOcid}
-          onChange={(e) => updateField("tenancyOcid", e.target.value)}
-        />
-        <Input
-          id="userOcid"
-          label="User OCID"
-          placeholder="ocid1.user..."
-          value={settings.userOcid}
-          onChange={(e) => updateField("userOcid", e.target.value)}
-        />
-        <Input
-          id="fingerprint"
-          label="Fingerprint"
-          placeholder="aa:bb:cc:..."
-          value={settings.fingerprint}
-          onChange={(e) => updateField("fingerprint", e.target.value)}
-        />
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-description">Upload Key File</label>
-          <input
-            type="file"
-            accept=".pem,.key,.txt"
-            onChange={handleFileUpload}
-            className="text-xs text-description file:mr-2 file:rounded-md file:border file:border-input-border file:bg-button-secondary-background file:px-2.5 file:py-1.5 file:text-xs file:text-button-secondary-foreground"
-          />
-        </div>
-        <Textarea
-          id="privateKey"
-          label="Private Key"
-          placeholder="-----BEGIN PRIVATE KEY-----"
-          value={settings.privateKey}
-          onChange={(e) => updateField("privateKey", e.target.value)}
-        />
-        <Input
-          id="privateKeyPassphrase"
-          label="Private Key Passphrase"
-          type="password"
-          value={settings.privateKeyPassphrase}
-          onChange={(e) => updateField("privateKeyPassphrase", e.target.value)}
-        />
+        {renderSettingsSchemaFields<ApiConfigSchemaValues, ApiConfigFieldKey>(
+          API_CONFIG_FIELDS,
+          API_CONFIG_FIELD_SPECS,
+          apiConfigSchemaValues,
+          updateField as ApiConfigUpdateFieldFn,
+          {
+            fileUploadHandlers: {
+              uploadKeyFile: handleApiConfigKeyFileSelect,
+            },
+          },
+        )}
       </Card>
 
       <WorkbenchInlineActionCluster>
@@ -655,77 +806,232 @@ function GenAiTab({
       </h3>
       <p className="-mt-2 text-xs text-description">Configure models and region for OCI Generative AI features.</p>
 
-      <Card title="OCI Generative AI">
-        <Input
-          id="genAiRegion"
-          label="Region"
-          placeholder="us-chicago-1"
-          value={settings.genAiRegion}
-          onChange={(e) => updateField("genAiRegion", e.target.value)}
-        />
-        <Input
-          id="genAiLlmModelId"
-          label="LLM Model Name"
-          placeholder="meta.llama-3.1-70b-instruct,cohere.command-r-plus"
-          value={settings.genAiLlmModelId}
-          onChange={(e) => updateField("genAiLlmModelId", e.target.value)}
-        />
-        <p className="-mt-1 text-xs text-description">
-          Comma-separated. Chat dropdown shows all models; SQL Assistant always uses the first.
-        </p>
-        <Input
-          id="genAiEmbeddingModelId"
-          label="Embedding Model Name"
-          placeholder="cohere.embed-english-v3.0"
-          value={settings.genAiEmbeddingModelId}
-          onChange={(e) => updateField("genAiEmbeddingModelId", e.target.value)}
-        />
+      {renderSettingsSchemaCards<SettingsState, GenAiTextFieldKey>(
+        GENAI_TEXT_FIELD_CARDS,
+        GENAI_TEXT_FIELD_SPECS,
+        settings,
+        updateField as GenAiTextUpdateFieldFn,
+      )}
+
+      {renderSettingsSchemaCards<SettingsState, RuntimeSettingKey>(
+        runtimeSettingsUiSchema.sections.genai.cards,
+        runtimeSettingSpecs,
+        settings,
+        updateField as RuntimeUpdateFieldFn,
+      )}
+
+      <WorkbenchInlineActionCluster>
+        <WorkbenchActionButton onClick={handleSave} disabled={saving} className="self-start px-4">
+          <Save size={14} className="mr-1.5" />
+          {saving ? "Saving..." : "Save Settings"}
+        </WorkbenchActionButton>
+      </WorkbenchInlineActionCluster>
+    </div>
+  )
+}
+
+function RuntimeTab({
+  settings,
+  agentSettings,
+  updateAgentSettings,
+  updateField,
+  handleSave,
+  saving,
+}: {
+  settings: SettingsState
+  agentSettings: AgentSettings
+  updateAgentSettings: Dispatch<SetStateAction<AgentSettings>>
+  updateField: UpdateFieldFn
+  handleSave: () => void
+  saving: boolean
+}) {
+  const isAgent = agentSettings.mode === "agent"
+
+  return (
+    <div className="flex flex-col gap-4">
+      <h3 className="flex items-center gap-1.5 text-md font-semibold">
+        {renderSettingsSchemaIcon(runtimeSettingsUiSchema.page.icon, 14)}
+        {runtimeSettingsUiSchema.page.title}
+      </h3>
+      <p className="-mt-2 text-xs text-description">{runtimeSettingsUiSchema.page.description}</p>
+
+      <Card title="Agent Controls">
+        <div className="rounded-md border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_97%,var(--vscode-foreground)_3%)] px-3 py-2">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-description">Chat Agent</span>
+              <span className="text-xs text-description">Switch this on the Assistant page. Your last choice saves automatically.</span>
+            </div>
+            <span className="rounded-full border border-[var(--vscode-panel-border)] px-2 py-0.5 text-[11px] font-medium text-[var(--vscode-foreground)]">
+              {isAgent ? "Agent" : "Chat"}
+            </span>
+          </div>
+        </div>
+
+        {!isAgent && (
+          <InlineNotice tone="info" size="sm">
+            The controls below apply only in agent mode. Switch `Chat Agent` to `Agent` from the Assistant page to enable tool execution and auto-approval behavior.
+          </InlineNotice>
+        )}
+
+        <div className="mt-3 flex flex-col gap-2">
+          <Toggle
+            checked={agentSettings.enabledTools.readFile}
+            onChange={(checked) =>
+              updateAgentSettings((prev) => ({
+                ...prev,
+                enabledTools: { ...prev.enabledTools, readFile: checked },
+              }))
+            }
+            label="Read File"
+            description="Read files from the current workspace. Also gates file listing and search helpers."
+            disabled={!isAgent}
+          />
+          <Toggle
+            checked={agentSettings.enabledTools.writeFile}
+            onChange={(checked) =>
+              updateAgentSettings((prev) => ({
+                ...prev,
+                enabledTools: { ...prev.enabledTools, writeFile: checked },
+              }))
+            }
+            label="Write File"
+            description="Create or edit files in the workspace."
+            disabled={!isAgent}
+          />
+          <Toggle
+            checked={agentSettings.enabledTools.executeCommand}
+            onChange={(checked) =>
+              updateAgentSettings((prev) => ({
+                ...prev,
+                enabledTools: { ...prev.enabledTools, executeCommand: checked },
+              }))
+            }
+            label="Execute Command"
+            description="Run terminal commands from the assistant."
+            disabled={!isAgent}
+          />
+          <Toggle
+            checked={agentSettings.enabledTools.webSearch}
+            onChange={(checked) =>
+              updateAgentSettings((prev) => ({
+                ...prev,
+                enabledTools: { ...prev.enabledTools, webSearch: checked },
+              }))
+            }
+            label="Web Search"
+            description="Allow the assistant to search the web and fetch URLs when needed."
+            disabled={!isAgent}
+          />
+          <Toggle
+            checked={agentSettings.enabledTools.browserAction}
+            onChange={(checked) =>
+              updateAgentSettings((prev) => ({
+                ...prev,
+                enabledTools: { ...prev.enabledTools, browserAction: checked },
+              }))
+            }
+            label="Browser Action"
+            description="Enable experimental browser automation for agent workflows."
+            disabled={!isAgent}
+          />
+        </div>
+
+        <div className="mt-4 border-t border-[var(--vscode-panel-border)] pt-4">
+          <div className="text-xs font-medium text-foreground">Auto-Approval</div>
+          <p className="mt-1 text-xs text-description">
+            Auto-approved actions can run without another confirmation. Keep write and command permissions narrow unless you trust the current workflow.
+          </p>
+
+          <div className="mt-3 flex flex-col gap-2">
+            <Toggle
+              checked={agentSettings.autoApproval.readFiles}
+              onChange={(checked) =>
+                updateAgentSettings((prev) => ({
+                  ...prev,
+                  autoApproval: { ...prev.autoApproval, readFiles: checked },
+                }))
+              }
+              label="Read Operations"
+              description="Auto-approve file reads."
+              disabled={!isAgent}
+            />
+            <Toggle
+              checked={agentSettings.autoApproval.writeFiles}
+              onChange={(checked) =>
+                updateAgentSettings((prev) => ({
+                  ...prev,
+                  autoApproval: { ...prev.autoApproval, writeFiles: checked },
+                }))
+              }
+              label="Write Operations"
+              description="Auto-approve file writes."
+              disabled={!isAgent}
+            />
+            <Toggle
+              checked={agentSettings.autoApproval.executeCommands}
+              onChange={(checked) =>
+                updateAgentSettings((prev) => ({
+                  ...prev,
+                  autoApproval: { ...prev.autoApproval, executeCommands: checked },
+                }))
+              }
+              label="Command Execution"
+              description="Auto-approve terminal commands."
+              disabled={!isAgent}
+            />
+            <Toggle
+              checked={agentSettings.autoApproval.webSearch}
+              onChange={(checked) =>
+                updateAgentSettings((prev) => ({
+                  ...prev,
+                  autoApproval: { ...prev.autoApproval, webSearch: checked },
+                }))
+              }
+              label="Web Search"
+              description="Auto-approve web lookups and URL fetches."
+              disabled={!isAgent}
+            />
+            <Toggle
+              checked={agentSettings.autoApproval.mcpTools}
+              onChange={(checked) =>
+                updateAgentSettings((prev) => ({
+                  ...prev,
+                  autoApproval: { ...prev.autoApproval, mcpTools: checked },
+                }))
+              }
+              label="MCP Tools"
+              description="Auto-approve direct MCP tool calls."
+              disabled={!isAgent}
+            />
+
+            <div className="mt-2">
+              <Input
+                label="Max Consecutive Auto-Actions"
+                type="number"
+                value={String(agentSettings.maxAutoActions)}
+                onChange={(event) => {
+                  const value = parseInt(event.target.value, 10)
+                  if (!Number.isNaN(value) && value >= 1 && value <= 100) {
+                    updateAgentSettings((prev) => ({ ...prev, maxAutoActions: value }))
+                  }
+                }}
+                disabled={!isAgent}
+              />
+              <span className="mt-1 block text-xs text-description">
+                Maximum consecutive auto-approved actions before the assistant must stop and ask.
+              </span>
+            </div>
+          </div>
+        </div>
       </Card>
 
-      <Card title="System Prompt">
-        <Textarea
-          id="systemPrompt"
-          placeholder="You are a helpful OCI cloud assistant. Answer concisely and accurately."
-          value={settings.systemPrompt}
-          onChange={(e) => updateField("systemPrompt", e.target.value)}
-        />
-        <p className="-mt-1 text-xs text-description">
-          This text is prepended to every chat session as initial instructions for the model.
-          Leave empty to use the model's default behavior.
-        </p>
-      </Card>
-
-      <Card title="LLM Parameters">
-        <Input
-          id="chatMaxTokens"
-          label="Max Tokens"
-          type="number"
-          min={1}
-          max={128000}
-          value={settings.chatMaxTokens}
-          onChange={(e) => updateField("chatMaxTokens", parseIntInput(e.target.value, 16000, 1, 128000))}
-        />
-        <Input
-          id="chatTemperature"
-          label="Temperature"
-          type="number"
-          step="0.1"
-          min={0}
-          max={2}
-          value={settings.chatTemperature}
-          onChange={(e) => updateField("chatTemperature", parseFloatInput(e.target.value, 0, 0, 2))}
-        />
-        <Input
-          id="chatTopP"
-          label="Top P"
-          type="number"
-          step="0.05"
-          min={0}
-          max={1}
-          value={settings.chatTopP}
-          onChange={(e) => updateField("chatTopP", parseFloatInput(e.target.value, 1, 0, 1))}
-        />
-      </Card>
+      {renderSettingsSchemaCards<SettingsState, RuntimeSettingKey>(
+        runtimeSettingsUiSchema.sections.runtime.cards,
+        runtimeSettingSpecs,
+        settings,
+        updateField,
+      )}
 
       <WorkbenchInlineActionCluster>
         <WorkbenchActionButton onClick={handleSave} disabled={saving} className="self-start px-4">
@@ -748,7 +1054,7 @@ function TerminalTab({
   settings: SettingsState
   sshConfig: SshConfig
   setSshConfig: Dispatch<SetStateAction<SshConfig>>
-  updateField: UpdateFieldFn
+  updateField: RuntimeUpdateFieldFn
   handleSave: () => void
   saving: boolean
 }) {
@@ -760,20 +1066,12 @@ function TerminalTab({
       </h3>
       <p className="-mt-2 text-xs text-description">Set terminal integration behavior used by command execution tasks.</p>
 
-      <Card title="Command Execution">
-        <Input
-          id="shellIntegrationTimeoutSec"
-          label="Shell Integration Timeout (seconds)"
-          type="number"
-          min={1}
-          max={120}
-          value={settings.shellIntegrationTimeoutSec}
-          onChange={(e) => updateField("shellIntegrationTimeoutSec", parseIntInput(e.target.value, 4, 1, 120))}
-        />
-        <p className="-mt-1 text-xs text-description">
-          How long command execution should wait for shell integration before timing out.
-        </p>
-      </Card>
+      {renderSettingsSchemaCards<SettingsState, RuntimeSettingKey>(
+        runtimeSettingsUiSchema.sections.terminal.cards,
+        runtimeSettingSpecs,
+        settings,
+        updateField,
+      )}
 
       <Card title="Compute SSH Defaults">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -869,22 +1167,4 @@ function AboutTab({ settings }: { settings: SettingsState }) {
       </div>
     </div>
   )
-}
-
-
-
-function parseIntInput(raw: string, fallback: number, min: number, max: number): number {
-  const parsed = Number.parseInt(raw, 10)
-  if (!Number.isFinite(parsed)) {
-    return fallback
-  }
-  return Math.max(min, Math.min(max, parsed))
-}
-
-function parseFloatInput(raw: string, fallback: number, min: number, max: number): number {
-  const parsed = Number.parseFloat(raw)
-  if (!Number.isFinite(parsed)) {
-    return fallback
-  }
-  return Math.max(min, Math.min(max, parsed))
 }

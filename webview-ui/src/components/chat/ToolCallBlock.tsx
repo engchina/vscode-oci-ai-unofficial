@@ -108,7 +108,7 @@ export default function ToolCallBlock({ toolCall }: ToolCallBlockProps) {
             <span className="mt-0.5 shrink-0">{STATUS_ICON[toolCall.status]}</span>
             <div className="min-w-0 flex-1">
               <div className="text-[11px] font-semibold uppercase tracking-wide text-foreground">
-                MCP {actionKindLabel} {toolCall.status === "running" ? "in progress" : toolCall.status}
+                {toolCall.serverName ? "MCP" : "Built-in"} {actionKindLabel} {toolCall.status === "running" ? "in progress" : toolCall.status}
               </div>
               <div className="mt-0.5 text-xs text-description">
                 {statusDetail}
@@ -279,21 +279,22 @@ function getHighlightTone(toolCall: ToolCallData): { container: string; banner: 
 }
 
 function buildStatusDetail(toolCall: ToolCallData, actionKindLabel: string): string {
+  const prefix = toolCall.serverName ? "MCP" : "Built-in"
   switch (toolCall.status) {
     case "pending":
-      return `Waiting for your approval before the MCP ${actionKindLabel} is executed.`
+      return `Waiting for your approval before the ${prefix} ${actionKindLabel} is executed.`
     case "approved":
-      return `Approval received. The MCP ${actionKindLabel} is queued to run next.`
+      return `Approval received. The ${prefix} ${actionKindLabel} is queued to run next.`
     case "running":
-      return `Executing the MCP ${actionKindLabel} on the connected server now.`
+      return `Executing the ${prefix} ${actionKindLabel} now.`
     case "completed":
-      return `The MCP ${actionKindLabel} finished successfully.`
+      return `The ${prefix} ${actionKindLabel} finished successfully.`
     case "error":
-      return `The MCP ${actionKindLabel} failed. Review the result details below.`
+      return `The ${prefix} ${actionKindLabel} failed. Review the result details below.`
     case "denied":
-      return `The MCP ${actionKindLabel} was denied and did not run.`
+      return `The ${prefix} ${actionKindLabel} was denied and did not run.`
     default:
-      return `MCP ${actionKindLabel} status updated.`
+      return `${prefix} ${actionKindLabel} status updated.`
   }
 }
 

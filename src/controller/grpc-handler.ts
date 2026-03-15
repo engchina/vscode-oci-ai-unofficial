@@ -436,6 +436,41 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
   },
   SkillService: {
     listSkills: async (c) => c.getAgentSkills(),
+    getSkillsOverview: async (c) => c.getAgentSkillsOverview(),
+    getSkillsDiagnosticReport: async (c) => c.getAgentSkillsDiagnosticReport(),
+    getSkillInfoReport: async (c, msg) => {
+      const report = c.getAgentSkillInfoReport(String(msg.skillRef ?? ""))
+      if (!report) {
+        throw new Error(`Skill "${String(msg.skillRef ?? "")}" was not found.`)
+      }
+      return report
+    },
+    getSkillsCheckReport: async (c) => c.getAgentSkillsCheckReport(),
+    openSkillFindingLocation: async (c, msg) =>
+      c.openAgentSkillFindingLocation(String(msg.file ?? ""), Number(msg.line ?? 1)),
+    addSkillSuppression: async (c, msg) => {
+      await c.addAgentSkillSuppression({
+        scope: String(msg.scope ?? "") as "rule" | "file" | "rule-file",
+        ruleId: typeof msg.ruleId === "string" ? msg.ruleId : undefined,
+        file: typeof msg.file === "string" ? msg.file : undefined,
+        note: typeof msg.note === "string" ? msg.note : undefined,
+      })
+      return {}
+    },
+    removeSkillSuppression: async (c, msg) => {
+      await c.removeAgentSkillSuppression({
+        scope: String(msg.scope ?? "") as "rule" | "file" | "rule-file",
+        ruleId: typeof msg.ruleId === "string" ? msg.ruleId : undefined,
+        file: typeof msg.file === "string" ? msg.file : undefined,
+      })
+      return {}
+    },
+    setSkillSuppressions: async (c, msg) => {
+      await c.setAgentSkillSuppressions(
+        Array.isArray(msg.suppressions) ? (msg.suppressions as import("../shared/mcp-types").AgentSkillSuppression[]) : [],
+      )
+      return {}
+    },
     refreshSkills: async (c) => {
       await c.refreshAgentSkills();
       showStatusMessage("Agent skills refreshed.");
@@ -445,6 +480,26 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
       await c.toggleAgentSkill(String(msg.skillId ?? ""), Boolean(msg.enabled));
       return {};
     },
+    installSkill: async (c, msg) => {
+      const result = await c.installAgentSkill(
+        String(msg.skillId ?? ""),
+        typeof msg.installerId === "string" ? msg.installerId : undefined,
+        Boolean(msg.allowHighRisk),
+      );
+      showStatusMessage(result.ok ? "Agent skill installed." : "Agent skill install failed.");
+      return result;
+    },
+    importSkillFromSource: async (c, msg) => {
+      const result = await c.importAgentSkillFromSource(
+        String(msg.source ?? ""),
+        String(msg.scope ?? "workspace") === "user" ? "user" : "workspace",
+        Boolean(msg.replaceExisting),
+        Boolean(msg.allowHighRisk),
+      );
+      showStatusMessage(result.ok ? "External skill imported." : "External skill import failed.");
+      return result;
+    },
+    pickImportSource: async (c) => c.pickAgentSkillImportSource(),
   },
   SubagentService: {
     sendMessage: async (c, msg) => {
@@ -528,6 +583,9 @@ const streamingHandlers: Record<string, Record<string, StreamHandler>> = {
   SkillService: {
     subscribeToSkills: async (c, _msg, stream, requestId) => {
       c.subscribeToAgentSkills(requestId, stream);
+    },
+    subscribeToSkillsOverview: async (c, _msg, stream, requestId) => {
+      c.subscribeToAgentSkillsOverview(requestId, stream);
     },
   },
   UiService: {

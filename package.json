@@ -2,7 +2,7 @@
   "name": "oci-ai-unofficial",
   "displayName": "oci-ai-unofficial",
   "description": "A comprehensive extension for Oracle Cloud Infrastructure (OCI) in VS Code, supporting AI services and diversified cloud management workflows.",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "publisher": "local",
   "icon": "icon.png",
   "engines": {
@@ -69,6 +69,14 @@
         "command": "ociAi.openSettings",
         "title": "oci-ai-unofficial: Open Settings",
         "shortTitle": "Settings"
+      },
+      {
+        "command": "ociAi.bootstrap.initializeWorkspaceFiles",
+        "title": "oci-ai-unofficial: Initialize Agent Workspace Files"
+      },
+      {
+        "command": "ociAi.skills.importFromSource",
+        "title": "oci-ai-unofficial: Import Skill From External Source"
       },
       {
         "command": "ociAi.editor.sendToChat",
@@ -141,6 +149,12 @@
           "command": "ociAi.openSettings"
         },
         {
+          "command": "ociAi.bootstrap.initializeWorkspaceFiles"
+        },
+        {
+          "command": "ociAi.skills.importFromSource"
+        },
+        {
           "command": "ociAi.editor.sendToChat"
         },
         {
@@ -154,411 +168,446 @@
         }
       ]
     },
-    "configuration": {
-      "title": "oci-ai-unofficial",
-      "properties": {
-        "ociAi.activeProfile": {
-          "type": "string",
-          "default": "DEFAULT",
-          "description": "The currently active global profile"
-        },
-        "ociAi.authMode": {
-          "type": "string",
-          "enum": [
-            "api-key"
-          ],
-          "default": "api-key",
-          "description": "Authentication mode. This extension uses API key credentials from SecretStorage only."
-        },
-        "ociAi.region": {
-          "type": "string",
-          "default": "",
-          "description": "Optional OCI region override(s), comma-separated (e.g. us-phoenix-1,us-chicago-1)"
-        },
-        "ociAi.compartmentId": {
-          "type": "string",
-          "default": "",
-          "description": "Compartment OCID used for Compute and ADB list/actions"
-        },
-        "ociAi.configFilePath": {
-          "type": "string",
-          "default": "",
-          "description": "Deprecated. OCI config files are no longer used for authentication."
-        },
-        "ociAi.oracleDbDriverMode": {
-          "type": "string",
-          "enum": [
-            "auto",
-            "thin",
-            "thick"
-          ],
-          "default": "auto",
-          "description": "node-oracledb driver mode for SQL connections: auto (try Thick then fallback to Thin), thin (always Thin), thick (require Oracle Instant Client)"
-        },
-        "ociAi.oracleClientLibDir": {
-          "type": "string",
-          "default": "",
-          "description": "Optional Oracle Instant Client directory for Thick mode, e.g. /opt/oracle/instantclient_23_6"
-        },
-        "ociAi.genAiModelId": {
-          "type": "string",
-          "default": "",
-          "description": "Legacy LLM model identifier (model name). Prefer ociAi.genAiLlmModelId."
-        },
-        "ociAi.genAiRegion": {
-          "type": "string",
-          "default": "",
-          "description": "Optional OCI Generative AI region override (falls back to ociAi.region when empty)"
-        },
-        "ociAi.genAiLlmModelId": {
-          "type": "string",
-          "default": "",
-          "description": "LLM model name for OCI Generative AI chat"
-        },
-        "ociAi.genAiEmbeddingModelId": {
-          "type": "string",
-          "default": "",
-          "description": "Embedding model name for OCI Generative AI embedding requests"
-        },
-        "ociAi.systemPrompt": {
-          "type": "string",
-          "default": "",
-          "description": "Optional system prompt prepended to every AI chat session"
-        },
-        "ociAi.shellIntegrationTimeoutSec": {
-          "type": "number",
-          "default": 4,
-          "description": "Timeout (seconds) to wait for shell integration before command execution"
-        },
-        "ociAi.chatMaxTokens": {
-          "type": "number",
-          "default": 16000,
-          "description": "Maximum tokens requested per chat completion (1-128000)"
-        },
-        "ociAi.chatTemperature": {
-          "type": "number",
-          "default": 0,
-          "description": "Sampling temperature for chat generation (0-2)"
-        },
-        "ociAi.chatTopP": {
-          "type": "number",
-          "default": 1,
-          "description": "Nucleus sampling parameter for chat generation (0-1)"
-        },
-        "ociAi.mcpServers": {
-          "type": "object",
-          "default": {},
-          "description": "Preview MCP (Model Context Protocol) server registry. Each key is a server name.",
-          "additionalProperties": {
+    "configuration": [
+      {
+        "title": "oci-ai-unofficial",
+        "properties": {
+          "ociAi.activeProfile": {
+            "type": "string",
+            "default": "DEFAULT",
+            "description": "The currently active global profile"
+          },
+          "ociAi.authMode": {
+            "type": "string",
+            "enum": [
+              "api-key"
+            ],
+            "default": "api-key",
+            "description": "Authentication mode. This extension uses API key credentials from SecretStorage only."
+          },
+          "ociAi.region": {
+            "type": "string",
+            "default": "",
+            "description": "Optional OCI region override(s), comma-separated (e.g. us-phoenix-1,us-chicago-1)"
+          },
+          "ociAi.compartmentId": {
+            "type": "string",
+            "default": "",
+            "description": "Compartment OCID used for Compute and ADB list/actions"
+          },
+          "ociAi.configFilePath": {
+            "type": "string",
+            "default": "",
+            "description": "Deprecated. OCI config files are no longer used for authentication."
+          },
+          "ociAi.oracleDbDriverMode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "thin",
+              "thick"
+            ],
+            "default": "auto",
+            "description": "node-oracledb driver mode for SQL connections: auto (try Thick then fallback to Thin), thin (always Thin), thick (require Oracle Instant Client)"
+          },
+          "ociAi.oracleClientLibDir": {
+            "type": "string",
+            "default": "",
+            "description": "Optional Oracle Instant Client directory for Thick mode, e.g. /opt/oracle/instantclient_23_6"
+          },
+          "ociAi.genAiModelId": {
+            "type": "string",
+            "default": "",
+            "description": "Legacy LLM model identifier (model name). Prefer ociAi.genAiLlmModelId."
+          },
+          "ociAi.genAiRegion": {
+            "type": "string",
+            "default": "",
+            "description": "Optional OCI Generative AI region override (falls back to ociAi.region when empty)"
+          },
+          "ociAi.genAiLlmModelId": {
+            "type": "string",
+            "default": "",
+            "description": "LLM model name for OCI Generative AI chat"
+          },
+          "ociAi.genAiEmbeddingModelId": {
+            "type": "string",
+            "default": "",
+            "description": "Embedding model name for OCI Generative AI embedding requests"
+          },
+          "ociAi.systemPrompt": {
+            "type": "string",
+            "default": "",
+            "description": "Optional system prompt prepended to every AI chat session"
+          },
+          "ociAi.shellIntegrationTimeoutSec": {
+            "type": "number",
+            "default": 4,
+            "minimum": 1,
+            "maximum": 120,
+            "description": "Timeout (seconds) to wait for shell integration before command execution"
+          },
+          "ociAi.chatMaxTokens": {
+            "type": "number",
+            "default": 16000,
+            "minimum": 1,
+            "maximum": 128000,
+            "description": "Maximum tokens requested per chat completion (1-128000)"
+          },
+          "ociAi.chatTemperature": {
+            "type": "number",
+            "default": 0,
+            "minimum": 0,
+            "maximum": 2,
+            "description": "Sampling temperature for chat generation (0-2)"
+          },
+          "ociAi.chatTopP": {
+            "type": "number",
+            "default": 1,
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Nucleus sampling parameter for chat generation (0-1)"
+          },
+          "ociAi.mcpServers": {
             "type": "object",
-            "properties": {
-              "transportType": {
-                "type": "string",
-                "enum": [
-                  "stdio",
-                  "sse",
-                  "streamableHttp"
-                ],
-                "description": "Transport mechanism"
-              },
-              "command": {
-                "type": "string",
-                "description": "Command for stdio transport"
-              },
-              "args": {
-                "type": "array",
-                "items": {
-                  "type": "string"
+            "default": {},
+            "description": "Preview MCP (Model Context Protocol) server registry. Each key is a server name.",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "transportType": {
+                  "type": "string",
+                  "enum": [
+                    "stdio",
+                    "sse",
+                    "streamableHttp"
+                  ],
+                  "description": "Transport mechanism"
                 },
-                "description": "Arguments for stdio transport"
-              },
-              "cwd": {
-                "type": "string",
-                "description": "Working directory for stdio transport"
-              },
-              "url": {
-                "type": "string",
-                "description": "URL for SSE/HTTP transport"
-              },
-              "disabled": {
-                "type": "boolean",
-                "default": false
-              },
-              "timeout": {
-                "type": "number",
-                "default": 30,
-                "description": "Request timeout in seconds"
-              },
-              "autoApprove": {
-                "type": "array",
-                "items": {
-                  "type": "string"
+                "command": {
+                  "type": "string",
+                  "description": "Command for stdio transport"
                 },
-                "description": "Tool names to auto-approve"
-              }
-            }
-          }
-        },
-        "ociAi.agentMode": {
-          "type": "string",
-          "enum": [
-            "chat",
-            "agent"
-          ],
-          "default": "chat",
-          "description": "Assistant operation mode: chat (text only) or agent (with tool use)"
-        },
-        "ociAi.agentAutoApproval": {
-          "type": "object",
-          "default": {
-            "readFiles": true,
-            "writeFiles": false,
-            "executeCommands": false,
-            "webSearch": true,
-            "mcpTools": false
-          },
-          "description": "Auto-approval settings for agent tools by category"
-        },
-        "ociAi.agentMaxAutoActions": {
-          "type": "number",
-          "default": 10,
-          "description": "Maximum consecutive auto-approved actions (1-100)"
-        },
-        "ociAi.agentEnabledTools": {
-          "type": "object",
-          "default": {
-            "readFile": true,
-            "writeFile": true,
-            "executeCommand": true,
-            "webSearch": true,
-            "browserAction": false
-          },
-          "description": "Which built-in agent tools are enabled"
-        },
-        "ociAi.agentSkills": {
-          "type": "object",
-          "default": {
-            "entries": {},
-            "load": {
-              "extraDirs": [],
-              "watch": true,
-              "watchDebounceMs": 300,
-              "includeBundled": true,
-              "includeWorkspace": true,
-              "includeUser": true
-            }
-          },
-          "description": "OpenClaw-style agent skill discovery and per-skill overrides.",
-          "additionalProperties": true
-        },
-        "ociAi.ocaProxy.port": {
-          "type": "number",
-          "default": 8669,
-          "description": "Fixed port for the local OCA Proxy server (OpenAI-compatible API). The proxy currently runs only on port 8669."
-        },
-        "ociAi.ocaProxy.model": {
-          "type": "string",
-          "default": "oca/gpt-5.4",
-          "description": "Default OCA model to use for proxy requests"
-        },
-        "ociAi.ocaProxy.reasoningEffort": {
-          "type": "string",
-          "enum": [
-            "low",
-            "medium",
-            "high",
-            "xhigh"
-          ],
-          "default": "medium",
-          "description": "Reasoning effort level for OCA proxy requests"
-        },
-        "ociAi.ocaProxy.exposeToAssistant": {
-          "type": "boolean",
-          "default": false,
-          "description": "Whether to include the configured OCA Proxy model in the Assistant model picker"
-        },
-        "ociAi.ocaProxy.enabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "Whether the OCA Proxy server is enabled (auto-starts on extension load when true)"
-        },
-        "ociAi.savedCompartments": {
-          "type": "array",
-          "default": [],
-          "description": "List of named compartments for quick switching",
-          "items": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string",
-                "description": "Display name for this compartment"
-              },
-              "id": {
-                "type": "string",
-                "description": "Compartment OCID"
-              }
-            },
-            "required": [
-              "name",
-              "id"
-            ]
-          }
-        },
-        "ociAi.profilesConfig": {
-          "type": "array",
-          "default": [],
-          "description": "List of profiles and their associated compartments",
-          "items": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string",
-                "description": "OCI Profile name"
-              },
-              "compartments": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string"
-                    },
-                    "name": {
-                      "type": "string"
-                    }
+                "args": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
                   },
-                  "required": [
-                    "id",
-                    "name"
-                  ]
+                  "description": "Arguments for stdio transport"
+                },
+                "cwd": {
+                  "type": "string",
+                  "description": "Working directory for stdio transport"
+                },
+                "url": {
+                  "type": "string",
+                  "description": "URL for SSE/HTTP transport"
+                },
+                "disabled": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "timeout": {
+                  "type": "number",
+                  "default": 30,
+                  "description": "Request timeout in seconds"
+                },
+                "autoApprove": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Tool names to auto-approve"
                 }
               }
-            },
-            "required": [
-              "name",
-              "compartments"
-            ]
-          }
-        },
-        "ociAi.profileRegionMap": {
-          "type": "object",
-          "default": {},
-          "description": "Per-profile OCI region mapping used by API Configuration profile selection",
-          "additionalProperties": {
-            "type": "string"
-          }
-        },
-        "ociAi.computeCompartmentIds": {
-          "type": "array",
-          "items": {
-            "type": "string"
+            }
           },
-          "default": [],
-          "description": "OCID of the compartment where Compute instances are located. Array of strings."
-        },
-        "ociAi.vcnCompartmentIds": {
-          "type": "array",
-          "items": {
-            "type": "string"
+          "ociAi.agentMode": {
+            "type": "string",
+            "enum": [
+              "chat",
+              "agent"
+            ],
+            "default": "chat",
+            "description": "Assistant operation mode: chat (text only) or agent (with tool use)"
           },
-          "default": [],
-          "description": "OCID of the compartment where Virtual Cloud Networks are located. Array of strings."
-        },
-        "ociAi.objectStorageCompartmentIds": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "description": "Selected compartment IDs for Object Storage bucket browsing"
-        },
-        "ociAi.chatCompartmentId": {
-          "type": "string",
-          "default": "",
-          "description": "Selected compartment ID for Chat"
-        },
-        "ociAi.adbCompartmentIds": {
-          "type": "array",
-          "default": [],
-          "description": "Selected compartment IDs for ADB",
-          "items": {
-            "type": "string"
-          }
-        },
-        "ociAi.dbSystemCompartmentIds": {
-          "type": "array",
-          "default": [],
-          "description": "Selected compartment IDs for Oracle Base Database Service",
-          "items": {
-            "type": "string"
-          }
-        },
-        "ociAi.bastionCompartmentIds": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "description": "Selected compartment IDs for OCI Bastion Service"
-        },
-        "ociAi.speechCompartmentIds": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "description": "Selected compartment IDs for OCI Speech transcription jobs in us-chicago-1"
-        },
-        "ociAi.adbConnectionProfiles": {
-          "type": "array",
-          "default": [],
-          "description": "Saved ADB connection profiles (passwords are kept securely in SecretStorage)",
-          "items": {
+          "ociAi.agentAutoApproval": {
             "type": "object",
-            "properties": {
-              "autonomousDatabaseId": {
-                "type": "string"
+            "default": {
+              "readFiles": true,
+              "writeFiles": false,
+              "executeCommands": false,
+              "webSearch": true,
+              "mcpTools": false
+            },
+            "description": "Auto-approval settings for agent tools by category"
+          },
+          "ociAi.agentMaxAutoActions": {
+            "type": "number",
+            "default": 10,
+            "description": "Maximum consecutive auto-approved actions (1-100)"
+          },
+          "ociAi.agentEnabledTools": {
+            "type": "object",
+            "default": {
+              "readFile": true,
+              "writeFile": true,
+              "executeCommand": true,
+              "webSearch": true,
+              "browserAction": false
+            },
+            "description": "Which built-in agent tools are enabled"
+          },
+          "ociAi.agentSkills": {
+            "type": "object",
+            "default": {
+              "entries": {},
+              "allowBundled": [],
+              "load": {
+                "extraDirs": [],
+                "watch": true,
+                "watchDebounceMs": 300,
+                "includeBundled": true,
+                "includeWorkspace": true,
+                "includeUser": true
               },
-              "walletPath": {
-                "type": "string"
+              "install": {
+                "preferBrew": true,
+                "nodeManager": "npm"
+              }
+            },
+            "description": "OpenClaw-style agent skill discovery and per-skill overrides.",
+            "additionalProperties": true
+          },
+          "ociAi.ocaProxy.port": {
+            "type": "number",
+            "default": 8669,
+            "description": "Fixed port for the local OCA Proxy server (OpenAI-compatible API). The proxy currently runs only on port 8669."
+          },
+          "ociAi.ocaProxy.model": {
+            "type": "string",
+            "default": "oca/gpt-5.4",
+            "description": "Default OCA model to use for proxy requests"
+          },
+          "ociAi.ocaProxy.reasoningEffort": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "default": "medium",
+            "description": "Reasoning effort level for OCA proxy requests"
+          },
+          "ociAi.ocaProxy.exposeToAssistant": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether to include the configured OCA Proxy model in the Assistant model picker"
+          },
+          "ociAi.ocaProxy.enabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether the OCA Proxy server is enabled (auto-starts on extension load when true)"
+          },
+          "ociAi.savedCompartments": {
+            "type": "array",
+            "default": [],
+            "description": "List of named compartments for quick switching",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Display name for this compartment"
+                },
+                "id": {
+                  "type": "string",
+                  "description": "Compartment OCID"
+                }
               },
-              "username": {
-                "type": "string"
+              "required": [
+                "name",
+                "id"
+              ]
+            }
+          },
+          "ociAi.profilesConfig": {
+            "type": "array",
+            "default": [],
+            "description": "List of profiles and their associated compartments",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "OCI Profile name"
+                },
+                "compartments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ]
+                  }
+                }
               },
-              "serviceName": {
-                "type": "string"
+              "required": [
+                "name",
+                "compartments"
+              ]
+            }
+          },
+          "ociAi.profileRegionMap": {
+            "type": "object",
+            "default": {},
+            "description": "Per-profile OCI region mapping used by API Configuration profile selection",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "ociAi.computeCompartmentIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "description": "OCID of the compartment where Compute instances are located. Array of strings."
+          },
+          "ociAi.vcnCompartmentIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "description": "OCID of the compartment where Virtual Cloud Networks are located. Array of strings."
+          },
+          "ociAi.objectStorageCompartmentIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "description": "Selected compartment IDs for Object Storage bucket browsing"
+          },
+          "ociAi.chatCompartmentId": {
+            "type": "string",
+            "default": "",
+            "description": "Selected compartment ID for Chat"
+          },
+          "ociAi.adbCompartmentIds": {
+            "type": "array",
+            "default": [],
+            "description": "Selected compartment IDs for ADB",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ociAi.dbSystemCompartmentIds": {
+            "type": "array",
+            "default": [],
+            "description": "Selected compartment IDs for Oracle Base Database Service",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ociAi.bastionCompartmentIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "description": "Selected compartment IDs for OCI Bastion Service"
+          },
+          "ociAi.speechCompartmentIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "description": "Selected compartment IDs for OCI Speech transcription jobs in us-chicago-1"
+          },
+          "ociAi.adbConnectionProfiles": {
+            "type": "array",
+            "default": [],
+            "description": "Saved ADB connection profiles (passwords are kept securely in SecretStorage)",
+            "items": {
+              "type": "object",
+              "properties": {
+                "autonomousDatabaseId": {
+                  "type": "string"
+                },
+                "walletPath": {
+                  "type": "string"
+                },
+                "username": {
+                  "type": "string"
+                },
+                "serviceName": {
+                  "type": "string"
+                }
               }
             }
-          }
-        },
-        "ociAi.dbSystemConnectionProfiles": {
-          "type": "array",
-          "default": [],
-          "description": "Saved Oracle Base Database connection profiles",
-          "items": {
-            "type": "object",
-            "properties": {
-              "dbSystemId": {
-                "type": "string"
-              },
-              "username": {
-                "type": "string"
-              },
-              "serviceName": {
-                "type": "string"
+          },
+          "ociAi.dbSystemConnectionProfiles": {
+            "type": "array",
+            "default": [],
+            "description": "Saved Oracle Base Database connection profiles",
+            "items": {
+              "type": "object",
+              "properties": {
+                "dbSystemId": {
+                  "type": "string"
+                },
+                "username": {
+                  "type": "string"
+                },
+                "serviceName": {
+                  "type": "string"
+                }
               }
             }
           }
         }
+      },
+      {
+        "title": "oci-ai-unofficial / Agent / MCP Runtime",
+        "properties": {
+          "ociAi.mcpFetchAutoPaginationMaxHops": {
+            "type": "number",
+            "default": 5,
+            "minimum": 0,
+            "maximum": 20,
+            "description": "Maximum number of automatic follow-up MCP fetch calls after a truncated fetch result. Set to 0 to disable auto-pagination."
+          },
+          "ociAi.mcpFetchAutoPaginationMaxTotalChars": {
+            "type": "number",
+            "default": 24000,
+            "minimum": 4000,
+            "maximum": 200000,
+            "description": "Maximum total characters accumulated while automatically continuing truncated MCP fetch results."
+          }
+        }
       }
-    }
+    ]
   },
   "scripts": {
     "postinstall": "npm run build",
+    "sync:runtime-settings": "node scripts/sync-runtime-settings.js",
     "build:webview": "cd webview-ui && npm install && npm run build",
     "prepare:oracledb": "node scripts/prepare-oracledb.js",
     "build:extension": "node esbuild.js && npm run prepare:oracledb",
-    "build": "npm run build:webview && npm run build:extension",
+    "build": "npm run sync:runtime-settings && npm run build:webview && npm run build:extension",
     "dev:webview": "cd webview-ui && npm run dev",
     "watch": "node esbuild.js --watch",
     "dev:host": "code --extensionDevelopmentPath=.",
@@ -567,8 +616,8 @@
     "dev:install:qoder": "npm run dev:vsix && qoder --install-extension $(ls -t ./*.vsix | head -n1) --force",
     "dev:install:cursor": "npm run dev:vsix && cursor --install-extension $(ls -t ./*.vsix | head -n1) --force",
     "dev:install:antigravity": "npm run dev:vsix && antigravity --install-extension $(ls -t ./*.vsix | head -n1) --force",
-    "check": "tsc --noEmit",
-    "package": "vsce package --no-dependencies --allow-missing-repository"
+    "check": "npm run sync:runtime-settings && tsc --noEmit",
+    "package": "npm run sync:runtime-settings && vsce package --no-dependencies --allow-missing-repository"
   },
   "devDependencies": {
     "@types/node": "^24.10.13",

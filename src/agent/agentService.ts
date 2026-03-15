@@ -75,12 +75,15 @@ export class AgentService {
     // Built-in tools
     switch (toolName) {
       case "readFile":
+      case "listFiles":
+      case "searchFiles":
         return settings.autoApproval.readFiles;
       case "writeFile":
         return settings.autoApproval.writeFiles;
       case "executeCommand":
         return settings.autoApproval.executeCommands;
       case "webSearch":
+      case "fetchUrl":
         return settings.autoApproval.webSearch;
       default:
         return false;

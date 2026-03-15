@@ -40,6 +40,135 @@ export function registerCommands(
     vscode.commands.registerCommand("ociAi.openChat", async () => {
       await vscode.commands.executeCommand("ociAi.mainView.focus");
     }),
+    vscode.commands.registerCommand("ociAi.bootstrap.initializeWorkspaceFiles", async () => {
+      const directory = await controller.ensureBootstrapFiles();
+      if (!directory) {
+        vscode.window.showWarningMessage("No workspace folder is open.");
+        return;
+      }
+      vscode.window.showInformationMessage(`Workspace bootstrap files are ready in ${directory}.`);
+    }),
+    vscode.commands.registerCommand("ociAi.skills.importFromSource", async () => {
+      const sourceMode = await vscode.window.showQuickPick(
+        [
+          {
+            label: "Browse Local Source",
+            description: "Choose a local skill folder or archive from the filesystem",
+            mode: "browse" as const,
+          },
+          {
+            label: "Enter Source Manually",
+            description: "Paste a local path, archive URL, or git repository URL",
+            mode: "manual" as const,
+          },
+        ],
+        {
+          title: "Import External Skill",
+          placeHolder: "Choose how to provide the skill source",
+          ignoreFocusOut: true,
+        },
+      );
+      if (!sourceMode) {
+        return;
+      }
+
+      let source = "";
+      if (sourceMode.mode === "browse") {
+        const picked = await vscode.window.showOpenDialog({
+          canSelectFiles: true,
+          canSelectFolders: true,
+          canSelectMany: false,
+          openLabel: "Use As Skill Source",
+          title: "Choose a local skill folder or archive",
+        });
+        source = picked?.[0]?.fsPath ?? "";
+      } else {
+        source =
+          (await vscode.window.showInputBox({
+            title: "Import External Skill",
+            prompt: "Enter a local folder, local archive, archive URL, or git repository URL",
+            placeHolder: "/path/to/skill | https://.../skill.zip | https://github.com/org/repo::skills/my-skill",
+            ignoreFocusOut: true,
+          })) ?? "";
+      }
+
+      if (!source.trim()) {
+        return;
+      }
+
+      const scopePick = await vscode.window.showQuickPick(
+        [
+          {
+            label: "Workspace",
+            description: "Install into <workspace>/skills",
+            scope: "workspace" as const,
+          },
+          {
+            label: "User",
+            description: "Install into ~/.openclaw/skills",
+            scope: "user" as const,
+          },
+        ],
+        {
+          title: "Import External Skill",
+          placeHolder: "Choose the install scope",
+          ignoreFocusOut: true,
+        },
+      );
+      if (!scopePick) {
+        return;
+      }
+
+      const replacePick = await vscode.window.showQuickPick(
+        [
+          {
+            label: "No",
+            description: "Fail if a skill folder with the same name already exists",
+            replace: false,
+          },
+          {
+            label: "Yes",
+            description: "Replace an existing skill folder with the same name",
+            replace: true,
+          },
+        ],
+        {
+          title: "Replace Existing Skill?",
+          placeHolder: "Choose how to handle an existing skill directory",
+          ignoreFocusOut: true,
+        },
+      );
+      if (!replacePick) {
+        return;
+      }
+
+      let result = await controller.importAgentSkillFromSource(
+        source.trim(),
+        scopePick.scope,
+        replacePick.replace,
+      );
+      if (result.blockedBySecurity) {
+        const confirm = await vscode.window.showWarningMessage(
+          `${result.message}\n\n${result.warnings.slice(0, 3).join("\n")}`,
+          { modal: true },
+          "Import Anyway",
+        );
+        if (confirm !== "Import Anyway") {
+          return;
+        }
+        result = await controller.importAgentSkillFromSource(
+          source.trim(),
+          scopePick.scope,
+          replacePick.replace,
+          true,
+        );
+      }
+      if (result.ok) {
+        vscode.window.showInformationMessage(result.message);
+      } else {
+        vscode.window.showErrorMessage(result.message);
+      }
+    }),
     // Send selected code (or current file) to AI chat
     vscode.commands.registerCommand("ociAi.editor.sendToChat", async () => {
       const editor = vscode.window.activeTextEditor;

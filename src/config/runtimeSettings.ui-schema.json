@@ -1,0 +1,50 @@
+{
+  "tab": {
+    "label": "Agent / MCP Runtime",
+    "description": "Tune MCP fetch pagination and other agent runtime limits.",
+    "icon": "bot"
+  },
+  "page": {
+    "title": "Agent / MCP Runtime",
+    "description": "Tune runtime behavior for agent-driven MCP tool execution.",
+    "icon": "plug"
+  },
+  "sections": {
+    "genai": {
+      "cards": [
+        {
+          "id": "llmParameters",
+          "title": "LLM Parameters",
+          "fields": [
+            "chatMaxTokens",
+            "chatTemperature",
+            "chatTopP"
+          ]
+        }
+      ]
+    },
+    "runtime": {
+      "cards": [
+        {
+          "id": "fetchPagination",
+          "title": "MCP Fetch Pagination",
+          "fields": [
+            "mcpFetchAutoPaginationMaxHops",
+            "mcpFetchAutoPaginationMaxTotalChars"
+          ]
+        }
+      ]
+    },
+    "terminal": {
+      "cards": [
+        {
+          "id": "commandExecution",
+          "title": "Command Execution",
+          "fields": [
+            "shellIntegrationTimeoutSec"
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -12,11 +12,29 @@ import { McpHub, type McpAllowlistAction } from "../mcp/mcpHub";
 import { AgentService } from "../agent/agentService";
 import { AgentSkillService, type SkillTurnContext } from "../agent/skillService";
 import { SubagentService, type SubagentRun } from "../agent/subagentService";
+import { executeBuiltinTool, getBuiltinToolDefinitions, isBuiltinToolEnabled } from "../agent/builtinTools";
+import { AgentBootstrapService } from "../agent/bootstrapService";
+import {
+  readMcpFetchAutoPaginationSettings,
+  readRuntimeSettings,
+  saveRuntimeSettings,
+} from "../config/runtimeSettings";
 import type {
   McpServerState,
   AddMcpServerRequest,
   ToggleMcpToolAutoApproveRequest,
   UpdateMcpServerRequest,
+  AgentEnabledTools,
+  AgentSkillImportResult,
+  AgentSkillImportPickerResult,
+  AgentSkillFindingLocationResponse,
+  AgentSkillImportScope,
+  AgentSkillInstallResult,
+  AgentSkillInfoReport,
+  AgentSkillSuppressionScope,
+  AgentSkillsCheckReport,
+  AgentSkillsDiagnosticReport,
+  AgentSkillsOverview,
   AgentSettings,
   AgentSkillsState,
   McpPromptPreviewRequest,
@@ -27,6 +45,7 @@ import type {
   ToolCallResult,
   ToolApprovalResponse,
   McpSmokeTestResult,
+  BootstrapState,
 } from "../shared/mcp-types";
 import type {
   ConnectComputeSshRequest,
@@ -101,11 +120,6 @@ const SQL_WORKBENCH_STATE_KEY = "ociAi.sqlWorkbench";
 const MAX_PERSISTED_MESSAGES = 100;
 const MAX_SQL_HISTORY_ITEMS = 50;
 const MAX_SQL_FAVORITES = 30;
-const DEFAULT_SHELL_TIMEOUT_SEC = 4;
-const DEFAULT_CHAT_MAX_TOKENS = 16000;
-const MAX_CHAT_MAX_TOKENS = 128000;
-const DEFAULT_CHAT_TEMPERATURE = 0;
-const DEFAULT_CHAT_TOP_P = 1;
 const MAX_IMAGES_PER_MESSAGE = 10;
 const MAX_SPEECH_OBJECTS_PER_JOB = 100;
 const MAX_WHISPER_PROMPT_LENGTH = 4000;
@@ -147,6 +161,12 @@ type AgentToolExecution =
       toolCall: ToolCallData;
       serverName: string;
       uri: string;
+    }
+  | {
+      kind: "builtin";
+      toolCall: ToolCallData;
+      toolName: string;
+      args: Record<string, unknown>;
     };
 
 type McpExecutionContext = {
@@ -171,10 +191,12 @@ export class Controller {
   private activeChatRequests: Map<string, ActiveChatRequest> = new Map();
   private mcpServerSubscribers: Map<string, StreamingResponseHandler<{ servers: McpServerState[] }>> = new Map();
   private skillSubscribers: Map<string, StreamingResponseHandler<AgentSkillsState>> = new Map();
+  private skillOverviewSubscribers: Map<string, StreamingResponseHandler<AgentSkillsOverview>> = new Map();
   readonly ocaProxyManager: OcaProxyManager;
   readonly mcpHub: McpHub;
   readonly agentService: AgentService;
   readonly agentSkillService: AgentSkillService;
+  readonly agentBootstrapService: AgentBootstrapService;
   readonly subagentService: SubagentService;
 
   constructor(
@@ -190,6 +212,7 @@ export class Controller {
     this.mcpHub = new McpHub();
     this.agentService = new AgentService();
     this.agentSkillService = new AgentSkillService(extensionPath);
+    this.agentBootstrapService = new AgentBootstrapService(extensionPath);
     this.subagentService = new SubagentService();
 
     // Subscribe to MCP server changes and broadcast to webview subscribers
@@ -205,7 +228,24 @@ export class Controller {
       for (const [, handler] of this.skillSubscribers) {
         handler(state).catch(() => {});
       }
+      const overview = this.agentSkillService.getOverview();
+      for (const [, handler] of this.skillOverviewSubscribers) {
+        handler(overview).catch(() => {});
+      }
     });
+
+    // When agent mode is enabled, ensure bootstrap files exist in the workspace.
+    this.agentService.onDidChange(() => {
+      const settings = this.agentService.getSettings();
+      if (settings.mode === "agent") {
+        this.agentBootstrapService.ensureWorkspaceFiles().catch(() => {});
+      }
+      void this.broadcastState();
+    });
+
+    if (this.agentService.getSettings().mode === "agent") {
+      this.agentBootstrapService.ensureWorkspaceFiles().catch(() => {});
+    }
 
     this.subagentService.onDidChange(() => {
       void this.broadcastState();
@@ -268,6 +308,7 @@ export class Controller {
       speechCompartmentIds: Array.isArray(cfg.get("speechCompartmentIds")) ? cfg.get<string[]>("speechCompartmentIds") as string[] : [],
       profilesConfig: Array.isArray(cfg.get("profilesConfig")) ? cfg.get<any[]>("profilesConfig") as any[] : [],
       tenancyOcid: secrets.tenancyOcid || "",
+      agentMode: this.agentService.getSettings().mode,
       genAiRegion: cfg.get<string>("genAiRegion", ""),
       genAiLlmModelId: genAiLlmModelIdRaw,
       assistantModelNames,
@@ -291,12 +332,14 @@ export class Controller {
   /** Get settings including secrets */
   public async getSettings(): Promise<SettingsState> {
     const cfg = vscode.workspace.getConfiguration("ociAi");
+    const runtimeSettings = readRuntimeSettings(cfg);
     const activeProfile = String(cfg.get<string>("activeProfile", "DEFAULT") ?? "").trim() || "DEFAULT";
     const secrets = await this.authManager.getApiKeySecrets(activeProfile);
     const savedCompartments = cfg.get<SavedCompartment[]>("savedCompartments", []);
     const profilesConfig = cfg.get<any[]>("profilesConfig", []);
     return {
       activeProfile,
+      agentMode: this.agentService.getSettings().mode,
       region: await this.authManager.getRegionForProfile(activeProfile),
       compartmentId: cfg.get<string>("compartmentId", ""),
       computeCompartmentIds: Array.isArray(cfg.get("computeCompartmentIds")) ? cfg.get<string[]>("computeCompartmentIds") as string[] : [],
@@ -311,11 +354,7 @@ export class Controller {
       genAiLlmModelId: cfg.get<string>("genAiLlmModelId", "") || cfg.get<string>("genAiModelId", ""),
       genAiEmbeddingModelId: cfg.get<string>("genAiEmbeddingModelId", ""),
       systemPrompt: cfg.get<string>("systemPrompt", ""),
-
-      shellIntegrationTimeoutSec: cfg.get<number>("shellIntegrationTimeoutSec", DEFAULT_SHELL_TIMEOUT_SEC),
-      chatMaxTokens: cfg.get<number>("chatMaxTokens", DEFAULT_CHAT_MAX_TOKENS),
-      chatTemperature: cfg.get<number>("chatTemperature", DEFAULT_CHAT_TEMPERATURE),
-      chatTopP: cfg.get<number>("chatTopP", DEFAULT_CHAT_TOP_P),
+      ...runtimeSettings,
       ...secrets,
       authMode: "api-key",
       savedCompartments: Array.isArray(savedCompartments) ? savedCompartments : [],
@@ -337,6 +376,8 @@ export class Controller {
     const cfg = vscode.workspace.getConfiguration("ociAi");
     const activeProfile = String(payload.activeProfile ?? "").trim() || "DEFAULT";
     const targetProfile = String(payload.editingProfile ?? activeProfile).trim() || activeProfile;
+    const nextAgentMode = payload.agentMode === "agent" ? "agent" : "chat";
+    await cfg.update("agentMode", nextAgentMode, vscode.ConfigurationTarget.Global);
     await cfg.update("activeProfile", activeProfile, vscode.ConfigurationTarget.Global);
     await this.authManager.updateRegionForProfile(targetProfile, String(payload.region ?? ""));
     await this.authManager.updateCompartmentId(String(payload.compartmentId ?? ""));
@@ -360,27 +401,7 @@ export class Controller {
     await cfg.update("genAiEmbeddingModelId", String(payload.genAiEmbeddingModelId ?? "").trim(), vscode.ConfigurationTarget.Global);
     await cfg.update("genAiModelId", String(payload.genAiLlmModelId ?? "").trim(), vscode.ConfigurationTarget.Global);
     await cfg.update("systemPrompt", String(payload.systemPrompt ?? ""), vscode.ConfigurationTarget.Global);
-
-    await cfg.update(
-      "shellIntegrationTimeoutSec",
-      coerceInt(payload.shellIntegrationTimeoutSec, DEFAULT_SHELL_TIMEOUT_SEC, 1, 120),
-      vscode.ConfigurationTarget.Global
-    );
-    await cfg.update(
-      "chatMaxTokens",
-      coerceInt(payload.chatMaxTokens, DEFAULT_CHAT_MAX_TOKENS, 1, MAX_CHAT_MAX_TOKENS),
-      vscode.ConfigurationTarget.Global
-    );
-    await cfg.update(
-      "chatTemperature",
-      coerceFloat(payload.chatTemperature, DEFAULT_CHAT_TEMPERATURE, 0, 2),
-      vscode.ConfigurationTarget.Global
-    );
-    await cfg.update(
-      "chatTopP",
-      coerceFloat(payload.chatTopP, DEFAULT_CHAT_TOP_P, 0, 1),
-      vscode.ConfigurationTarget.Global
-    );
+    await saveRuntimeSettings(cfg, payload);
     await this.authManager.updateApiKeySecrets({
       tenancyOcid: String(payload.tenancyOcid ?? ""),
       userOcid: String(payload.userOcid ?? ""),
@@ -631,7 +652,10 @@ export class Controller {
     if (turnContext.kind === "tool-dispatch") {
       try {
         await this.persistAndBroadcastChatHistory();
-        await this.executeSkillToolDispatchTurn(turnContext);
+        await this.agentSkillService.withSkillRuntimeEnvOverrides(
+          () => this.executeSkillToolDispatchTurn(turnContext),
+          { skillIds: [turnContext.selectedSkillId] },
+        );
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
         const errorMessage = `Skill dispatch failed: ${detail}`;
@@ -656,11 +680,15 @@ export class Controller {
     if (this.shouldUseAgentMcpLoop()) {
       try {
         await this.persistAndBroadcastChatHistory();
-        await this.runAgentMcpLoop({
-          active,
-          modelName,
-          runtimeSystemPrompt,
-        });
+        await this.agentSkillService.withSkillRuntimeEnvOverrides(
+          () =>
+            this.runAgentMcpLoop({
+              active,
+              modelName,
+              runtimeSystemPrompt,
+            }),
+          turnContext.selectedSkillId ? { skillIds: [turnContext.selectedSkillId] } : undefined,
+        );
       } catch (error) {
         if (!active.cancelled) {
           const detail = error instanceof Error ? error.message : String(error);
@@ -680,17 +708,21 @@ export class Controller {
     let assistantText = "";
     let requestFailed = false;
     try {
-      await this.streamAssistantModelResponse(
-        this.buildModelMessagesFromChatHistory(),
-        async (token) => {
-          assistantText += token;
-          await responseStream({ token, done: false }, false);
-        },
-        {
-          signal: active.abortController.signal,
-          modelName,
-          runtimeSystemPrompt,
-        }
+      await this.agentSkillService.withSkillRuntimeEnvOverrides(
+        () =>
+          this.streamAssistantModelResponse(
+            this.buildModelMessagesFromChatHistory(),
+            async (token) => {
+              assistantText += token;
+              await responseStream({ token, done: false }, false);
+            },
+            {
+              signal: active.abortController.signal,
+              modelName,
+              runtimeSystemPrompt,
+            }
+          ),
+        turnContext.selectedSkillId ? { skillIds: [turnContext.selectedSkillId] } : undefined,
       );
     } catch (error) {
       if (active.cancelled) {
@@ -1414,7 +1446,7 @@ export class Controller {
       "You are a background subagent working inside a VS Code assistant session.",
       "Stay focused on the assigned task, reason carefully, and return a concise but high-signal result.",
       "Do not ask the user for confirmation directly; the parent session will relay anything important.",
-      "You may use connected MCP servers when helpful.",
+      "You may use available tools (built-in and MCP) when helpful.",
       `Subagent id: ${run.shortId}`,
       `Requested agent id: ${run.agentId}`,
       `Assigned task: ${run.task}`,
@@ -1602,6 +1634,9 @@ export class Controller {
       "Built-in",
       "- `/help` or `/commands`: show this command list",
       "- `/skills`: list discovered agent skills",
+      "- `/skills check`: show blockers and missing skill requirements",
+      "- `/skills info <id>`: show detailed information for one skill",
+      "- `/skills rules`: show security rule explanations and hit counts",
       "- `/skill <id> <task>`: invoke a skill by id",
       "- `/allowlist`: list MCP allowlist rules",
       "- `/allowlist add|remove <server> <tool:...|prompt:...|resource:...> [scope=main|subagents|subagent:<id>|all]`: manage the MCP allowlist",
@@ -1865,7 +1900,12 @@ export class Controller {
   }
 
   private shouldUseAgentMcpLoop(): boolean {
-    return this.mcpHub.getConnectedServers().length > 0;
+    // Agent loop is available when MCP servers are connected OR when agent
+    // mode is explicitly enabled (built-in tools work without MCP).
+    if (this.mcpHub.getConnectedServers().length > 0) {
+      return true;
+    }
+    return this.agentService.getSettings().mode === "agent";
   }
 
   private buildModelMessagesFromChatHistory(): ChatMessage[] {
@@ -1877,62 +1917,126 @@ export class Controller {
   }
 
   private buildMcpAgentPrompt(): string {
+    const settings = this.agentService.getSettings();
     const servers = this.mcpHub.getConnectedServers();
-    if (servers.length === 0) {
+    const builtinDefs = getBuiltinToolDefinitions().filter((t) => {
+      // listFiles/searchFiles gated by readFile; fetchUrl gated by webSearch
+      const gateMap: Record<string, string> = {
+        listFiles: "readFile",
+        searchFiles: "readFile",
+        fetchUrl: "webSearch",
+      };
+      const gateKey = (gateMap[t.name] ?? t.name) as keyof typeof settings.enabledTools;
+      return settings.enabledTools[gateKey] !== false;
+    });
+    const hasBuiltins = builtinDefs.length > 0;
+    const hasMcp = servers.length > 0;
+
+    // -- Bootstrap context (persona, user profile, workspace memory) --
+    const bootstrapSection = this.agentBootstrapService.buildSystemPromptSection();
+
+    if (!hasBuiltins && !hasMcp && !bootstrapSection) {
       return "";
     }
 
-    const lines = [
-      "Connected MCP servers are available and can be used when helpful.",
-      "If an MCP action is needed, emit exactly one XML block and keep it valid.",
-      "Use one of these three formats:",
-      "<use_mcp_tool><server_name>server</server_name><tool_name>tool</tool_name><arguments>{\"key\":\"value\"}</arguments></use_mcp_tool>",
-      "<use_mcp_prompt><server_name>server</server_name><prompt_name>prompt</prompt_name><arguments>{\"key\":\"value\"}</arguments></use_mcp_prompt>",
-      "<access_mcp_resource><server_name>server</server_name><uri>resource-uri</uri></access_mcp_resource>",
-      "The <arguments> value must be valid JSON object text.",
-      "When no MCP action is needed, answer normally with no XML block.",
-      "After a tool, prompt, or resource result is returned, continue from that new context.",
-      "<available_mcp_servers>",
-    ];
+    const lines: string[] = [];
 
-    for (const server of servers) {
-      lines.push(`  <server name="${escapeXmlAttribute(server.name)}">`);
-      if (server.tools.length === 0 && server.resources.length === 0 && server.prompts.length === 0) {
-        lines.push("    <capabilities>none discovered</capabilities>");
+    // -- Agent identity & behaviour guidance (OpenClaw-style) --
+    lines.push(
+      "You are a coding assistant with tool-use capabilities.",
+      "When you need to interact with the file system, run commands, or search code, use the tools below.",
+      "After receiving a tool result, continue working toward the user's goal — call more tools if needed or provide a final answer.",
+      "Think step-by-step: understand the request, gather context via tools, then act.",
+      "",
+    );
+
+    // -- Tool calling format instructions --
+    lines.push("# Tool calling format");
+    if (hasBuiltins) {
+      lines.push(
+        "For built-in tools, use this XML format:",
+        "<use_tool><tool_name>toolName</tool_name><arguments>{\"key\":\"value\"}</arguments></use_tool>",
+      );
+    }
+    if (hasMcp) {
+      lines.push(
+        "For MCP server tools, use these XML formats:",
+        "<use_mcp_tool><server_name>server</server_name><tool_name>tool</tool_name><arguments>{\"key\":\"value\"}</arguments></use_mcp_tool>",
+        "<use_mcp_prompt><server_name>server</server_name><prompt_name>prompt</prompt_name><arguments>{\"key\":\"value\"}</arguments></use_mcp_prompt>",
+        "<access_mcp_resource><server_name>server</server_name><uri>resource-uri</uri></access_mcp_resource>",
+      );
+    }
+    lines.push(
+      "The <arguments> value must be valid JSON object text.",
+      "Emit exactly one XML tool block per response turn.",
+      "When no tool action is needed, answer normally with no XML block.",
+      "After a tool result is returned, continue from that new context.",
+      "",
+    );
+
+    // -- Built-in tools --
+    if (hasBuiltins) {
+      lines.push("# Built-in tools");
+      lines.push("<available_tools>");
+      for (const tool of builtinDefs) {
+        lines.push(`  <tool name="${escapeXmlAttribute(tool.name)}">`);
+        lines.push(`    <description>${escapeXmlText(tool.description)}</description>`);
+        lines.push(`    <input_schema>${escapeXmlText(JSON.stringify(tool.inputSchema))}</input_schema>`);
+        lines.push("  </tool>");
       }
-      for (const tool of server.tools) {
-        lines.push(`    <tool name="${escapeXmlAttribute(tool.name)}">`);
-        if (tool.description) {
-          lines.push(`      <description>${escapeXmlText(tool.description)}</description>`);
-        }
-        if (tool.inputSchema) {
-          lines.push(`      <input_schema>${escapeXmlText(JSON.stringify(tool.inputSchema))}</input_schema>`);
-        }
-        lines.push("    </tool>");
-      }
-      for (const resource of server.resources) {
-        lines.push(`    <resource uri="${escapeXmlAttribute(resource.uri)}" name="${escapeXmlAttribute(resource.name)}">`);
-        if (resource.description) {
-          lines.push(`      <description>${escapeXmlText(resource.description)}</description>`);
-        }
-        lines.push("    </resource>");
-      }
-      for (const prompt of server.prompts) {
-        lines.push(`    <prompt name="${escapeXmlAttribute(prompt.name)}">`);
-        if (prompt.description) {
-          lines.push(`      <description>${escapeXmlText(prompt.description)}</description>`);
-        }
-        for (const argument of prompt.arguments ?? []) {
-          lines.push(
-            `      <argument name="${escapeXmlAttribute(argument.name)}" required="${argument.required ? "true" : "false"}">${escapeXmlText(argument.description ?? "")}</argument>`,
-          );
-        }
-        lines.push("    </prompt>");
-      }
-      lines.push("  </server>");
+      lines.push("</available_tools>");
+      lines.push("");
     }
 
-    lines.push("</available_mcp_servers>");
+    // -- MCP servers --
+    if (hasMcp) {
+      lines.push("# MCP servers");
+      lines.push("<available_mcp_servers>");
+      for (const server of servers) {
+        lines.push(`  <server name="${escapeXmlAttribute(server.name)}">`);
+        if (server.tools.length === 0 && server.resources.length === 0 && server.prompts.length === 0) {
+          lines.push("    <capabilities>none discovered</capabilities>");
+        }
+        for (const tool of server.tools) {
+          lines.push(`    <tool name="${escapeXmlAttribute(tool.name)}">`);
+          if (tool.description) {
+            lines.push(`      <description>${escapeXmlText(tool.description)}</description>`);
+          }
+          if (tool.inputSchema) {
+            lines.push(`      <input_schema>${escapeXmlText(JSON.stringify(tool.inputSchema))}</input_schema>`);
+          }
+          lines.push("    </tool>");
+        }
+        for (const resource of server.resources) {
+          lines.push(`    <resource uri="${escapeXmlAttribute(resource.uri)}" name="${escapeXmlAttribute(resource.name)}">`);
+          if (resource.description) {
+            lines.push(`      <description>${escapeXmlText(resource.description)}</description>`);
+          }
+          lines.push("    </resource>");
+        }
+        for (const prompt of server.prompts) {
+          lines.push(`    <prompt name="${escapeXmlAttribute(prompt.name)}">`);
+          if (prompt.description) {
+            lines.push(`      <description>${escapeXmlText(prompt.description)}</description>`);
+          }
+          for (const argument of prompt.arguments ?? []) {
+            lines.push(
+              `      <argument name="${escapeXmlAttribute(argument.name)}" required="${argument.required ? "true" : "false"}">${escapeXmlText(argument.description ?? "")}</argument>`,
+            );
+          }
+          lines.push("    </prompt>");
+        }
+        lines.push("  </server>");
+      }
+      lines.push("</available_mcp_servers>");
+    }
+
+    // -- Bootstrap files (persona / workspace context) --
+    if (bootstrapSection) {
+      lines.push("");
+      lines.push(bootstrapSection);
+    }
+
     return lines.join("\n");
   }
 
@@ -1994,7 +2098,7 @@ export class Controller {
 
       const agentMessage: ChatMessageData = {
         role: "model",
-        text: parsed.displayText || "Using MCP to gather the next piece of context.",
+        text: parsed.displayText || "Using tools to gather the next piece of context.",
         toolCalls: parsed.actions.map((action) => action.toolCall),
       };
       this.chatHistory.push(agentMessage);
@@ -2017,7 +2121,7 @@ export class Controller {
 
         if (actionCount >= maxActions) {
           const limitMessage =
-            "Stopped after reaching the configured MCP action limit. Review the tool results above and continue if you want another step.";
+            "Stopped after reaching the configured tool action limit. Review the tool results above and continue if you want another step.";
           this.chatHistory.push({ role: "model", text: limitMessage });
           await this.persistAndBroadcastChatHistory();
           return;
@@ -2069,7 +2173,10 @@ export class Controller {
       toolCall.subagentLabel = subagentLabel;
     }
     const alwaysApproved =
-      this.agentService.shouldAutoApprove(toolCall.toolName, toolCall.serverName) ||
+      // Built-in tools use AgentService auto-approval settings
+      (action.kind === "builtin"
+        ? this.agentService.shouldAutoApprove(toolCall.toolName)
+        : this.agentService.shouldAutoApprove(toolCall.toolName, toolCall.serverName)) ||
       (toolCall.serverName
         ? this.mcpHub.isActionAutoApproved(
             toolCall.serverName,
@@ -2208,7 +2315,7 @@ export class Controller {
         );
       }
 
-      if (action.serverName && shouldRestartMcpServerBeforeRetry(lastResult)) {
+      if (action.kind !== "builtin" && action.serverName && shouldRestartMcpServerBeforeRetry(lastResult)) {
         try {
           await this.mcpHub.restartServer(action.serverName);
         } catch {
@@ -2231,8 +2338,21 @@ export class Controller {
 
   private async invokeAgentMcpAction(action: AgentToolExecution): Promise<ToolCallResult> {
     try {
+      // Built-in tool execution (no MCP server needed)
+      if (action.kind === "builtin") {
+        const enabledTools: AgentEnabledTools = this.agentService.getSettings().enabledTools;
+        if (!isBuiltinToolEnabled(action.toolName, enabledTools)) {
+          return {
+            isError: true,
+            content: [{ type: "text", text: `Built-in tool "${action.toolName}" is disabled in settings.` }],
+          };
+        }
+        return await executeBuiltinTool(action.toolName, action.args);
+      }
+
       if (action.kind === "tool") {
-        return await this.mcpHub.callTool(action.serverName, action.toolName, action.args);
+        const initialResult = await this.mcpHub.callTool(action.serverName, action.toolName, action.args);
+        return await this.expandFetchToolResult(action, initialResult);
       }
       if (action.kind === "prompt") {
         const promptResult = await this.mcpHub.getPrompt(action.serverName, action.promptName, action.args);
@@ -2267,6 +2387,87 @@ export class Controller {
         ],
       };
     }
+  }
+
+  private async expandFetchToolResult(
+    action: Extract<AgentToolExecution, { kind: "tool" }>,
+    initialResult: ToolCallResult,
+  ): Promise<ToolCallResult> {
+    if (initialResult.isError || action.toolName.trim().toLowerCase() !== "fetch") {
+      return initialResult;
+    }
+
+    const paginationSettings = readMcpFetchAutoPaginationSettings();
+    if (paginationSettings.mcpFetchAutoPaginationMaxHops <= 0) {
+      return initialResult;
+    }
+
+    const firstContinuation = extractFetchContinuationStartIndex(initialResult);
+    if (firstContinuation === null) {
+      return initialResult;
+    }
+
+    const mergedTextParts = [stripFetchContinuationNotice(readToolResultText(initialResult))];
+    const seenStartIndexes = new Set<number>([firstContinuation]);
+    let continuationStartIndex: number | null = firstContinuation;
+    let hopCount = 0;
+    let stopNote = "";
+
+    while (
+      continuationStartIndex !== null &&
+      hopCount < paginationSettings.mcpFetchAutoPaginationMaxHops
+    ) {
+      const accumulatedChars = mergedTextParts.reduce((total, part) => total + part.length, 0);
+      if (accumulatedChars >= paginationSettings.mcpFetchAutoPaginationMaxTotalChars) {
+        stopNote =
+          `\n\n[fetch auto-pagination stopped after ${accumulatedChars} chars to keep MCP context bounded. ` +
+          `Resume with start_index=${continuationStartIndex} if more content is needed.]`;
+        break;
+      }
+
+      hopCount += 1;
+      const nextResult = await this.mcpHub.callTool(action.serverName, action.toolName, {
+        ...action.args,
+        start_index: continuationStartIndex,
+      });
+      if (nextResult.isError) {
+        stopNote =
+          `\n\n[fetch auto-pagination stopped at start_index=${continuationStartIndex} because the follow-up call failed: ` +
+          `${truncateText(summarizeToolResult(nextResult), 500)}]`;
+        break;
+      }
+
+      mergedTextParts.push(stripFetchContinuationNotice(readToolResultText(nextResult)));
+
+      const nextContinuation = extractFetchContinuationStartIndex(nextResult);
+      if (nextContinuation === null) {
+        continuationStartIndex = null;
+        break;
+      }
+      if (seenStartIndexes.has(nextContinuation)) {
+        stopNote =
+          `\n\n[fetch auto-pagination stopped because the server repeated start_index=${nextContinuation}.]`;
+        break;
+      }
+
+      seenStartIndexes.add(nextContinuation);
+      continuationStartIndex = nextContinuation;
+    }
+
+    if (!stopNote && continuationStartIndex !== null) {
+      stopNote =
+        `\n\n[fetch auto-pagination stopped after ${paginationSettings.mcpFetchAutoPaginationMaxHops} follow-up calls. ` +
+        `Resume with start_index=${continuationStartIndex} if more content is needed.]`;
+    }
+
+    const mergedText = `${mergedTextParts.join("")}${stopNote}`.trim();
+    if (!mergedText) {
+      return initialResult;
+    }
+
+    return {
+      content: [{ type: "text", text: mergedText }],
+    };
   }
 
   private persistChatHistory(): void {
@@ -2365,7 +2566,10 @@ export class Controller {
       this.stateSubscribers.delete(requestId) ||
       this.settingsButtonSubscribers.delete(requestId) ||
       this.chatButtonSubscribers.delete(requestId) ||
-      this.codeContextSubscribers.delete(requestId);
+      this.codeContextSubscribers.delete(requestId) ||
+      this.mcpServerSubscribers.delete(requestId) ||
+      this.skillSubscribers.delete(requestId) ||
+      this.skillOverviewSubscribers.delete(requestId);
     return removed;
   }
 
@@ -3429,16 +3633,91 @@ export class Controller {
 
   public async saveAgentSettings(settings: AgentSettings): Promise<void> {
     await this.agentService.saveSettings(settings);
+    await this.broadcastState();
   }
 
   public resolveToolApproval(response: ToolApprovalResponse): void {
     this.agentService.resolveApproval(response);
   }
 
+  // --- Agent Bootstrap Methods ---
+
+  public getBootstrapState(): BootstrapState | undefined {
+    return this.agentBootstrapService.getState();
+  }
+
+  public async ensureBootstrapFiles(firstRun = false): Promise<string | undefined> {
+    return this.agentBootstrapService.ensureWorkspaceFiles(firstRun);
+  }
+
   // --- Agent Skill Methods ---
 
   public getAgentSkills(): AgentSkillsState {
     return this.agentSkillService.getState();
+  }
+
+  public getAgentSkillsDiagnosticReport(): AgentSkillsDiagnosticReport {
+    return this.agentSkillService.getDiagnosticReport();
+  }
+
+  public getAgentSkillsOverview(): AgentSkillsOverview {
+    return this.agentSkillService.getOverview();
+  }
+
+  public getAgentSkillInfoReport(skillRef: string): AgentSkillInfoReport | undefined {
+    return this.agentSkillService.getSkillInfoReport(skillRef);
+  }
+
+  public getAgentSkillsCheckReport(): AgentSkillsCheckReport {
+    return this.agentSkillService.getSkillsCheckReport();
+  }
+
+  public async openAgentSkillFindingLocation(
+    file: string,
+    line: number,
+  ): Promise<AgentSkillFindingLocationResponse> {
+    const normalizedFile = String(file ?? "").trim();
+    const normalizedLine = Math.max(1, Number.isFinite(line) ? Math.floor(line) : 1);
+    if (!normalizedFile) {
+      throw new Error("A finding file path is required.");
+    }
+
+    const document = await vscode.workspace.openTextDocument(normalizedFile);
+    const editor = await vscode.window.showTextDocument(document, {
+      preview: false,
+      preserveFocus: false,
+    });
+    const targetLine = Math.min(Math.max(0, normalizedLine - 1), Math.max(0, document.lineCount - 1));
+    const position = new vscode.Position(targetLine, 0);
+    editor.selection = new vscode.Selection(position, position);
+    editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+
+    return {
+      opened: true,
+      file: normalizedFile,
+      line: normalizedLine,
+    };
+  }
+
+  public async addAgentSkillSuppression(params: {
+    scope: AgentSkillSuppressionScope
+    ruleId?: string
+    file?: string
+    note?: string
+  }): Promise<void> {
+    await this.agentSkillService.addSuppression(params)
+  }
+
+  public async removeAgentSkillSuppression(params: {
+    scope: AgentSkillSuppressionScope
+    ruleId?: string
+    file?: string
+  }): Promise<void> {
+    await this.agentSkillService.removeSuppression(params)
+  }
+
+  public async setAgentSkillSuppressions(suppressions: import("../shared/mcp-types").AgentSkillSuppression[]): Promise<void> {
+    await this.agentSkillService.setSuppressions(suppressions)
   }
 
   public subscribeToAgentSkills(
@@ -3449,12 +3728,55 @@ export class Controller {
     handler(this.agentSkillService.getState()).catch(() => {});
   }
 
+  public subscribeToAgentSkillsOverview(
+    requestId: string,
+    handler: StreamingResponseHandler<AgentSkillsOverview>,
+  ): void {
+    this.skillOverviewSubscribers.set(requestId, handler);
+    handler(this.agentSkillService.getOverview()).catch(() => {});
+  }
+
   public async refreshAgentSkills(): Promise<void> {
     this.agentSkillService.refresh();
   }
 
   public async toggleAgentSkill(skillId: string, enabled: boolean): Promise<void> {
     await this.agentSkillService.toggleSkill(skillId, enabled);
+  }
+
+  public async installAgentSkill(
+    skillId: string,
+    installerId?: string,
+    allowHighRisk = false,
+  ): Promise<AgentSkillInstallResult> {
+    return this.agentSkillService.installSkill(skillId, installerId, allowHighRisk);
+  }
+
+  public async importAgentSkillFromSource(
+    source: string,
+    scope: AgentSkillImportScope,
+    replaceExisting = false,
+    allowHighRisk = false,
+  ): Promise<AgentSkillImportResult> {
+    return this.agentSkillService.importSkillFromSource(source, scope, replaceExisting, allowHighRisk);
+  }
+
+  public async pickAgentSkillImportSource(): Promise<AgentSkillImportPickerResult> {
+    const picked = await vscode.window.showOpenDialog({
+      canSelectFiles: true,
+      canSelectFolders: true,
+      canSelectMany: false,
+      openLabel: "Use As Skill Source",
+      title: "Choose an external skill source",
+      filters: {
+        Archives: ["zip", "tar.gz", "tgz", "tar.bz2", "tbz2"],
+      },
+    });
+    const target = picked?.[0]?.fsPath;
+    if (!target) {
+      return { cancelled: true };
+    }
+    return { cancelled: false, path: target };
   }
 
   public async sendSubagentMessage(request: SubagentMessageRequest): Promise<void> {
@@ -3519,6 +3841,7 @@ export class Controller {
     this.mcpHub.dispose();
     this.agentService.dispose();
     this.agentSkillService.dispose();
+    this.agentBootstrapService.dispose();
   }
 }
 
@@ -3606,8 +3929,9 @@ function parseAssistantMcpActions(rawText: string): ParsedAssistantMcpActions {
   const parserErrors: string[] = [];
   const createdAt = new Date().toISOString();
   const displaySegments: string[] = [];
+  // Match both built-in <use_tool> and MCP tags
   const pattern =
-    /<(use_mcp_tool|use_mcp_prompt|access_mcp_resource|use_mcp_resource)>([\s\S]*?)(<\/\1>|(?=<(?:use_mcp_tool|use_mcp_prompt|access_mcp_resource|use_mcp_resource)>|$))/gi;
+    /<(use_tool|use_mcp_tool|use_mcp_prompt|access_mcp_resource|use_mcp_resource)>([\s\S]*?)(<\/\1>|(?=<(?:use_tool|use_mcp_tool|use_mcp_prompt|access_mcp_resource|use_mcp_resource)>|$))/gi;
   let cursor = 0;
 
   for (const match of rawText.matchAll(pattern)) {
@@ -3640,6 +3964,40 @@ function parseAssistantMcpActionBlock(
   body: string,
   createdAt: string,
 ): { action?: AgentToolExecution; error?: string } {
+  // Built-in tool: <use_tool>
+  if (tagName === "use_tool") {
+    const toolName = extractXmlTag(body, ["tool_name", "tool", "toolName", "name"]);
+    const parsedArgs = parseMcpArguments(extractXmlTag(body, ["arguments", "args", "parameters"]) ?? "{}");
+
+    if (!toolName) {
+      return { error: "A <use_tool> block must include a <tool_name>." };
+    }
+    if (!parsedArgs.ok) {
+      return { error: `Could not parse arguments for built-in tool ${toolName}: ${parsedArgs.error}` };
+    }
+    const toolArgs = parsedArgs.value as Record<string, unknown>;
+
+    const toolCall: ToolCallData = {
+      id: randomUUID(),
+      toolName,
+      createdAt,
+      updatedAt: createdAt,
+      actionKind: "tool",
+      actionTarget: toolName,
+      parameters: toolArgs,
+      status: "pending",
+    };
+
+    return {
+      action: {
+        kind: "builtin",
+        toolCall,
+        toolName,
+        args: toolArgs,
+      },
+    };
+  }
+
   if (tagName === "use_mcp_tool") {
     const serverName = extractXmlTag(body, ["server_name", "server", "serverName"]);
     const toolName = extractXmlTag(body, ["tool_name", "tool", "toolName", "name"]);
@@ -3871,9 +4229,10 @@ function coerceArgumentScalar(rawValue: string): unknown {
 
 function buildMcpRepairPrompt(errors: string[]): string {
   const lines = [
-    "Your previous response attempted to use MCP XML, but the action block could not be parsed.",
-    "Reply again using either plain text only or corrected MCP XML only.",
+    "Your previous response attempted to use a tool XML block, but it could not be parsed.",
+    "Reply again using either plain text only or corrected XML only.",
     "Valid forms:",
+    "- <use_tool><tool_name>...</tool_name><arguments>{...}</arguments></use_tool>",
     "- <use_mcp_tool><server_name>...</server_name><tool_name>...</tool_name><arguments>{...}</arguments></use_mcp_tool>",
     "- <use_mcp_prompt><server_name>...</server_name><prompt_name>...</prompt_name><arguments>{...}</arguments></use_mcp_prompt>",
     "- <access_mcp_resource><server_name>...</server_name><uri>...</uri></access_mcp_resource>",
@@ -3893,9 +4252,13 @@ function decodeXmlEntities(value: string): string {
 }
 
 function formatMcpRequestForModel(narration: string, actions: AgentToolExecution[]): string {
-  const sections = [narration.trim() || "Requested MCP action."];
+  const sections = [narration.trim() || "Requested tool action."];
   for (const action of actions) {
-    if (action.kind === "tool") {
+    if (action.kind === "builtin") {
+      sections.push(
+        `[Requested tool]\nTool: ${action.toolName}\nArguments: ${JSON.stringify(action.args)}`,
+      );
+    } else if (action.kind === "tool") {
       sections.push(
         `[Requested MCP tool]\nServer: ${action.serverName}\nTool: ${action.toolName}\nArguments: ${JSON.stringify(action.args)}`,
       );
@@ -3903,7 +4266,7 @@ function formatMcpRequestForModel(narration: string, actions: AgentToolExecution
       sections.push(
         `[Requested MCP prompt]\nServer: ${action.serverName}\nPrompt: ${action.promptName}\nArguments: ${JSON.stringify(action.args)}`,
       );
-    } else {
+    } else if (action.kind === "resource") {
       sections.push(`[Requested MCP resource]\nServer: ${action.serverName}\nURI: ${action.uri}`);
     }
   }
@@ -3911,12 +4274,18 @@ function formatMcpRequestForModel(narration: string, actions: AgentToolExecution
 }
 
 function formatMcpResultForModel(action: AgentToolExecution, result: ToolCallResult): string {
-  const header =
-    action.kind === "tool"
-      ? `[MCP tool result]\nServer: ${action.serverName}\nTool: ${action.toolName}`
-      : action.kind === "prompt"
-        ? `[MCP prompt result]\nServer: ${action.serverName}\nPrompt: ${action.promptName}`
-      : `[MCP resource result]\nServer: ${action.serverName}\nURI: ${action.uri}`;
+  let header: string;
+  if (action.kind === "builtin") {
+    header = `[Tool result]\nTool: ${action.toolName}`;
+  } else if (action.kind === "tool") {
+    header = `[MCP tool result]\nServer: ${action.serverName}\nTool: ${action.toolName}`;
+  } else if (action.kind === "prompt") {
+    header = `[MCP prompt result]\nServer: ${action.serverName}\nPrompt: ${action.promptName}`;
+  } else if (action.kind === "resource") {
+    header = `[MCP resource result]\nServer: ${action.serverName}\nURI: ${action.uri}`;
+  } else {
+    header = `[Tool result]\nTool: unknown`;
+  }
 
   return `${header}\nStatus: ${result.isError ? "error" : "success"}\nResult:\n${summarizeToolResult(result)}`;
 }
@@ -3940,7 +4309,49 @@ function summarizeToolResult(result: ToolCallResult): string {
   if (!joined) {
     return "(empty result)";
   }
-  return joined.length > 4000 ? `${joined.slice(0, 3997)}...` : joined;
+  if (joined.length <= 4000) {
+    return joined;
+  }
+
+  const head = joined.slice(0, 2400).trimEnd();
+  const tail = joined.slice(-1200).trimStart();
+  const omittedChars = joined.length - head.length - tail.length;
+  return `${head}\n\n[... ${omittedChars} chars omitted ...]\n\n${tail}`;
+}
+
+function readToolResultText(result: ToolCallResult): string {
+  return result.content
+    .map((item) => {
+      if (item.type === "text") {
+        return item.text ?? "";
+      }
+      if (item.type === "resource") {
+        return item.text ?? "";
+      }
+      return "";
+    })
+    .join("");
+}
+
+function extractFetchContinuationStartIndex(result: ToolCallResult): number | null {
+  const match = readToolResultText(result).match(
+    /Content truncated\.\s*Call the fetch tool with a start_index of\s+(\d+)\s+to get more content\./i,
+  );
+  if (!match) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(match[1] ?? "", 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function stripFetchContinuationNotice(text: string): string {
+  return text
+    .replace(
+      /(?:<error>\s*)?Content truncated\.\s*Call the fetch tool with a start_index of\s+\d+\s+to get more content\.(?:\s*<\/error>)?/gi,
+      "",
+    )
+    .trimEnd();
 }
 
 function shouldRetryMcpResult(action: AgentToolExecution, result: ToolCallResult): boolean {
@@ -4012,7 +4423,7 @@ function normalizeSlashCommand(value: string): string {
 }
 
 function toAllowlistAction(action: AgentToolExecution): McpAllowlistAction {
-  if (action.kind === "tool") {
+  if (action.kind === "builtin" || action.kind === "tool") {
     return {
       kind: "tool",
       name: action.toolName,
@@ -4039,7 +4450,7 @@ function buildAllowlistEntryForAction(action: AgentToolExecution, context: McpEx
         : "subagents";
 
   const rule =
-    action.kind === "tool"
+    action.kind === "builtin" || action.kind === "tool"
       ? action.toolName
       : action.kind === "prompt"
         ? `prompt:${action.promptName}`

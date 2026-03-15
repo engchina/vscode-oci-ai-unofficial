@@ -1,0 +1,76 @@
+[
+  {
+    "key": "shellIntegrationTimeoutSec",
+    "kind": "int",
+    "defaultValue": 4,
+    "min": 1,
+    "max": 120,
+    "uiLabel": "Shell Integration Timeout (seconds)",
+    "uiHelpText": "How long command execution should wait for shell integration before timing out.",
+    "uiPlaceholder": "4",
+    "description": "Timeout (seconds) to wait for shell integration before command execution",
+    "packageGroup": "main"
+  },
+  {
+    "key": "chatMaxTokens",
+    "kind": "int",
+    "defaultValue": 16000,
+    "min": 1,
+    "max": 128000,
+    "uiLabel": "Max Tokens",
+    "uiHelpText": "Upper bound for the number of tokens requested for each assistant response.",
+    "uiPlaceholder": "16000",
+    "description": "Maximum tokens requested per chat completion (1-128000)",
+    "packageGroup": "main"
+  },
+  {
+    "key": "chatTemperature",
+    "kind": "float",
+    "defaultValue": 0,
+    "min": 0,
+    "max": 2,
+    "step": 0.1,
+    "uiLabel": "Temperature",
+    "uiHelpText": "Controls randomness. Lower values are more deterministic; higher values allow more variation.",
+    "uiPlaceholder": "0",
+    "description": "Sampling temperature for chat generation (0-2)",
+    "packageGroup": "main"
+  },
+  {
+    "key": "chatTopP",
+    "kind": "float",
+    "defaultValue": 1,
+    "min": 0,
+    "max": 1,
+    "step": 0.05,
+    "uiLabel": "Top P",
+    "uiHelpText": "Limits token sampling to the most likely cumulative probability mass.",
+    "uiPlaceholder": "1",
+    "description": "Nucleus sampling parameter for chat generation (0-1)",
+    "packageGroup": "main"
+  },
+  {
+    "key": "mcpFetchAutoPaginationMaxHops",
+    "kind": "int",
+    "defaultValue": 5,
+    "min": 0,
+    "max": 20,
+    "uiLabel": "Max Follow-up Fetch Calls",
+    "uiHelpText": "How many additional MCP fetch calls the agent may make automatically after a truncated fetch result. Set to 0 to disable auto-pagination.",
+    "uiPlaceholder": "5",
+    "description": "Maximum number of automatic follow-up MCP fetch calls after a truncated fetch result. Set to 0 to disable auto-pagination.",
+    "packageGroup": "runtime"
+  },
+  {
+    "key": "mcpFetchAutoPaginationMaxTotalChars",
+    "kind": "int",
+    "defaultValue": 24000,
+    "min": 4000,
+    "max": 200000,
+    "uiLabel": "Max Accumulated Characters",
+    "uiHelpText": "Maximum combined fetch content the agent will keep while auto-continuing truncated MCP fetch results.",
+    "uiPlaceholder": "24000",
+    "description": "Maximum total characters accumulated while automatically continuing truncated MCP fetch results.",
+    "packageGroup": "runtime"
+  }
+]

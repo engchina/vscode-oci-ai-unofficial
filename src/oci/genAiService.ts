@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { OciClientFactory } from "./clientFactory";
+import { DEFAULT_RUNTIME_SETTINGS, readRuntimeSettings } from "../config/runtimeSettings";
 
 export interface ChatImage {
   dataUrl: string;
@@ -16,10 +17,6 @@ export interface ChatMessage {
 const successfulVariantByModel = new Map<string, string>();
 const MAX_TRANSCRIPT_TURNS = 12;
 const MAX_TRANSCRIPT_CHARS = 6000;
-const DEFAULT_CHAT_MAX_TOKENS = 16000;
-const MAX_CHAT_MAX_TOKENS = 128000;
-const DEFAULT_CHAT_TEMPERATURE = 0;
-const DEFAULT_CHAT_TOP_P = 1;
 const MAX_IMAGES_PER_MESSAGE = 10;
 
 type GenerationOverrides = {
@@ -390,7 +387,7 @@ function buildGenericChatPayload(
     apiFormat: "GENERIC",
     isStream: true,
     messages,
-    maxTokens: generationOverrides.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS,
+    maxTokens: generationOverrides.maxTokens ?? DEFAULT_RUNTIME_SETTINGS.chatMaxTokens,
     ...familyParams
   };
 
@@ -433,15 +430,11 @@ function buildFamilyGenerationParams(
 }
 
 function readGenerationOverrides(cfg: vscode.WorkspaceConfiguration): GenerationOverrides {
+  const runtimeSettings = readRuntimeSettings(cfg);
   return {
-    maxTokens: coerceInt(
-      cfg.get<number>("chatMaxTokens", DEFAULT_CHAT_MAX_TOKENS),
-      DEFAULT_CHAT_MAX_TOKENS,
-      1,
-      MAX_CHAT_MAX_TOKENS
-    ),
-    temperature: coerceFloat(cfg.get<number>("chatTemperature", DEFAULT_CHAT_TEMPERATURE), DEFAULT_CHAT_TEMPERATURE, 0, 2),
-    topP: coerceFloat(cfg.get<number>("chatTopP", DEFAULT_CHAT_TOP_P), DEFAULT_CHAT_TOP_P, 0, 1),
+    maxTokens: runtimeSettings.chatMaxTokens,
+    temperature: runtimeSettings.chatTemperature,
+    topP: runtimeSettings.chatTopP,
   };
 }
 
@@ -469,22 +462,6 @@ function normalizeMessageImages(images: ChatImage[] | undefined): ChatImage[] {
     }
   }
   return normalized;
-}
-
-function coerceInt(value: unknown, fallback: number, min: number, max: number): number {
-  const num = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(num)) {
-    return fallback;
-  }
-  return Math.min(max, Math.max(min, Math.trunc(num)));
-}
-
-function coerceFloat(value: unknown, fallback: number, min: number, max: number): number {
-  const num = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(num)) {
-    return fallback;
-  }
-  return Math.min(max, Math.max(min, num));
 }
 
 function isImageDataUrl(value: string | undefined): value is string {

@@ -493,6 +493,55 @@ export class SkillServiceClient extends ProtoBusClient {
     return this.makeUnaryRequest<import("./types").AgentSkillsState>("listSkills", {})
   }
 
+  static getSkillsOverview(): Promise<import("./types").AgentSkillsOverview> {
+    return this.makeUnaryRequest<import("./types").AgentSkillsOverview>("getSkillsOverview", {})
+  }
+
+  static getSkillsDiagnosticReport(): Promise<import("./types").AgentSkillsDiagnosticReport> {
+    return this.makeUnaryRequest<import("./types").AgentSkillsDiagnosticReport>("getSkillsDiagnosticReport", {})
+  }
+
+  static getSkillInfoReport(skillRef: string): Promise<import("./types").AgentSkillInfoReport> {
+    return this.makeUnaryRequest<import("./types").AgentSkillInfoReport>("getSkillInfoReport", { skillRef })
+  }
+
+  static getSkillsCheckReport(): Promise<import("./types").AgentSkillsCheckReport> {
+    return this.makeUnaryRequest<import("./types").AgentSkillsCheckReport>("getSkillsCheckReport", {})
+  }
+
+  static openSkillFindingLocation(
+    file: string,
+    line: number,
+  ): Promise<import("./types").AgentSkillFindingLocationResponse> {
+    return this.makeUnaryRequest<import("./types").AgentSkillFindingLocationResponse>("openSkillFindingLocation", {
+      file,
+      line,
+    })
+  }
+
+  static addSkillSuppression(
+    scope: import("./types").AgentSkillSuppressionScope,
+    ruleId?: string,
+    file?: string,
+    note?: string,
+  ): Promise<void> {
+    return this.makeUnaryRequest<void>("addSkillSuppression", { scope, ruleId, file, note })
+  }
+
+  static removeSkillSuppression(
+    scope: import("./types").AgentSkillSuppressionScope,
+    ruleId?: string,
+    file?: string,
+  ): Promise<void> {
+    return this.makeUnaryRequest<void>("removeSkillSuppression", { scope, ruleId, file })
+  }
+
+  static setSkillSuppressions(
+    suppressions: import("./types").AgentSkillSuppression[],
+  ): Promise<void> {
+    return this.makeUnaryRequest<void>("setSkillSuppressions", { suppressions })
+  }
+
   static refreshSkills(): Promise<void> {
     return this.makeUnaryRequest<void>("refreshSkills", {})
   }
@@ -501,8 +550,42 @@ export class SkillServiceClient extends ProtoBusClient {
     return this.makeUnaryRequest<void>("toggleSkill", { skillId, enabled })
   }
 
+  static installSkill(
+    skillId: string,
+    installerId?: string,
+    allowHighRisk = false,
+  ): Promise<import("./types").AgentSkillInstallResult> {
+    return this.makeUnaryRequest<import("./types").AgentSkillInstallResult>("installSkill", {
+      skillId,
+      installerId,
+      allowHighRisk,
+    })
+  }
+
+  static importSkillFromSource(
+    source: string,
+    scope: import("./types").AgentSkillImportScope,
+    replaceExisting = false,
+    allowHighRisk = false,
+  ): Promise<import("./types").AgentSkillImportResult> {
+    return this.makeUnaryRequest<import("./types").AgentSkillImportResult>("importSkillFromSource", {
+      source,
+      scope,
+      replaceExisting,
+      allowHighRisk,
+    })
+  }
+
+  static pickImportSource(): Promise<import("./types").AgentSkillImportPickerResult> {
+    return this.makeUnaryRequest<import("./types").AgentSkillImportPickerResult>("pickImportSource", {})
+  }
+
   static subscribeToSkills(callbacks: Callbacks<import("./types").AgentSkillsState>): () => void {
     return this.makeStreamingRequest<import("./types").AgentSkillsState>("subscribeToSkills", {}, callbacks)
+  }
+
+  static subscribeToSkillsOverview(callbacks: Callbacks<import("./types").AgentSkillsOverview>): () => void {
+    return this.makeStreamingRequest<import("./types").AgentSkillsOverview>("subscribeToSkillsOverview", {}, callbacks)
   }
 }
 

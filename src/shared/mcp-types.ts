@@ -85,14 +85,29 @@ export type AgentMode = "chat" | "agent";
 
 export type AgentSkillSource = "bundled" | "workspace" | "user" | "extra";
 
+export type AgentSkillInstallKind = "brew" | "node" | "go" | "uv" | "download";
+export type AgentSkillImportScope = "workspace" | "user";
+export type AgentSkillSuppressionScope = "rule" | "file" | "rule-file";
+
+export interface AgentSkillSuppression {
+  scope: AgentSkillSuppressionScope;
+  ruleId?: string;
+  file?: string;
+  note?: string;
+  createdAt?: string;
+}
+
 export interface AgentSkillConfigEntry {
   enabled?: boolean;
+  apiKey?: string;
   env?: Record<string, string>;
   config?: Record<string, unknown>;
 }
 
 export interface AgentSkillsConfig {
   entries?: Record<string, AgentSkillConfigEntry>;
+  allowBundled?: string[];
+  suppressions?: AgentSkillSuppression[];
   load?: {
     extraDirs?: string[];
     watch?: boolean;
@@ -101,10 +116,190 @@ export interface AgentSkillsConfig {
     includeWorkspace?: boolean;
     includeUser?: boolean;
   };
+  install?: {
+    preferBrew?: boolean;
+    nodeManager?: "npm" | "pnpm" | "yarn" | "bun";
+  };
+}
+
+export interface AgentSkillInstallSpec {
+  id?: string;
+  kind: AgentSkillInstallKind;
+  label?: string;
+  bins?: string[];
+  os?: string[];
+  formula?: string;
+  package?: string;
+  module?: string;
+  url?: string;
+  archive?: string;
+  extract?: boolean;
+  stripComponents?: number;
+  targetDir?: string;
+}
+
+export interface AgentSkillInstallResult {
+  ok: boolean;
+  skillId: string;
+  installerId?: string;
+  installerKind?: AgentSkillInstallKind;
+  message: string;
+  stdout: string;
+  stderr: string;
+  code: number | null;
+  warnings: string[];
+  targetPath?: string;
+  executedCommand?: string[];
+  blockedBySecurity?: boolean;
+}
+
+export interface AgentSkillImportResult {
+  ok: boolean;
+  source: string;
+  scope: AgentSkillImportScope;
+  message: string;
+  warnings: string[];
+  importedSkillId?: string;
+  importedSkillName?: string;
+  targetRoot?: string;
+  targetDirectory?: string;
+  resolvedSourcePath?: string;
+  replacedExisting?: boolean;
+  blockedBySecurity?: boolean;
+}
+
+export interface AgentSkillImportPickerResult {
+  cancelled: boolean;
+  path?: string;
+}
+
+export interface AgentSkillConfigCheck {
+  path: string;
+  satisfied: boolean;
+}
+
+export interface AgentSkillDiagnosticIssue {
+  label: string;
+  count: number;
+}
+
+export interface AgentSkillSecurityRuleInfo {
+  ruleId: string;
+  severity: "info" | "warn" | "critical";
+  message: string;
+  recommendation: string;
+}
+
+export interface AgentSkillSecurityRuleStat {
+  ruleId: string;
+  count: number;
+}
+
+export interface AgentSkillSecurityRuleSummary {
+  ruleId: string;
+  severity: "info" | "warn" | "critical";
+  message: string;
+  recommendation: string;
+  count: number;
+  suppressedCount: number;
+  matchingSuppressions: AgentSkillSuppression[];
+}
+
+export interface AgentSkillSuppressionSummary {
+  suppression: AgentSkillSuppression;
+  affectedFindings: number;
+  affectedSkills: string[];
+}
+
+export interface AgentSkillFindingLocationRequest {
+  file: string;
+  line: number;
+}
+
+export interface AgentSkillFindingLocationResponse {
+  opened: boolean;
+  file: string;
+  line: number;
+}
+
+export type AgentSkillSecurityScanStatus = "pending" | "ready" | "error";
+
+export interface AgentSkillSecurityFinding {
+  ruleId: string;
+  severity: "info" | "warn" | "critical";
+  file: string;
+  line: number;
+  message: string;
+  evidence: string;
+  recommendation: string;
+}
+
+export interface AgentSkillSecuritySummary {
+  status: AgentSkillSecurityScanStatus;
+  scannedFiles: number;
+  critical: number;
+  warn: number;
+  info: number;
+  suppressed: number;
+  findings: AgentSkillSecurityFinding[];
+  error?: string;
+}
+
+export interface AgentSkillsDiagnosticReport {
+  generatedAt: string;
+  counts: {
+    total: number;
+    ready: number;
+    missing: number;
+    allowlistBlocked: number;
+    disabled: number;
+    installableFixes: number;
+    securityFlagged: number;
+    securityCritical: number;
+    securitySuppressed: number;
+  };
+  topIssues: AgentSkillDiagnosticIssue[];
+  securityRules: AgentSkillSecurityRuleInfo[];
+  securityRuleStats: AgentSkillSecurityRuleStat[];
+  securityRuleSummary: AgentSkillSecurityRuleSummary[];
+  suppressions: AgentSkillSuppression[];
+  suppressionSummary: AgentSkillSuppressionSummary[];
+  buckets: {
+    ready: string[];
+    missing: string[];
+    allowlistBlocked: string[];
+    disabled: string[];
+    installableFixes: string[];
+    securityFlagged: string[];
+  };
+}
+
+export interface AgentSkillsOverview {
+  state: AgentSkillsState;
+  diagnostics: AgentSkillsDiagnosticReport;
+}
+
+export interface AgentSkillInfoReport {
+  generatedAt: string;
+  skill: AgentSkillSummary;
+}
+
+export interface AgentSkillsCheckReport {
+  generatedAt: string;
+  diagnostics: AgentSkillsDiagnosticReport;
+  sections: {
+    ready: AgentSkillSummary[];
+    missing: AgentSkillSummary[];
+    allowlistBlocked: AgentSkillSummary[];
+    disabled: AgentSkillSummary[];
+    installableFixes: AgentSkillSummary[];
+    securityFlagged: AgentSkillSummary[];
+  };
 }
 
 export interface AgentSkillSummary {
   id: string;
+  skillKey: string;
   name: string;
   description?: string;
   source: AgentSkillSource;
@@ -121,6 +316,20 @@ export interface AgentSkillSummary {
   commandDispatch?: "tool";
   commandTool?: string;
   commandArgMode?: "raw";
+  primaryEnv?: string;
+  always: boolean;
+  blockedByAllowlist: boolean;
+  installers: AgentSkillInstallSpec[];
+  preferredInstallerId?: string;
+  security: AgentSkillSecuritySummary;
+  missing: {
+    os: string[];
+    bins: string[];
+    anyBins: string[];
+    env: string[];
+    config: string[];
+  };
+  configChecks: AgentSkillConfigCheck[];
   gatingReasons: string[];
 }
 
@@ -265,4 +474,42 @@ export interface McpResourcePreviewResponse {
   uri: string;
   result: ToolCallResult;
   previewText: string;
+}
+
+// ---------------------------------------------------------------------------
+// Bootstrap files (agent personality / workspace context)
+// ---------------------------------------------------------------------------
+
+/** Names of all known bootstrap files, in load order. */
+export const BOOTSTRAP_FILE_NAMES = [
+  "AGENTS.md",
+  "SOUL.md",
+  "TOOLS.md",
+  "IDENTITY.md",
+  "USER.md",
+  "HEARTBEAT.md",
+  "BOOTSTRAP.md",
+  "MEMORY.md",
+] as const;
+
+export type BootstrapFileName = (typeof BOOTSTRAP_FILE_NAMES)[number];
+
+export interface BootstrapFile {
+  /** Canonical filename (e.g. "SOUL.md") */
+  name: BootstrapFileName;
+  /** Absolute path on disk */
+  path: string;
+  /** File content (empty string if file is missing) */
+  content: string;
+  /** Whether the file exists on disk */
+  exists: boolean;
+}
+
+export interface BootstrapState {
+  /** Directory where bootstrap files live (workspace root / .oci-ai) */
+  directory: string;
+  /** Loaded bootstrap files */
+  files: BootstrapFile[];
+  /** Whether this is a brand-new workspace (BOOTSTRAP.md still exists) */
+  isBrandNew: boolean;
 }

@@ -1,8 +1,10 @@
 import { clsx } from "clsx"
 import { AlertTriangle, Bot, History, MessageSquareText, Plus } from "lucide-react"
-import { useEffect, useRef } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso"
 import { useExtensionState } from "../../context/ExtensionStateContext"
+import { AgentServiceClient } from "../../services/grpc-client"
+import type { AgentMode } from "../../services/types"
 import InlineNotice from "../ui/InlineNotice"
 import ChatRow from "./ChatRow"
 import ChatTextArea from "./ChatTextArea"
@@ -31,9 +33,42 @@ export default function ChatView({ isHidden = false, onNewChat, onHistory }: Cha
     configWarning,
     editAndResend,
     regenerate,
+    agentMode,
   } = useExtensionState()
 
   const virtuosoRef = useRef<VirtuosoHandle>(null)
+  const [pendingAgentMode, setPendingAgentMode] = useState<AgentMode | null>(null)
+  const [isSavingAgentMode, setIsSavingAgentMode] = useState(false)
+  const [agentModeError, setAgentModeError] = useState("")
+  const effectiveAgentMode = pendingAgentMode ?? agentMode
+  const agentModeHint = useMemo(
+    () => (effectiveAgentMode === "agent" ? "Agent enables built-in tool use." : "Chat returns plain text only."),
+    [effectiveAgentMode],
+  )
+
+  useEffect(() => {
+    setPendingAgentMode(null)
+  }, [agentMode])
+
+  const handleAgentModeChange = useCallback(async (nextMode: AgentMode) => {
+    if (isSavingAgentMode || nextMode === agentMode) {
+      return
+    }
+    setPendingAgentMode(nextMode)
+    setIsSavingAgentMode(true)
+    setAgentModeError("")
+    try {
+      const currentSettings = await AgentServiceClient.getSettings()
+      await AgentServiceClient.saveSettings({ ...currentSettings, mode: nextMode })
+    } catch (error) {
+      console.error("Failed to save agent mode:", error)
+      const message = error instanceof Error ? error.message : "Failed to save Chat Agent mode."
+      setAgentModeError(message)
+      setPendingAgentMode(null)
+    } finally {
+      setIsSavingAgentMode(false)
+    }
+  }, [agentMode, isSavingAgentMode])
 
   // Auto-scroll when new messages arrive or streaming updates
   useEffect(() => {
@@ -82,9 +117,81 @@ export default function ChatView({ isHidden = false, onNewChat, onHistory }: Cha
           </WorkbenchCompactActionCluster>
         </div>
       </div>
-      <div className="shrink-0 border-b border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-3 py-1">
-        <div>
-          <CompartmentSelector featureKey="chat" />
+      <div className="shrink-0 border-b border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-3 py-1.5">
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0 flex-1">
+              <CompartmentSelector featureKey="chat" />
+            </div>
+            <div className="shrink-0 lg:ml-3">
+              <div
+                className="inline-flex items-center rounded-lg border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,white_8%)] p-1"
+                role="tablist"
+                aria-label="Assistant mode"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={effectiveAgentMode === "chat"}
+                  onClick={() => void handleAgentModeChange("chat")}
+                  disabled={isSavingAgentMode}
+                  className={clsx(
+                    "group inline-flex min-w-[92px] items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-60",
+                    effectiveAgentMode === "chat"
+                      ? "border-[color-mix(in_srgb,var(--vscode-focusBorder)_72%,white_28%)] bg-[color-mix(in_srgb,var(--vscode-button-background)_82%,white_18%)] text-[var(--vscode-button-foreground)] shadow-[0_4px_12px_rgba(0,0,0,0.22)]"
+                      : "border-transparent text-description hover:bg-[var(--vscode-list-hoverBackground)] hover:text-[var(--vscode-foreground)]",
+                  )}
+                  title="Use chat mode"
+                >
+                  <span
+                    className={clsx(
+                      "inline-flex h-5 w-5 items-center justify-center rounded-sm transition-colors",
+                      effectiveAgentMode === "chat"
+                        ? "bg-[color-mix(in_srgb,var(--vscode-button-foreground)_18%,transparent)] text-[var(--vscode-button-foreground)]"
+                        : "text-[var(--vscode-descriptionForeground)] group-hover:text-[var(--vscode-foreground)]",
+                    )}
+                  >
+                    <MessageSquareText size={13} />
+                  </span>
+                  Chat
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={effectiveAgentMode === "agent"}
+                  onClick={() => void handleAgentModeChange("agent")}
+                  disabled={isSavingAgentMode}
+                  className={clsx(
+                    "group inline-flex min-w-[92px] items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-60",
+                    effectiveAgentMode === "agent"
+                      ? "border-[color-mix(in_srgb,var(--vscode-focusBorder)_72%,white_28%)] bg-[color-mix(in_srgb,var(--vscode-button-background)_82%,white_18%)] text-[var(--vscode-button-foreground)] shadow-[0_4px_12px_rgba(0,0,0,0.22)]"
+                      : "border-transparent text-description hover:bg-[var(--vscode-list-hoverBackground)] hover:text-[var(--vscode-foreground)]",
+                  )}
+                  title="Use agent mode"
+                >
+                  <span
+                    className={clsx(
+                      "inline-flex h-5 w-5 items-center justify-center rounded-sm transition-colors",
+                      effectiveAgentMode === "agent"
+                        ? "bg-[color-mix(in_srgb,var(--vscode-button-foreground)_18%,transparent)] text-[var(--vscode-button-foreground)]"
+                        : "text-[var(--vscode-descriptionForeground)] group-hover:text-[var(--vscode-foreground)]",
+                    )}
+                  >
+                    <Bot size={13} />
+                  </span>
+                  Agent
+                </button>
+              </div>
+            </div>
+          </div>
+          <p className="text-[11px] text-description">
+            {isSavingAgentMode ? "Saving assistant mode..." : agentModeHint}
+          </p>
+          {agentModeError && (
+            <InlineNotice tone="warning" size="sm">
+              {agentModeError}
+            </InlineNotice>
+          )}
         </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col">
