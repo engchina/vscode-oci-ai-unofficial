@@ -3,6 +3,7 @@ import {
   ChevronDown,
   ChevronRight,
   Loader2,
+  Pencil,
   Plus,
   Plug,
   RefreshCw,
@@ -42,7 +43,7 @@ const STATUS_MAP: Record<string, { label: string; tone: "success" | "warning" | 
   error: { label: "Error", tone: "danger" },
 }
 
-interface AddServerFormState {
+interface ServerFormState {
   name: string
   transportType: McpTransportType
   command: string
@@ -54,7 +55,7 @@ interface AddServerFormState {
   timeout: string
 }
 
-const EMPTY_FORM: AddServerFormState = {
+const EMPTY_FORM: ServerFormState = {
   name: "",
   transportType: "stdio",
   command: "",
@@ -66,12 +67,66 @@ const EMPTY_FORM: AddServerFormState = {
   timeout: "30",
 }
 
+function stringifyJson(value?: Record<string, string>): string {
+  if (!value || Object.keys(value).length === 0) {
+    return ""
+  }
+
+  return JSON.stringify(value, null, 2)
+}
+
+function getFormStateFromServer(server: McpServerState): ServerFormState {
+  return {
+    name: server.name,
+    transportType: server.config.transportType,
+    command: server.config.command ?? "",
+    args: (server.config.args ?? []).join(" "),
+    cwd: server.config.cwd ?? "",
+    env: stringifyJson(server.config.env),
+    url: server.config.url ?? "",
+    headers: stringifyJson(server.config.headers),
+    timeout: String(server.config.timeout ?? 30),
+  }
+}
+
+function buildServerConfig(form: ServerFormState, existingConfig?: McpServerConfig): McpServerConfig {
+  const config: McpServerConfig = {
+    transportType: form.transportType,
+    disabled: existingConfig?.disabled ?? false,
+    timeout: parseInt(form.timeout, 10) || 30,
+    autoApprove: existingConfig?.autoApprove ?? [],
+  }
+
+  if (form.transportType === "stdio") {
+    config.command = form.command.trim()
+    config.args = form.args.trim() ? form.args.trim().split(/\s+/) : []
+    if (form.cwd.trim()) {
+      config.cwd = form.cwd.trim()
+    }
+    if (form.env.trim()) {
+      try {
+        config.env = JSON.parse(form.env) as Record<string, string>
+      } catch {}
+    }
+    return config
+  }
+
+  config.url = form.url.trim()
+  if (form.headers.trim()) {
+    try {
+      config.headers = JSON.parse(form.headers) as Record<string, string>
+    } catch {}
+  }
+  return config
+}
+
 export default function McpServersTab() {
   const [servers, setServers] = useState<McpServerState[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set())
   const [showAddForm, setShowAddForm] = useState(false)
-  const [addForm, setAddForm] = useState<AddServerFormState>(EMPTY_FORM)
+  const [editingServerName, setEditingServerName] = useState<string | null>(null)
+  const [addForm, setAddForm] = useState<ServerFormState>(EMPTY_FORM)
   const [adding, setAdding] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
 
@@ -107,41 +162,42 @@ export default function McpServersTab() {
     })
   }, [])
 
+  const resetForm = useCallback(() => {
+    setShowAddForm(false)
+    setEditingServerName(null)
+    setAddForm(EMPTY_FORM)
+  }, [])
+
   const handleAddServer = useCallback(async () => {
     if (!addForm.name.trim()) return
+
     setAdding(true)
     try {
-      const config: McpServerConfig = {
-        transportType: addForm.transportType,
-        disabled: false,
-        timeout: parseInt(addForm.timeout, 10) || 30,
-      }
-      if (addForm.transportType === "stdio") {
-        config.command = addForm.command.trim()
-        config.args = addForm.args.trim() ? addForm.args.split(/\s+/) : []
-        if (addForm.cwd.trim()) {
-          config.cwd = addForm.cwd.trim()
-        }
-        if (addForm.env.trim()) {
-          try {
-            config.env = JSON.parse(addForm.env)
-          } catch { /* ignore */ }
-        }
+      const editingServer = editingServerName
+        ? servers.find((server) => server.name === editingServerName)
+        : undefined
+      const config = buildServerConfig(addForm, editingServer?.config)
+
+      if (editingServerName) {
+        await McpServiceClient.updateServer({
+          currentName: editingServerName,
+          name: addForm.name.trim(),
+          config,
+        })
       } else {
-        config.url = addForm.url.trim()
-        if (addForm.headers.trim()) {
-          try {
-            config.headers = JSON.parse(addForm.headers)
-          } catch { /* ignore */ }
-        }
+        await McpServiceClient.addServer({ name: addForm.name.trim(), config })
       }
-      await McpServiceClient.addServer({ name: addForm.name.trim(), config })
-      setAddForm(EMPTY_FORM)
-      setShowAddForm(false)
+      resetForm()
     } finally {
       setAdding(false)
     }
-  }, [addForm])
+  }, [addForm, editingServerName, resetForm, servers])
+
+  const handleEditServer = useCallback((server: McpServerState) => {
+    setEditingServerName(server.name)
+    setAddForm(getFormStateFromServer(server))
+    setShowAddForm(true)
+  }, [])
 
   const handleDeleteServer = useCallback(async (name: string) => {
     await McpServiceClient.removeServer(name)
@@ -209,6 +265,13 @@ export default function McpServersTab() {
                   <span className="text-xs text-description">{server.config.transportType}</span>
                 </div>
                 <WorkbenchCompactActionCluster>
+                  <button
+                    className="p-1 text-description hover:text-foreground"
+                    title="Edit"
+                    onClick={() => handleEditServer(server)}
+                  >
+                    <Pencil size={14} />
+                  </button>
                   <button
                     className="p-1 text-description hover:text-foreground"
                     title="Restart"
@@ -306,7 +369,7 @@ export default function McpServersTab() {
 
       {/* Add Server Form */}
       {showAddForm ? (
-        <Card title="Add MCP Server">
+        <Card title={editingServerName ? `Edit MCP Server: ${editingServerName}` : "Add MCP Server"}>
           <div className="flex flex-col gap-3">
             <Input
               label="Server Name"
@@ -384,15 +447,12 @@ export default function McpServersTab() {
                 onClick={handleAddServer}
                 disabled={!addForm.name.trim() || adding}
               >
-                {adding ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                Add
+                {adding ? <Loader2 size={14} className="animate-spin" /> : editingServerName ? <Pencil size={14} /> : <Plus size={14} />}
+                {editingServerName ? "Save" : "Add"}
               </WorkbenchActionButton>
               <WorkbenchActionButton
                 variant="secondary"
-                onClick={() => {
-                  setShowAddForm(false)
-                  setAddForm(EMPTY_FORM)
-                }}
+                onClick={resetForm}
               >
                 Cancel
               </WorkbenchActionButton>
@@ -400,7 +460,14 @@ export default function McpServersTab() {
           </div>
         </Card>
       ) : (
-        <WorkbenchActionButton variant="secondary" onClick={() => setShowAddForm(true)}>
+        <WorkbenchActionButton
+          variant="secondary"
+          onClick={() => {
+            setEditingServerName(null)
+            setAddForm(EMPTY_FORM)
+            setShowAddForm(true)
+          }}
+        >
           <Plus size={14} />
           Add Server
         </WorkbenchActionButton>

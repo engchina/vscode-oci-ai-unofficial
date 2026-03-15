@@ -364,12 +364,12 @@
         "ociAi.ocaProxy.reasoningEffort": {
           "type": "string",
           "enum": [
-            "none",
             "low",
             "medium",
-            "high"
+            "high",
+            "xhigh"
           ],
-          "default": "none",
+          "default": "medium",
           "description": "Reasoning effort level for OCA proxy requests"
         },
         "ociAi.ocaProxy.exposeToAssistant": {

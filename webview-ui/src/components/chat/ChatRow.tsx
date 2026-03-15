@@ -1,5 +1,5 @@
-import { Bot, Check, User, X } from "lucide-react"
-import { useCallback, useRef, useState } from "react"
+import { Bot, Check, Plug, User, X } from "lucide-react"
+import { useCallback, useMemo, useRef, useState } from "react"
 import TextareaAutosize from "react-textarea-autosize"
 import type { ChatImageData, ChatMessageData, ToolCallData } from "../../services/types"
 import {
@@ -24,6 +24,7 @@ export default function ChatRow({ message, messageIndex, isLastOfRole, onEdit, o
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState("")
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const mcpBanner = useMemo(() => buildMcpBanner(message.toolCalls), [message.toolCalls])
 
   const startEdit = useCallback(() => {
     setEditText(message.text)
@@ -98,8 +99,12 @@ export default function ChatRow({ message, messageIndex, isLastOfRole, onEdit, o
             </WorkbenchCompactActionCluster>
           </div>
         ) : isUser ? (
-          <div className="flex flex-col gap-2">
-            {message.text && <p className="whitespace-pre-wrap">{message.text}</p>}
+          <div className="flex flex-col items-end gap-2">
+            {message.text && (
+              <div className="max-w-full text-left">
+                <MessageContent content={message.text} />
+              </div>
+            )}
             {message.images && message.images.length > 0 && (
               <div className={`flex gap-2 overflow-x-auto pb-1 mt-1 ${isUser ? "justify-end" : "justify-start"}`}>
                 {message.images.map((img, idx) => (
@@ -122,6 +127,15 @@ export default function ChatRow({ message, messageIndex, isLastOfRole, onEdit, o
           </div>
         ) : (
           <div className="flex flex-col gap-2">
+            {mcpBanner && (
+              <div className={`flex items-start gap-2 rounded-md border px-3 py-2 ${mcpBanner.tone.container}`}>
+                <span className={`mt-0.5 shrink-0 ${mcpBanner.tone.icon}`}><Plug size={14} /></span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[11px] font-semibold uppercase tracking-wide text-foreground">{mcpBanner.title}</div>
+                  <div className="mt-0.5 text-[11px] text-description">{mcpBanner.detail}</div>
+                </div>
+              </div>
+            )}
             <MessageContent content={message.text} />
             {/* Tool call blocks */}
             {message.toolCalls && message.toolCalls.length > 0 && (
@@ -197,4 +211,102 @@ function AttachmentImage({ image, alt }: { image: ChatImageData; alt: string }) 
       }}
     />
   )
+}
+
+
+type McpBannerTone = {
+  container: string
+  icon: string
+}
+
+type McpBannerState = {
+  title: string
+  detail: string
+  tone: McpBannerTone
+}
+
+function buildMcpBanner(toolCalls: ToolCallData[] | undefined): McpBannerState | null {
+  if (!toolCalls || toolCalls.length === 0) {
+    return null
+  }
+
+  const active = toolCalls.filter((toolCall) => toolCall.status === "running" || toolCall.status === "approved" || toolCall.status === "pending")
+  if (active.length === 0) {
+    return null
+  }
+
+  const servers = Array.from(new Set(active.map((toolCall) => (toolCall.serverName ?? toolCall.toolName).trim()).filter(Boolean)))
+  const primaryStatus = resolvePrimaryMcpStatus(active)
+  const label = servers.slice(0, 2).map((name) => name.toUpperCase()).join("、") + (servers.length > 2 ? ` +${servers.length - 2}` : "")
+
+  return {
+    title: `正在使用 MCP：${label}`,
+    detail: describeMcpBannerDetail(primaryStatus, active),
+    tone: resolveMcpBannerTone(primaryStatus, active),
+  }
+}
+
+function resolvePrimaryMcpStatus(toolCalls: ToolCallData[]): ToolCallData["status"] {
+  if (toolCalls.some((toolCall) => toolCall.status === "running")) {
+    return "running"
+  }
+  if (toolCalls.some((toolCall) => toolCall.status === "pending")) {
+    return "pending"
+  }
+  if (toolCalls.some((toolCall) => toolCall.status === "approved")) {
+    return "approved"
+  }
+  return toolCalls[0]?.status ?? "running"
+}
+
+function describeMcpBannerDetail(status: ToolCallData["status"], toolCalls: ToolCallData[]): string {
+  const promptCount = toolCalls.filter((toolCall) => toolCall.actionKind === "prompt").length
+  const toolCount = toolCalls.filter((toolCall) => (toolCall.actionKind ?? "tool") === "tool").length
+  const resourceCount = toolCalls.filter((toolCall) => toolCall.actionKind === "resource").length
+  const parts = [
+    promptCount ? `${promptCount} prompt` : "",
+    toolCount ? `${toolCount} tool` : "",
+    resourceCount ? `${resourceCount} resource` : "",
+  ].filter(Boolean)
+  const workload = parts.join(" • ") || `${toolCalls.length} action`
+
+  switch (status) {
+    case "running":
+      return `${workload} executing now.`
+    case "pending":
+      return `${workload} waiting for approval before execution.`
+    case "approved":
+      return `${workload} approved and queued to run.`
+    default:
+      return `${workload} active.`
+  }
+}
+
+
+function resolveMcpBannerTone(status: ToolCallData["status"], toolCalls: ToolCallData[]): McpBannerTone {
+  if (toolCalls.some((toolCall) => toolCall.status === "error" || toolCall.result?.isError)) {
+    return {
+      container: "border-[color-mix(in_srgb,var(--vscode-inputValidation-errorBorder)_75%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-inputValidation-errorBackground)_18%,transparent)]",
+      icon: "text-[var(--vscode-errorForeground)]",
+    }
+  }
+
+  switch (status) {
+    case "pending":
+      return {
+        container: "border-[color-mix(in_srgb,var(--vscode-charts-yellow)_50%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,var(--vscode-charts-yellow)_10%)]",
+        icon: "text-[var(--vscode-charts-yellow)]",
+      }
+    case "approved":
+      return {
+        container: "border-[color-mix(in_srgb,var(--vscode-charts-green)_45%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,var(--vscode-charts-green)_8%)]",
+        icon: "text-[var(--vscode-charts-green)]",
+      }
+    case "running":
+    default:
+      return {
+        container: "border-[color-mix(in_srgb,var(--vscode-charts-blue)_45%,var(--vscode-panel-border))] bg-[color-mix(in_srgb,var(--vscode-editor-background)_92%,var(--vscode-charts-blue)_8%)]",
+        icon: "text-[var(--vscode-charts-blue)]",
+      }
+  }
 }

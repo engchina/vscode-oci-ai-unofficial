@@ -29,6 +29,7 @@ interface ChatTextAreaProps {
 const MAX_IMAGES = 10
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 const THUMBNAIL_MAX_SIDE = 256
+const CHAT_MODEL_STORAGE_KEY = "oci-ai.chat.selected-model"
 
 interface PendingImageAttachment extends ChatImageData {
   previewUrl: string
@@ -47,7 +48,7 @@ export default function ChatTextArea({
 }: ChatTextAreaProps) {
   const [value, setValue] = useState("")
   const [images, setImages] = useState<PendingImageAttachment[]>([])
-  const [selectedModelName, setSelectedModelName] = useState("")
+  const [selectedModelName, setSelectedModelName] = useState(() => getPersistedSelectedModelName())
   const [validationError, setValidationError] = useState<string>("")
   const [queuedAutoSend, setQueuedAutoSend] = useState<string | null>(null)
   const [draftNotice, setDraftNotice] = useState<string>("")
@@ -60,7 +61,13 @@ export default function ChatTextArea({
       setSelectedModelName("")
       return
     }
-    setSelectedModelName((prev) => (prev && modelOptions.includes(prev) ? prev : modelOptions[0]))
+    const persistedModel = getPersistedSelectedModelName()
+    const nextModel =
+      persistedModel && modelOptions.includes(persistedModel)
+        ? persistedModel
+        : modelOptions[0]
+    setSelectedModelName(nextModel)
+    persistSelectedModelName(nextModel)
   }, [modelOptions])
 
   // When code context is injected from the editor, pre-fill or auto-send.
@@ -230,6 +237,12 @@ export default function ChatTextArea({
     setImages((prev) => prev.filter((_, i) => i !== idx))
   }, [])
 
+  const handleModelChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
+    const nextModel = event.target.value
+    setSelectedModelName(nextModel)
+    persistSelectedModelName(nextModel)
+  }, [])
+
   const canSend = !disabled && (value.trim().length > 0 || images.length > 0)
 
   return (
@@ -343,7 +356,7 @@ export default function ChatTextArea({
               <Cpu size={12} />
               <select
                 value={selectedModelName}
-                onChange={(e) => setSelectedModelName(e.target.value)}
+                onChange={handleModelChange}
                 disabled={disabled}
                 className="h-6 max-w-48 rounded border border-input-border bg-input-background px-1.5 text-xxs text-input-foreground outline-none focus:border-border disabled:cursor-not-allowed disabled:opacity-60"
                 title="Select model"
@@ -360,6 +373,27 @@ export default function ChatTextArea({
       </div>
     </div>
   )
+}
+
+function getPersistedSelectedModelName(): string {
+  try {
+    return window.localStorage.getItem(CHAT_MODEL_STORAGE_KEY)?.trim() || ""
+  } catch {
+    return ""
+  }
+}
+
+function persistSelectedModelName(modelName: string): void {
+  try {
+    const trimmed = modelName.trim()
+    if (!trimmed) {
+      window.localStorage.removeItem(CHAT_MODEL_STORAGE_KEY)
+      return
+    }
+    window.localStorage.setItem(CHAT_MODEL_STORAGE_KEY, trimmed)
+  } catch {
+    // Ignore local persistence failures in restricted webview environments.
+  }
 }
 
 function splitModelNames(raw: string | undefined): string[] {

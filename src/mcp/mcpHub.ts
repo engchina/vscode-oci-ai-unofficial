@@ -29,6 +29,7 @@ import type {
   McpToolInfo,
   ToolCallContent,
   ToolCallResult,
+  UpdateMcpServerRequest,
 } from "../shared/mcp-types";
 
 const MCP_SERVERS_CONFIG_KEY = "ociAi.mcpServers";
@@ -157,7 +158,27 @@ export class McpHub {
   public async addServer(request: AddMcpServerRequest): Promise<void> {
     const cfg = vscode.workspace.getConfiguration("ociAi");
     const existing = cfg.get<Record<string, McpServerConfig>>("mcpServers", {});
+    if (existing[request.name]) {
+      throw new Error(`MCP server "${request.name}" already exists.`);
+    }
     const updated = { ...existing, [request.name]: request.config };
+    await cfg.update("mcpServers", updated, vscode.ConfigurationTarget.Global);
+  }
+
+  public async updateServer(request: UpdateMcpServerRequest): Promise<void> {
+    const cfg = vscode.workspace.getConfiguration("ociAi");
+    const existing = cfg.get<Record<string, McpServerConfig>>("mcpServers", {});
+    const current = existing[request.currentName];
+    if (!current) {
+      throw new Error(`MCP server "${request.currentName}" was not found.`);
+    }
+    if (request.currentName !== request.name && existing[request.name]) {
+      throw new Error(`MCP server "${request.name}" already exists.`);
+    }
+
+    const updated = { ...existing };
+    delete updated[request.currentName];
+    updated[request.name] = request.config;
     await cfg.update("mcpServers", updated, vscode.ConfigurationTarget.Global);
   }
 

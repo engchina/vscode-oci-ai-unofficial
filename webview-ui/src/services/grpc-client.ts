@@ -82,6 +82,7 @@ import type {
   SubagentTranscriptRequest,
   SubagentTranscriptResponse,
   McpSmokeTestResult,
+  UpdateMcpServerRequest,
   McpPromptPreviewRequest,
   McpPromptPreviewResponse,
   McpResourcePreviewRequest,
@@ -426,6 +427,10 @@ export class McpServiceClient extends ProtoBusClient {
 
   static addServer(request: import("./types").AddMcpServerRequest): Promise<void> {
     return this.makeUnaryRequest<void>("addServer", request)
+  }
+
+  static updateServer(request: UpdateMcpServerRequest): Promise<void> {
+    return this.makeUnaryRequest<void>("updateServer", request)
   }
 
   static removeServer(name: string): Promise<void> {

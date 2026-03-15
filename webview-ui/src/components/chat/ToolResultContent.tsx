@@ -1,5 +1,5 @@
 import type { ToolCallContent } from "../../services/types"
-import MessageContent from "./MessageContent"
+import MessageContent, { sanitizeMarkdownUrl } from "./MessageContent"
 
 interface ToolResultContentProps {
   content: ToolCallContent[]
@@ -18,12 +18,26 @@ export default function ToolResultContent({ content }: ToolResultContentProps) {
         }
 
         if (item.type === "image" && item.dataUrl) {
+          const safeImageUrl = sanitizeMarkdownUrl(item.dataUrl, "image")
+          if (!safeImageUrl) {
+            return (
+              <div
+                key={`${item.type}-${index}`}
+                className="inline-flex rounded border border-[var(--vscode-panel-border)] px-2 py-1 text-xs text-description"
+              >
+                Blocked image result
+              </div>
+            )
+          }
           return (
             <img
               key={`${item.type}-${index}`}
-              src={item.dataUrl}
+              src={safeImageUrl}
               alt="MCP result"
-              className="mt-1 max-h-48 rounded border border-[var(--vscode-panel-border)]"
+              loading="lazy"
+              decoding="async"
+              referrerPolicy="no-referrer"
+              className="mt-1 max-h-48 max-w-full rounded border border-[var(--vscode-panel-border)]"
             />
           )
         }
@@ -33,9 +47,9 @@ export default function ToolResultContent({ content }: ToolResultContentProps) {
             <div key={`${item.type}-${index}`} className="flex flex-col gap-1 text-xs text-description">
               <div>Resource: {item.uri}</div>
               {item.text ? (
-                <pre className="overflow-x-auto whitespace-pre-wrap rounded border border-[var(--vscode-panel-border)] px-2 py-1 text-xs text-foreground">
-                  {item.text}
-                </pre>
+                <div className="rounded border border-[var(--vscode-panel-border)] px-2 py-1 text-xs text-foreground">
+                  <MessageContent content={item.text} />
+                </div>
               ) : null}
             </div>
           )

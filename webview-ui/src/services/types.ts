@@ -927,6 +927,12 @@ export interface AddMcpServerRequest {
   config: McpServerConfig
 }
 
+export interface UpdateMcpServerRequest {
+  currentName: string
+  name: string
+  config: McpServerConfig
+}
+
 export interface ToggleMcpToolAutoApproveRequest {
   serverName: string
   toolName: string

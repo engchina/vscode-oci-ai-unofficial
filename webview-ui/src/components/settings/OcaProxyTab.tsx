@@ -27,10 +27,10 @@ import {
 } from "../workbench/WorkbenchActionButtons"
 
 const REASONING_EFFORT_OPTIONS = [
-  { value: "none", label: "None" },
   { value: "low", label: "Low" },
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
+  { value: "xhigh", label: "XHigh" },
 ]
 const FIXED_PROXY_PORT = "8669"
 const AUTH_POLL_INTERVAL_MS = 3000
@@ -54,7 +54,7 @@ export default function OcaProxyTab() {
 
   // Local editable config state
   const [localModel, setLocalModel] = useState("")
-  const [localReasoningEffort, setLocalReasoningEffort] = useState("none")
+  const [localReasoningEffort, setLocalReasoningEffort] = useState("medium")
   const [localPortInput, setLocalPortInput] = useState(FIXED_PROXY_PORT)
   const [localExposeToAssistant, setLocalExposeToAssistant] = useState(false)
 
@@ -482,7 +482,7 @@ export default function OcaProxyTab() {
               tone={status.proxyRunning ? "success" : "neutral"}
             />
             {status.proxyRunning && (
-              <span className="text-[11px] text-description font-mono">{hostBaseUrl}</span>
+              <span className="text-[11px] text-description font-mono">{localBaseUrl}</span>
             )}
           </div>
           <WorkbenchActionButton

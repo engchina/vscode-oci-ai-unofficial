@@ -16,6 +16,7 @@ import type {
   McpServerState,
   AddMcpServerRequest,
   ToggleMcpToolAutoApproveRequest,
+  UpdateMcpServerRequest,
   AgentSettings,
   AgentSkillsState,
   McpPromptPreviewRequest,
@@ -1864,8 +1865,7 @@ export class Controller {
   }
 
   private shouldUseAgentMcpLoop(): boolean {
-    const settings = this.agentService.getSettings();
-    return settings.mode === "agent" && this.mcpHub.getConnectedServers().length > 0;
+    return this.mcpHub.getConnectedServers().length > 0;
   }
 
   private buildModelMessagesFromChatHistory(): ChatMessage[] {
@@ -1883,7 +1883,7 @@ export class Controller {
     }
 
     const lines = [
-      "You are in agent mode and can use connected MCP servers when helpful.",
+      "Connected MCP servers are available and can be used when helpful.",
       "If an MCP action is needed, emit exactly one XML block and keep it valid.",
       "Use one of these three formats:",
       "<use_mcp_tool><server_name>server</server_name><tool_name>tool</tool_name><arguments>{\"key\":\"value\"}</arguments></use_mcp_tool>",
@@ -3355,6 +3355,10 @@ export class Controller {
 
   public async addMcpServer(request: AddMcpServerRequest): Promise<void> {
     await this.mcpHub.addServer(request);
+  }
+
+  public async updateMcpServer(request: UpdateMcpServerRequest): Promise<void> {
+    await this.mcpHub.updateServer(request);
   }
 
   public async removeMcpServer(name: string): Promise<void> {

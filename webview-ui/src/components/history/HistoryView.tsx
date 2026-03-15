@@ -8,6 +8,7 @@ import {
   type WorkbenchGuardrailState,
 } from "../workbench/guardrail"
 import { backToLabel } from "../workbench/navigationLabels"
+import MessageContent from "../chat/MessageContent"
 
 interface HistoryViewProps {
   messages: Array<{ role: "user" | "model"; text: string }>
@@ -73,8 +74,8 @@ export default function HistoryView({ messages, onBack, onClear }: HistoryViewPr
                   <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--vscode-sideBarTitle-foreground)]">
                     {msg.role === "user" ? "User" : "Generative AI"}
                   </div>
-                  <div className="whitespace-pre-wrap text-[13px] text-[var(--vscode-foreground)] leading-relaxed">
-                    {msg.text || "(empty)"}
+                  <div className="text-[13px] text-[var(--vscode-foreground)] leading-relaxed">
+                    {msg.text ? <MessageContent content={msg.text} /> : "(empty)"}
                   </div>
                 </div>
               ))}

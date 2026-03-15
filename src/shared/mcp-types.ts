@@ -66,6 +66,13 @@ export interface AddMcpServerRequest {
   config: McpServerConfig;
 }
 
+/** Request to edit an existing MCP server, optionally renaming it */
+export interface UpdateMcpServerRequest {
+  currentName: string;
+  name: string;
+  config: McpServerConfig;
+}
+
 /** Request to toggle a tool's auto-approve */
 export interface ToggleMcpToolAutoApproveRequest {
   serverName: string;

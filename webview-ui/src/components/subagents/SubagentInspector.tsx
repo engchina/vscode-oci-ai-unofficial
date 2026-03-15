@@ -7,6 +7,7 @@ import Card from "../ui/Card"
 import InlineNotice from "../ui/InlineNotice"
 import StatusBadge from "../ui/StatusBadge"
 import Textarea from "../ui/Textarea"
+import MessageContent from "../chat/MessageContent"
 import {
   WorkbenchActionButton,
   WorkbenchCompactActionCluster,
@@ -289,16 +290,20 @@ export default function SubagentInspector({
                 value={`${timelineSummary.tools} tools • ${timelineSummary.prompts} prompts • ${timelineSummary.resources} resources`}
               />
             </div>
-            <div className="text-[12px] text-foreground whitespace-pre-wrap">{selectedRun.task}</div>
+            <div className="text-[12px] text-foreground">
+              <MessageContent content={selectedRun.task} />
+            </div>
             {selectedRun.resultText ? (
               <InlineNotice tone="info" size="sm" icon={<Bot size={12} />}>
                 <div className="font-medium">Latest result</div>
-                <div className="mt-1 whitespace-pre-wrap">{truncateText(selectedRun.resultText, compact ? 320 : 1200)}</div>
+                <div className={["mt-1 overflow-y-auto", compact ? "max-h-[180px]" : "max-h-[320px]"].join(" ")}>
+                  <MessageContent content={buildMarkdownPreview(selectedRun.resultText, compact ? 320 : 1200)} />
+                </div>
               </InlineNotice>
             ) : null}
             {selectedRun.errorText ? (
               <InlineNotice tone="danger" size="sm">
-                {selectedRun.errorText}
+                <MessageContent content={selectedRun.errorText} />
               </InlineNotice>
             ) : null}
           </Card>
@@ -333,11 +338,11 @@ export default function SubagentInspector({
               <>
                 <div
                   className={[
-                    "overflow-y-auto rounded border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-2 py-2 text-[11px] leading-5 text-foreground whitespace-pre-wrap",
+                    "overflow-y-auto rounded border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-2 py-2 text-[11px] leading-5 text-foreground",
                     compact ? "max-h-[180px]" : "max-h-[320px]",
                   ].join(" ")}
                 >
-                  {buildTranscriptPreview(transcriptState.transcript, compact)}
+                  <MessageContent content={buildTranscriptPreview(transcriptState.transcript, compact)} className="text-[11px] leading-5" />
                 </div>
                 {isTranscriptTrimmed(transcriptState.transcript, compact) ? (
                   <div className="text-[10px] text-description">
@@ -466,7 +471,9 @@ export default function SubagentInspector({
                       <StatusBadge label={entry.kind} tone={toneForLogKind(entry.kind)} size="compact" />
                       <span className="text-[10px] text-description">{formatTimestamp(entry.timestamp)}</span>
                     </div>
-                    <div className="mt-1 text-[12px] whitespace-pre-wrap">{entry.message}</div>
+                    <div className="mt-1 text-[12px]">
+                      <MessageContent content={entry.message} className="text-[12px] leading-5" />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -591,16 +598,38 @@ function summarizeToolCalls(toolCalls: ToolCallData[]): {
 }
 
 function buildTranscriptPreview(transcript: string, compact: boolean): string {
-  const limit = compact ? 2200 : 6400
-  const normalized = transcript.trim()
-  if (normalized.length <= limit) {
-    return normalized
-  }
-  return `...\n${normalized.slice(normalized.length - limit)}`
+  return buildMarkdownPreview(transcript, compact ? 2200 : 6400, "tail")
 }
 
 function isTranscriptTrimmed(transcript: string, compact: boolean): boolean {
   return transcript.trim().length > (compact ? 2200 : 6400)
+}
+
+function buildMarkdownPreview(value: string, limit: number, mode: "head" | "tail" = "head"): string {
+  const normalized = value.trim()
+  if (normalized.length <= limit) {
+    return normalized
+  }
+
+  if (mode === "tail") {
+    const sliced = normalized.slice(normalized.length - limit)
+    const startAtNewline = sliced.indexOf("\n")
+    const preview = startAtNewline >= 0 ? sliced.slice(startAtNewline + 1) : sliced
+    return closeMarkdownFences(`...\n${preview.trimStart()}`)
+  }
+
+  const sliced = normalized.slice(0, limit)
+  const endAtNewline = sliced.lastIndexOf("\n")
+  const preview = endAtNewline >= 0 ? sliced.slice(0, endAtNewline) : sliced
+  return closeMarkdownFences(`${preview.trimEnd()}\n\n...`)
+}
+
+function closeMarkdownFences(markdown: string): string {
+  const fenceMatches = markdown.match(/```/g)
+  if (!fenceMatches || fenceMatches.length % 2 === 0) {
+    return markdown
+  }
+  return `${markdown}\n\`\`\``
 }
 
 function MetaRow({

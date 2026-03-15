@@ -8,8 +8,8 @@ const FIXED_PROXY_PORT = 8669;
 const DEFAULT_PROXY_PORT = FIXED_PROXY_PORT;
 const DEFAULT_AUTH_CALLBACK_PORT = FIXED_PROXY_PORT;
 const DEFAULT_MODEL = "oca/gpt-5.4";
-const DEFAULT_REASONING_EFFORT = "none";
-const VALID_REASONING_EFFORTS = new Set(["none", "low", "medium", "high"]);
+const DEFAULT_REASONING_EFFORT = "medium";
+const VALID_REASONING_EFFORTS = new Set(["low", "medium", "high", "xhigh"]);
 const MAX_IMAGES_PER_MESSAGE = 10;
 
 type OcaChatImage = {
@@ -218,7 +218,10 @@ export class OcaProxyManager {
   }
 
   getReasoningEffort(): string {
-    return vscode.workspace.getConfiguration(CONFIG_PREFIX).get<string>("ocaProxy.reasoningEffort", DEFAULT_REASONING_EFFORT);
+    const configured = vscode.workspace
+      .getConfiguration(CONFIG_PREFIX)
+      .get<string>("ocaProxy.reasoningEffort", DEFAULT_REASONING_EFFORT);
+    return normalizeReasoningEffort(configured);
   }
 
   shouldExposeToAssistant(): boolean {
@@ -621,8 +624,11 @@ function normalizeModel(value: string): string {
 
 function normalizeReasoningEffort(value: string): string {
   const normalized = value.trim().toLowerCase();
+  if (normalized === "none") {
+    return DEFAULT_REASONING_EFFORT;
+  }
   if (!VALID_REASONING_EFFORTS.has(normalized)) {
-    throw new Error("Reasoning effort must be one of: none, low, medium, high.");
+    throw new Error("Reasoning effort must be one of: low, medium, high, xhigh.");
   }
   return normalized;
 }
@@ -661,7 +667,7 @@ function buildOcaChatRequestBody(
     messages: buildOcaChatMessages(messages, systemPrompt),
   };
 
-  if (reasoningEffort && reasoningEffort !== "none") {
+  if (reasoningEffort) {
     requestBody.reasoning_effort = reasoningEffort;
   }
 

@@ -380,6 +380,15 @@ const unaryHandlers: Record<string, Record<string, UnaryHandler>> = {
       showStatusMessage("MCP server added.");
       return {};
     },
+    updateServer: async (c, msg) => {
+      await c.updateMcpServer({
+        currentName: String(msg.currentName ?? ""),
+        name: String(msg.name ?? ""),
+        config: msg.config,
+      });
+      showStatusMessage("MCP server updated.");
+      return {};
+    },
     removeServer: async (c, msg) => {
       await c.removeMcpServer(String(msg.name ?? ""));
       showStatusMessage("MCP server removed.");

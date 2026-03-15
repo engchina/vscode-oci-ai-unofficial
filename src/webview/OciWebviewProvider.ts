@@ -162,7 +162,7 @@ export class OciWebviewProvider implements vscode.WebviewViewProvider {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src data: blob:; font-src ${webview.cspSource}; img-src ${webview.cspSource} data: blob:;" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src data: blob:; font-src ${webview.cspSource}; img-src ${webview.cspSource} data: blob: https:;" />
   <link rel="stylesheet" href="${cssUri}" />
   <title>OCI AI</title>
 </head>
@@ -192,7 +192,7 @@ export class OciWebviewProvider implements vscode.WebviewViewProvider {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline' ${localServerUrl}; script-src 'unsafe-inline' ${localServerUrl}; connect-src ws://localhost:* ${localServerUrl} data: blob:; font-src ${webview.cspSource}; img-src ${webview.cspSource} data: blob:;" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline' ${localServerUrl}; script-src 'unsafe-inline' ${localServerUrl}; connect-src ws://localhost:* ${localServerUrl} data: blob:; font-src ${webview.cspSource}; img-src ${webview.cspSource} data: blob: https:;" />
   <title>OCI AI</title>
 </head>
 <body>
