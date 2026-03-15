@@ -1,3 +1,4 @@
+import { clsx } from "clsx"
 import { Cpu, Paperclip, SendHorizonal, Square, X } from "lucide-react"
 import {
   useCallback,
@@ -10,7 +11,7 @@ import {
   type KeyboardEvent,
 } from "react"
 import TextareaAutosize from "react-textarea-autosize"
-import type { ChatImageData, CodeContextPayload, SendMessageRequest } from "../../services/types"
+import type { AgentMode, ChatImageData, CodeContextPayload, SendMessageRequest } from "../../services/types"
 import type { ChatDraftInjection } from "../../context/ExtensionStateContext"
 import { WorkbenchCompactActionCluster, WorkbenchIconActionButton } from "../workbench/WorkbenchActionButtons"
 
@@ -24,6 +25,9 @@ interface ChatTextAreaProps {
   onContextConsumed?: () => void
   pendingDraft?: ChatDraftInjection | null
   onDraftConsumed?: () => void
+  agentMode?: AgentMode
+  isSavingAgentMode?: boolean
+  onAgentModeChange?: (mode: AgentMode) => void
 }
 
 const MAX_IMAGES = 10
@@ -45,6 +49,9 @@ export default function ChatTextArea({
   onContextConsumed,
   pendingDraft,
   onDraftConsumed,
+  agentMode,
+  isSavingAgentMode = false,
+  onAgentModeChange,
 }: ChatTextAreaProps) {
   const [value, setValue] = useState("")
   const [images, setImages] = useState<PendingImageAttachment[]>([])
@@ -351,24 +358,59 @@ export default function ChatTextArea({
             Enter to send, Shift+Enter for newline. Use /help, /skills, or /skill &lt;id&gt; &lt;task&gt; when helpful.
           </p>
 
-          {modelOptions.length > 0 && (
-            <div className="flex shrink-0 items-center gap-1 text-xxs text-description">
-              <Cpu size={12} />
-              <select
-                value={selectedModelName}
-                onChange={handleModelChange}
-                disabled={disabled}
-                className="h-6 max-w-48 rounded border border-input-border bg-input-background px-1.5 text-xxs text-input-foreground outline-none focus:border-border disabled:cursor-not-allowed disabled:opacity-60"
-                title="Select model"
-              >
-                {modelOptions.map((model) => (
-                  <option key={model} value={model}>
-                    {model}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          <div className="flex shrink-0 items-center gap-2">
+            {modelOptions.length > 0 && (
+              <div className="flex items-center gap-1 text-xxs text-description">
+                <Cpu size={12} />
+                <select
+                  value={selectedModelName}
+                  onChange={handleModelChange}
+                  disabled={disabled}
+                  className="h-6 max-w-48 rounded border border-input-border bg-input-background px-1.5 text-xxs text-input-foreground outline-none focus:border-border disabled:cursor-not-allowed disabled:opacity-60"
+                  title="Select model"
+                >
+                  {modelOptions.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {onAgentModeChange && (
+              <div className="inline-flex items-center overflow-hidden rounded border border-[var(--vscode-panel-border)] text-xxs">
+                <button
+                  type="button"
+                  onClick={() => onAgentModeChange("chat")}
+                  disabled={isSavingAgentMode}
+                  title="Chat mode: returns plain text only"
+                  className={clsx(
+                    "px-2 py-0.5 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+                    agentMode === "chat"
+                      ? "bg-[var(--vscode-button-background)] text-[var(--vscode-button-foreground)]"
+                      : "text-description hover:bg-[var(--vscode-list-hoverBackground)] hover:text-[var(--vscode-foreground)]",
+                  )}
+                >
+                  Chat
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onAgentModeChange("agent")}
+                  disabled={isSavingAgentMode}
+                  title="Agent mode: enables built-in tool use"
+                  className={clsx(
+                    "border-l border-[var(--vscode-panel-border)] px-2 py-0.5 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+                    agentMode === "agent"
+                      ? "bg-[var(--vscode-button-background)] text-[var(--vscode-button-foreground)]"
+                      : "text-description hover:bg-[var(--vscode-list-hoverBackground)] hover:text-[var(--vscode-foreground)]",
+                  )}
+                >
+                  Agent
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

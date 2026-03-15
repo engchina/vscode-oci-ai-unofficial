@@ -1023,27 +1023,31 @@ export class AgentSkillService {
     }
 
     const lines = [
-      "You can optionally use the following reusable skills when the user's request matches them.",
-      "Treat them as lightweight workflows, not hard requirements.",
+      "## Skills",
+      "Before replying: scan the available skills below.",
+      "If the user asks what skills are available, answer directly from this list.",
+      "If exactly one skill clearly matches the task, prefer that skill's workflow.",
+      "If none clearly match, do not force a skill.",
       "<available_skills>",
     ];
 
     for (const skill of manifestSkills) {
-      const attributes = [
-        `id="${escapeXml(skill.id)}"`,
-        `name="${escapeXml(skill.name)}"`,
-        `source="${skill.source}"`,
-        skill.slashCommandName ? `slash_command="${escapeXml(skill.slashCommandName)}"` : "",
-        skill.commandDispatch ? `dispatch="${skill.commandDispatch}"` : "",
-        skill.commandArgMode ? `arg_mode="${skill.commandArgMode}"` : "",
-      ]
-        .filter(Boolean)
-        .join(" ");
-      lines.push(
-        `  <skill ${attributes}>`,
-      );
+      lines.push("  <skill>");
+      lines.push(`    <id>${escapeXml(skill.id)}</id>`);
+      lines.push(`    <name>${escapeXml(skill.name)}</name>`);
       if (skill.description) {
         lines.push(`    <description>${escapeXml(skill.description)}</description>`);
+      }
+      lines.push(`    <location>${escapeXml(skill.filePath)}</location>`);
+      lines.push(`    <source>${escapeXml(skill.source)}</source>`);
+      if (skill.slashCommandName) {
+        lines.push(`    <slash_command>/${escapeXml(skill.slashCommandName)}</slash_command>`);
+      }
+      if (skill.commandDispatch) {
+        lines.push(`    <dispatch>${escapeXml(skill.commandDispatch)}</dispatch>`);
+      }
+      if (skill.commandArgMode) {
+        lines.push(`    <arg_mode>${escapeXml(skill.commandArgMode)}</arg_mode>`);
       }
       lines.push("  </skill>");
     }
@@ -1095,12 +1099,18 @@ export class AgentSkillService {
     if (loadConfig.includeWorkspace !== false) {
       for (const folder of vscode.workspace.workspaceFolders ?? []) {
         pushRoot("workspace", path.join(folder.uri.fsPath, "skills"));
+        pushRoot("workspace", path.join(folder.uri.fsPath, ".agents", "skills"));
         pushRoot("workspace", path.join(folder.uri.fsPath, ".openclaw", "skills"));
         pushRoot("workspace", path.join(folder.uri.fsPath, ".oci-ai", "skills"));
+        for (const extraDir of this.resolveAdjacentWorkspaceSkillDirs(folder.uri.fsPath)) {
+          pushRoot("extra", extraDir);
+        }
       }
     }
 
     if (loadConfig.includeUser !== false) {
+      pushRoot("user", path.join(os.homedir(), ".agents", "skills"));
+      pushRoot("user", path.join(os.homedir(), ".codex", "skills", ".system"));
       pushRoot("user", path.join(os.homedir(), ".openclaw", "skills"));
       pushRoot("user", path.join(os.homedir(), ".oci-ai-unofficial", "skills"));
     }
@@ -1114,6 +1124,15 @@ export class AgentSkillService {
     }
 
     return roots;
+  }
+
+  private resolveAdjacentWorkspaceSkillDirs(workspaceDir: string): string[] {
+    const parentDir = path.dirname(workspaceDir);
+    const currentName = path.basename(workspaceDir).toLowerCase();
+    const candidates = [
+      currentName === "openclaw" ? "" : path.join(parentDir, "openclaw", "skills"),
+    ].filter(Boolean);
+    return candidates.filter((directory) => directoryExists(directory));
   }
 
   private loadSkillsFromRoot(

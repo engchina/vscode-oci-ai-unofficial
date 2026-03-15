@@ -1974,6 +1974,16 @@ export class Controller {
       "",
     );
 
+    lines.push(
+      "# Skills",
+      "If a later runtime prompt includes <available_skills>, scan that list before replying.",
+      "If the user asks what skills are available, answer from that list directly.",
+      "If exactly one skill clearly applies, follow that skill's workflow first.",
+      "If multiple skills could apply, choose the most specific one.",
+      "If no skill clearly applies, do not force one.",
+      "",
+    );
+
     // -- Built-in tools --
     if (hasBuiltins) {
       lines.push("# Built-in tools");

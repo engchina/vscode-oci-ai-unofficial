@@ -1,6 +1,6 @@
 import { clsx } from "clsx"
 import { Bot, ChevronDown, Info, Loader2, LoaderCircle, Plug, Plus, Save, Server, Settings2, Terminal, Trash2, Users, Wand2 } from "lucide-react"
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction } from "react"
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react"
 import { AgentServiceClient, StateServiceClient } from "../../services/grpc-client"
 import type { AgentSettings, SettingsState } from "../../services/types"
 import { runtimeSettingDefaults, runtimeSettingSpecs, runtimeSettingsUiSchema, type RuntimeSettingKey } from "../../generated/runtimeSettings"
@@ -390,16 +390,6 @@ export default function SettingsView({ activeTab: controlledActiveTab, onDone, s
     }
   }, [guardrail])
 
-  const handleFileUpload = useCallback(
-    async (e: ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0]
-      if (!file) return
-      const content = await file.text()
-      updateField("privateKey", content)
-    },
-    [updateField],
-  )
-
   useEffect(() => {
     saveSshConfig(sshConfig)
   }, [sshConfig])
@@ -450,7 +440,6 @@ export default function SettingsView({ activeTab: controlledActiveTab, onDone, s
                   setSettings={setSettings}
                   updateField={updateField}
                   handleSave={handleSave}
-                  handleFileUpload={handleFileUpload}
                   saving={saving}
                   onRequestGuardrail={setGuardrail}
                 />
@@ -537,7 +526,6 @@ function ApiConfigTab({
   setSettings,
   updateField,
   handleSave,
-  handleFileUpload,
   saving,
   onRequestGuardrail,
 }: {
@@ -547,7 +535,6 @@ function ApiConfigTab({
   setSettings: React.Dispatch<React.SetStateAction<SettingsState>>
   updateField: UpdateFieldFn
   handleSave: () => void
-  handleFileUpload: (e: ChangeEvent<HTMLInputElement>) => void
   saving: boolean
   onRequestGuardrail: (value: WorkbenchGuardrailState) => void
 }) {
@@ -856,18 +843,6 @@ function RuntimeTab({
       <p className="-mt-2 text-xs text-description">{runtimeSettingsUiSchema.page.description}</p>
 
       <Card title="Agent Controls">
-        <div className="rounded-md border border-[var(--vscode-panel-border)] bg-[color-mix(in_srgb,var(--vscode-editor-background)_97%,var(--vscode-foreground)_3%)] px-3 py-2">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-description">Chat Agent</span>
-              <span className="text-xs text-description">Switch this on the Assistant page. Your last choice saves automatically.</span>
-            </div>
-            <span className="rounded-full border border-[var(--vscode-panel-border)] px-2 py-0.5 text-[11px] font-medium text-[var(--vscode-foreground)]">
-              {isAgent ? "Agent" : "Chat"}
-            </span>
-          </div>
-        </div>
-
         {!isAgent && (
           <InlineNotice tone="info" size="sm">
             The controls below apply only in agent mode. Switch `Chat Agent` to `Agent` from the Assistant page to enable tool execution and auto-approval behavior.
@@ -885,7 +860,7 @@ function RuntimeTab({
             }
             label="Read File"
             description="Read files from the current workspace. Also gates file listing and search helpers."
-            disabled={!isAgent}
+
           />
           <Toggle
             checked={agentSettings.enabledTools.writeFile}
@@ -897,7 +872,7 @@ function RuntimeTab({
             }
             label="Write File"
             description="Create or edit files in the workspace."
-            disabled={!isAgent}
+
           />
           <Toggle
             checked={agentSettings.enabledTools.executeCommand}
@@ -909,7 +884,7 @@ function RuntimeTab({
             }
             label="Execute Command"
             description="Run terminal commands from the assistant."
-            disabled={!isAgent}
+
           />
           <Toggle
             checked={agentSettings.enabledTools.webSearch}
@@ -921,7 +896,7 @@ function RuntimeTab({
             }
             label="Web Search"
             description="Allow the assistant to search the web and fetch URLs when needed."
-            disabled={!isAgent}
+
           />
           <Toggle
             checked={agentSettings.enabledTools.browserAction}
@@ -933,7 +908,7 @@ function RuntimeTab({
             }
             label="Browser Action"
             description="Enable experimental browser automation for agent workflows."
-            disabled={!isAgent}
+
           />
         </div>
 
@@ -954,7 +929,7 @@ function RuntimeTab({
               }
               label="Read Operations"
               description="Auto-approve file reads."
-              disabled={!isAgent}
+  
             />
             <Toggle
               checked={agentSettings.autoApproval.writeFiles}
@@ -966,7 +941,7 @@ function RuntimeTab({
               }
               label="Write Operations"
               description="Auto-approve file writes."
-              disabled={!isAgent}
+  
             />
             <Toggle
               checked={agentSettings.autoApproval.executeCommands}
@@ -978,7 +953,7 @@ function RuntimeTab({
               }
               label="Command Execution"
               description="Auto-approve terminal commands."
-              disabled={!isAgent}
+  
             />
             <Toggle
               checked={agentSettings.autoApproval.webSearch}
@@ -990,7 +965,7 @@ function RuntimeTab({
               }
               label="Web Search"
               description="Auto-approve web lookups and URL fetches."
-              disabled={!isAgent}
+  
             />
             <Toggle
               checked={agentSettings.autoApproval.mcpTools}
@@ -1002,7 +977,7 @@ function RuntimeTab({
               }
               label="MCP Tools"
               description="Auto-approve direct MCP tool calls."
-              disabled={!isAgent}
+  
             />
 
             <div className="mt-2">
@@ -1016,7 +991,7 @@ function RuntimeTab({
                     updateAgentSettings((prev) => ({ ...prev, maxAutoActions: value }))
                   }
                 }}
-                disabled={!isAgent}
+    
               />
               <span className="mt-1 block text-xs text-description">
                 Maximum consecutive auto-approved actions before the assistant must stop and ask.
